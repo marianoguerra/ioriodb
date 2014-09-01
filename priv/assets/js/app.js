@@ -1,71 +1,141 @@
-/*globals $, document, window*/
-function disruptApp(document, window, $) {
+/*globals $, document, window, console, Iorio, React, JsonHuman*/
+function startApp(document, window, $, console, Iorio) {
     'use strict';
-    var input = document.getElementById('input'),
-        output = document.getElementById('output'),
-        nickInput = document.getElementById('nick'),
-        send = document.getElementById('send'),
+    var iorio = new Iorio('ws://localhost:8080/listen', {}),
+        output = document.getElementById('traffic'),
+        mConnections, mConnection, mNewConnection, mConnectionManager,
+        conns;
 
-        connection;
-
-    function sendMessage(text) {
-        var nick = getNick();
-        connection.send(nick + ': ' + text);
+    function addTraffic(data) {
+        var node = JsonHuman.format(data);
+        output.appendChild(node);
     }
 
-    function onSendClicked() {
-        var text = input.value.trim();
+    iorio.onSend.add(addTraffic);
+    iorio.onData.add(addTraffic);
 
-        if (text !== '') {
-            sendMessage(text);
+    mConnections = React.createClass({
+        displayName: 'Connections',
+        getInitialState: function() {
+            return {items: [], error: ''};
+        },
+        add: function (bucket, stream) {
+            var item = {bucket: bucket, stream: stream},
+                wasThere = this.remove(item);
+
+            this.state.items.push(item);
+
+            if (!wasThere) {
+                iorio.subscribe(bucket, stream);
+            }
+
+            this.setState(this.state);
+
+            return wasThere;
+        },
+        remove: function (item) {
+            var lenBefore = this.state.items.length,
+                lenAfter, changed;
+            this.state.items = this.state.items.filter(function (obj) {
+                return item.stream !== obj.stream || item.bucket !== obj.bucket;
+            });
+
+            lenAfter = this.state.items.length;
+            changed = lenBefore > lenAfter;
+
+            if (changed) {
+                iorio.unsubscribe(item.bucket, item.stream);
+            }
+
+            this.setState(this.state);
+            return changed;
+        },
+        componentDidMount: function() {
+            this.setState({items: []});
+        },
+        textFor: function (name) {
+            return this.refs[name].getDOMNode().value.trim();
+        },
+        onPing: function () {
+            iorio.ping();
+        },
+        onAdd : function () {
+            var bucket = this.textFor('bucket'),
+                stream = this.textFor('stream');
+
+            if (bucket === '') {
+                this.state.error = 'Bucket Empty';
+                return;
+            }
+
+            if (stream === '') {
+                this.state.error = 'Stream Empty';
+                return;
+            }
+
+            this.state.error = '';
+
+            this.add(bucket, stream);
+        },
+        render: function() {
+            var self = this;
+            return React.DOM.div({className: "connection-manager"},
+                                 React.DOM.div({className: "add-connection"},
+                                               formRow('bucket', 'Bucket'),
+                                               formRow('stream', 'Stream'),
+                                               text(this.state.error, 'error'),
+                                               button("Add", this.onAdd, "stream-add"),
+                                               button("Ping", this.onPing, "stream-ping")),
+
+                                               React.DOM.div({className: "connections"},
+                                                             self.state.items.map(function (item) {
+                                                                 var key = item.bucket + '/' + item.stream,
+                                                                 props = {
+                                                                     parent: self,
+                                                                     bucket: item.bucket,
+                                                                     stream: item.stream,
+                                                                     key: key
+                                                                 };
+                                                                 return mConnection(props);
+                                                             })));
         }
+    });
 
-        input.value = '';
-    }
-
-    function getNick() {
-        var nick = nickInput.value.trim();
-
-        if (nick === '') {
-            return 'anonymous';
-        } else {
-            return nick;
+    mConnection = React.createClass({
+        displayName: 'Connection',
+        onRemove: function () {
+            this.props.parent.remove(this.props);
+        },
+        render: function() {
+            return React.DOM.div({className: "connection"},
+                                 text(this.props.bucket, "bucket-name"),
+                                 text(" "),
+                                 text(this.props.stream, "stream-name"),
+                                 button("X", this.onRemove, "stream-remove"));
         }
+    });
+
+    function button(text, onClick, className) {
+        return React.DOM.button({className: className, onClick: onClick},
+                                text);
     }
 
-    function notify(text) {
-        var date = (new Date()).toLocaleString();
-        output.innerHTML = output.innerHTML + '[' + date + '] ' + text + '\n';
+    function text(label, className) {
+        return React.DOM.span({className: className}, label);
     }
 
-    function onData(data) {
-        notify(data);
+    function formRow(id, label, value) {
+        return React.DOM.p({},
+                           React.DOM.label({'htmlFor': id}, label),
+                           React.DOM.input({name: id, ref: id, value: value}));
     }
 
-    send.addEventListener('click', onSendClicked);
+    React.renderComponent(mConnections(),
+                          document.getElementById('connections'));
 
-    function start(url, options, notify, onData) {
-        var connection = $.bullet(url, options);
-
-        connection.onopen = function(){
-            notify('online'); 
-        };
-
-        connection.onclose = connection.ondisconnect = function(){
-            notify('offline');
-        };
-
-        connection.onmessage = function(e){
-            onData(e.data);
-        };
-
-        return connection;
-    }
-
-    connection = start('ws://localhost:8080/listen', {}, notify, onData);
 }
 
 document.addEventListener("DOMContentLoaded", function() {
     'use strict';
-    disruptApp(document, window, $);
+    startApp(document, window, $, console, Iorio);
 });

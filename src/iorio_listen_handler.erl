@@ -4,20 +4,91 @@
 
 -include_lib("sblob/include/sblob.hrl").
 
--record(state, {channels}).
+-record(state, {channels, iorio}).
 
 init(_Transport, Req, Opts, _Active) ->
     io:format("listen init ~p~n", [Opts]),
-    iorio:subscribe(<<"foo">>, <<"bar">>, self()),
-    {ok, Req, #state{channels=[]}}.
+    {ok, Req, #state{channels=[], iorio=iorio}}.
 
-stream(<<"ping">>, Req, State) ->
-    io:format("ping received~n"),
-    {reply, <<"pong">>, Req, State};
+get_channel_args(Msg) ->
+    {proplists:get_value(<<"bucket">>, Msg),
+     proplists:get_value(<<"stream">>, Msg)}.
 
-stream(Data, Req, State=#state{channels=_Channels}) ->
+handle_ping(_Msg, Req, State) ->
+    {reply, <<"{\"ok\": true}">>, Req, State}.
+
+with_stream(Fn, Msg, Req, State) ->
+    {Body, NewState} = case get_channel_args(Msg) of
+               {undefined, undefined} ->
+                               {encode_error(<<"missing bucket and stream">>), State};
+               {undefined, _} ->
+                               {encode_error(<<"missing bucket">>), State};
+               {_, undefined} ->
+                               {encode_error(<<"missing stream">>), State};
+               {Bucket, Stream} ->
+                               Fn(Bucket, Stream)
+           end,
+
+    {reply, Body, Req, NewState}.
+
+contains(_, []) -> false;
+contains(H, [H|_]) -> true;
+contains(V, [_|T]) -> contains(V, T).
+
+remove(V, L) -> remove(V, L, []).
+
+remove(_V, [], Accum) -> lists:reverse(Accum);
+remove(V, [V|T], Accum) -> remove(V, T, Accum);
+remove(V, [_|T], Accum) -> remove(V, T, [V|Accum]).
+
+handle_subscribe(Msg, Req, State=#state{channels=Channels, iorio=Iorio}) ->
+    with_stream(fun (Bucket, Stream) ->
+                        Key = {Bucket, Stream},
+                        IsSubscribed = contains(Key, Channels),
+                        if
+                            IsSubscribed ->
+                               {encode_error(<<"already subscribed">>), State};
+
+                            true ->
+                                Iorio:subscribe(Bucket, Stream, self()),
+                                NewChannels = [Key|Channels],
+                                io:format("old ~p~nnew ~p~n", [Channels, NewChannels]),
+                                State1 = State#state{channels=NewChannels},
+                                {<<"{\"ok\": true}">>, State1}
+                        end
+                end, Msg, Req, State).
+
+
+handle_unsubscribe(Msg, Req, State=#state{channels=Channels, iorio=Iorio}) ->
+    with_stream(fun (Bucket, Stream) ->
+                        Key = {Bucket, Stream},
+                        IsSubscribed = contains(Key, Channels),
+                        if
+                            IsSubscribed ->
+                                Iorio:unsubscribe(Bucket, Stream, self()),
+                                NewChannels = remove(Key, Channels),
+                                io:format("old ~p~nnew ~p~n", [Channels, NewChannels]),
+                                State1 = State#state{channels=NewChannels},
+                                {<<"{\"ok\": true}">>, State1};
+
+                            true ->
+                               {encode_error(<<"not subscribed">>), State}
+
+                        end
+                end, Msg, Req, State).
+
+encode_error(Reason) ->
+    <<"{\"ok\":false,\"reason\":\"", Reason/binary, "\"}">>.
+
+stream(Data, Req, State) ->
     io:format("message received ~s~n", [Data]),
-    {reply, <<"[]">>, Req, State}.
+    Msg = jsx:decode(Data),
+    case proplists:get_value(<<"cmd">>, Msg) of
+        <<"subscribe">> -> handle_subscribe(Msg, Req, State);
+        <<"unsubscribe">> -> handle_unsubscribe(Msg, Req, State);
+        <<"ping">> -> handle_ping(Msg, Req, State);
+        _ -> {reply, encode_error(<<"unknown command">>), Req, State}
+    end.
 
 info({entry, BucketName, Stream, Entry}, Req, State) ->
     io:format("msg received ~s/~s~n", [BucketName, Stream]),
@@ -25,9 +96,11 @@ info({entry, BucketName, Stream, Entry}, Req, State) ->
     JsonBin = jsx:encode(Json),
     {reply, JsonBin, Req, State}.
 
-terminate(_Req, #state{}) ->
+terminate(_Req, #state{channels=Channels, iorio=Iorio}) ->
     io:format("unsubscribing from channels~n"),
-    iorio:unsubscribe(<<"foo">>, <<"bar">>, self()),
+    lists:map(fun ({Bucket, Stream}) ->
+                      Iorio:unsubscribe(Bucket, Stream, self())
+              end, Channels),
     ok.
 
 % private
