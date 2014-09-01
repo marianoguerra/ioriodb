@@ -14,17 +14,21 @@ get_channel_args(Msg) ->
     {proplists:get_value(<<"bucket">>, Msg),
      proplists:get_value(<<"stream">>, Msg)}.
 
-handle_ping(_Msg, Req, State) ->
-    {reply, <<"{\"ok\": true}">>, Req, State}.
+encode_ok(Id) ->
+    IdBin = integer_to_binary(Id),
+    <<"{\"ok\": true", ",\"id\":", IdBin/binary, "}">>.
 
-with_stream(Fn, Msg, Req, State) ->
+handle_ping(_Msg, Id, Req, State) ->
+    {reply, encode_ok(Id), Req, State}.
+
+with_stream(Fn, Msg, Id, Req, State) ->
     {Body, NewState} = case get_channel_args(Msg) of
                {undefined, undefined} ->
-                               {encode_error(<<"missing bucket and stream">>), State};
+                               {encode_error(<<"missing bucket and stream">>, Id), State};
                {undefined, _} ->
-                               {encode_error(<<"missing bucket">>), State};
+                               {encode_error(<<"missing bucket">>, Id), State};
                {_, undefined} ->
-                               {encode_error(<<"missing stream">>), State};
+                               {encode_error(<<"missing stream">>, Id), State};
                {Bucket, Stream} ->
                                Fn(Bucket, Stream)
            end,
@@ -39,27 +43,27 @@ remove(V, L) -> remove(V, L, []).
 
 remove(_V, [], Accum) -> lists:reverse(Accum);
 remove(V, [V|T], Accum) -> remove(V, T, Accum);
-remove(V, [_|T], Accum) -> remove(V, T, [V|Accum]).
+remove(V, [H|T], Accum) -> remove(V, T, [H|Accum]).
 
-handle_subscribe(Msg, Req, State=#state{channels=Channels, iorio=Iorio}) ->
+handle_subscribe(Msg, Id, Req, State=#state{channels=Channels, iorio=Iorio}) ->
     with_stream(fun (Bucket, Stream) ->
                         Key = {Bucket, Stream},
                         IsSubscribed = contains(Key, Channels),
                         if
                             IsSubscribed ->
-                               {encode_error(<<"already subscribed">>), State};
+                               {encode_error(<<"already subscribed">>, Id), State};
 
                             true ->
                                 Iorio:subscribe(Bucket, Stream, self()),
                                 NewChannels = [Key|Channels],
                                 io:format("old ~p~nnew ~p~n", [Channels, NewChannels]),
                                 State1 = State#state{channels=NewChannels},
-                                {<<"{\"ok\": true}">>, State1}
+                                {encode_ok(Id), State1}
                         end
-                end, Msg, Req, State).
+                end, Msg, Id, Req, State).
 
 
-handle_unsubscribe(Msg, Req, State=#state{channels=Channels, iorio=Iorio}) ->
+handle_unsubscribe(Msg, Id, Req, State=#state{channels=Channels, iorio=Iorio}) ->
     with_stream(fun (Bucket, Stream) ->
                         Key = {Bucket, Stream},
                         IsSubscribed = contains(Key, Channels),
@@ -69,25 +73,27 @@ handle_unsubscribe(Msg, Req, State=#state{channels=Channels, iorio=Iorio}) ->
                                 NewChannels = remove(Key, Channels),
                                 io:format("old ~p~nnew ~p~n", [Channels, NewChannels]),
                                 State1 = State#state{channels=NewChannels},
-                                {<<"{\"ok\": true}">>, State1};
+                                {encode_ok(Id), State1};
 
                             true ->
-                               {encode_error(<<"not subscribed">>), State}
+                               {encode_error(<<"not subscribed">>, Id), State}
 
                         end
-                end, Msg, Req, State).
+                end, Msg, Id, Req, State).
 
-encode_error(Reason) ->
-    <<"{\"ok\":false,\"reason\":\"", Reason/binary, "\"}">>.
+encode_error(Reason, Id) ->
+    IdBin = integer_to_binary(Id),
+    <<"{\"ok\":false,\"id\":", IdBin, ",\"reason\":\"", Reason/binary, "\"}">>.
 
 stream(Data, Req, State) ->
     io:format("message received ~s~n", [Data]),
     Msg = jsx:decode(Data),
+    Id = proplists:get_value(<<"id">>, Msg, 0),
     case proplists:get_value(<<"cmd">>, Msg) of
-        <<"subscribe">> -> handle_subscribe(Msg, Req, State);
-        <<"unsubscribe">> -> handle_unsubscribe(Msg, Req, State);
-        <<"ping">> -> handle_ping(Msg, Req, State);
-        _ -> {reply, encode_error(<<"unknown command">>), Req, State}
+        <<"subscribe">> -> handle_subscribe(Msg, Id, Req, State);
+        <<"unsubscribe">> -> handle_unsubscribe(Msg, Id, Req, State);
+        <<"ping">> -> handle_ping(Msg, Id, Req, State);
+        _ -> {reply, encode_error(<<"unknown command">>, Id), Req, State}
     end.
 
 info({entry, BucketName, Stream, Entry}, Req, State) ->

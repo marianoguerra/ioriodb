@@ -5,6 +5,7 @@
 
     function Iorio(url, options) {
         var self = this;
+        this._id = 0;
         this.url = url;
         this.options = options;
         this.connection = $.bullet(url, options);
@@ -55,7 +56,8 @@
         return this.sendMessage({
             cmd: "subscribe",
             bucket: bucket,
-            stream: stream
+            stream: stream,
+            id: this.nextId()
         });
     };
 
@@ -67,13 +69,22 @@
         return this.sendMessage({
             cmd: "unsubscribe",
             bucket: bucket,
-            stream: stream
+            stream: stream,
+            id: this.nextId()
         });
+    };
+
+    Iorio.prototype.nextId = function () {
+        this._id += 1;
+        return this._id;
     };
 
     Iorio.prototype.ping = function () {
         this.onPing.fire();
-        return this.sendMessage({cmd: "ping"});
+        return this.sendMessage({
+            cmd: "ping",
+            id: this.nextId()
+        });
     };
 
     global.Iorio = Iorio;
