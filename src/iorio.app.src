@@ -1,0 +1,18 @@
+%% -*- erlang -*-
+{application, iorio,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  riak_core,
+                  cowboy,
+                  bullet,
+                  jsx,
+                  lager
+                 ]},
+  {mod, { iorio_app, []}},
+  {env, []}
+ ]}.

@@ -1,0 +1,7 @@
+*.beam
+.eunit
+deps/*
+ebin/*
+rel/iorio
+dev
+apps/iorio/src/*
