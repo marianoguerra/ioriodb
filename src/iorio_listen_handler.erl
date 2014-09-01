@@ -7,7 +7,7 @@
 -record(state, {channels, iorio}).
 
 init(_Transport, Req, Opts, _Active) ->
-    io:format("listen init ~p~n", [Opts]),
+    lager:info("listener init ~p~n", [Opts]),
     {ok, Req, #state{channels=[], iorio=iorio}}.
 
 get_channel_args(Msg) ->
@@ -51,12 +51,13 @@ handle_subscribe(Msg, Id, Req, State=#state{channels=Channels, iorio=Iorio}) ->
                         IsSubscribed = contains(Key, Channels),
                         if
                             IsSubscribed ->
-                               {encode_error(<<"already subscribed">>, Id), State};
+                                lager:warning("already subscribed ~s/~s~n", [Bucket, Stream]),
+                                {encode_error(<<"already subscribed">>, Id), State};
 
                             true ->
+                                lager:info("subscribing ~s/~s~n", [Bucket, Stream]),
                                 Iorio:subscribe(Bucket, Stream, self()),
                                 NewChannels = [Key|Channels],
-                                io:format("old ~p~nnew ~p~n", [Channels, NewChannels]),
                                 State1 = State#state{channels=NewChannels},
                                 {encode_ok(Id), State1}
                         end
@@ -69,24 +70,26 @@ handle_unsubscribe(Msg, Id, Req, State=#state{channels=Channels, iorio=Iorio}) -
                         IsSubscribed = contains(Key, Channels),
                         if
                             IsSubscribed ->
+                                lager:info("unsubscribing ~s/~s~n", [Bucket, Stream]),
                                 Iorio:unsubscribe(Bucket, Stream, self()),
                                 NewChannels = remove(Key, Channels),
-                                io:format("old ~p~nnew ~p~n", [Channels, NewChannels]),
                                 State1 = State#state{channels=NewChannels},
                                 {encode_ok(Id), State1};
 
                             true ->
-                               {encode_error(<<"not subscribed">>, Id), State}
+                                lager:warning("not subscribed ~s/~s~n", [Bucket, Stream]),
+                                {encode_error(<<"not subscribed">>, Id), State}
 
                         end
                 end, Msg, Id, Req, State).
 
 encode_error(Reason, Id) ->
+    lager:warning("error ~s ~p~n", [Reason, Id]),
     IdBin = integer_to_binary(Id),
     <<"{\"ok\":false,\"id\":", IdBin, ",\"reason\":\"", Reason/binary, "\"}">>.
 
 stream(Data, Req, State) ->
-    io:format("message received ~s~n", [Data]),
+    lager:debug("msg received ~p~n", [Data]),
     Msg = jsx:decode(Data),
     Id = proplists:get_value(<<"id">>, Msg, 0),
     case proplists:get_value(<<"cmd">>, Msg) of
@@ -97,14 +100,14 @@ stream(Data, Req, State) ->
     end.
 
 info({entry, BucketName, Stream, Entry}, Req, State) ->
-    io:format("msg received ~s/~s~n", [BucketName, Stream]),
+    lager:debug("entry received ~s/~s~n", [BucketName, Stream]),
     Json = entry_to_json(Entry, BucketName, Stream),
     JsonBin = jsx:encode(Json),
     {reply, JsonBin, Req, State}.
 
 terminate(_Req, #state{channels=Channels, iorio=Iorio}) ->
-    io:format("unsubscribing from channels~n"),
     lists:map(fun ({Bucket, Stream}) ->
+                      lager:debug("unsubscribing from ~s/~s~n", [Bucket, Stream]),
                       Iorio:unsubscribe(Bucket, Stream, self())
               end, Channels),
     ok.
