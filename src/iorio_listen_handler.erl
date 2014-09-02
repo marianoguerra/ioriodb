@@ -89,7 +89,7 @@ handle_unsubscribe(Msg, Id, Req, State=#state{channels=Channels, iorio=Iorio}) -
 encode_error(Reason, Id) ->
     lager:warning("error ~s ~p~n", [Reason, Id]),
     IdBin = integer_to_binary(Id),
-    <<"{\"ok\":false,\"id\":", IdBin, ",\"reason\":\"", Reason/binary, "\"}">>.
+    <<"{\"ok\":false,\"id\":", IdBin/binary, ",\"reason\":\"", Reason/binary, "\"}">>.
 
 stream(Data, Req, State) ->
     lager:debug("msg received ~p~n", [Data]),
