@@ -1,0 +1,3 @@
+
+-record(state, {channels, iorio}).
+
