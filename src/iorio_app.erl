@@ -19,7 +19,9 @@ start(_StartType, _StartArgs) ->
                                              [{mimetypes, cow_mimetypes, all}]}}
         ]}
     ]),
-    {ok, _} = cowboy:start_http(http, 100, [{port, 8080}], [
+    ApiPort = application:get_env(iorio, port, 8080),
+    ApiAcceptors = application:get_env(iorio, nb_acceptors, 100),
+    {ok, _} = cowboy:start_http(http, ApiAcceptors, [{port, ApiPort}], [
         {env, [{dispatch, Dispatch}]}
     ]),
 

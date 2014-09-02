@@ -5,7 +5,8 @@ a stream database.
 
 like a pubsub with history.
 
-.. note:: warning
+WARNING
+-------
 
     this is pre alpha software, it will break your hearth (and your data)
     use it only for evaluation and testing
@@ -49,6 +50,31 @@ to test from he api::
 
     # 10 clients in parallel, 500 iterations each
     for i in $(seq 10); do ./apitest.py -i 500 &; done
+
+Multinode
+---------
+
+*WARNING*: this is still in development
+
+create 4 releases with different config::
+
+    make devrel
+
+start the 4 nodes::
+
+    for d in dev/dev*; do $d/bin/iorio start; done
+
+check that they are running::
+
+    for d in dev/dev*; do $d/bin/iorio ping; done
+
+join 3 nodes to the first one::
+
+    for d in dev/dev{2,3,4}; do $d/bin/iorio-admin cluster join iorio1@127.0.0.1; done
+
+when you are bored you can stop them::
+
+    for d in dev/dev*; do $d/bin/iorio stop; done
 
 License
 -------

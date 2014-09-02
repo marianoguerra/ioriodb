@@ -13,12 +13,15 @@ VARFILE=$3
 ##   .7 - http
 
 NUMBER=${NAME##dev}
+APIBASEPORT=$((8080 + 10 * $NUMBER))
+APIPORT=$(($APIBASEPORT + 8))
 BASE=$((10000 + 10 * $NUMBER))
 WEBPORT=$(($BASE + 8))
 HANDOFFPORT=$(($BASE + 9))
 NODENAME="iorio$NUMBER@127.0.0.1"
 
-echo "Generating $NAME - node='$NODENAME' http=$WEBPORT handoff=$HANDOFFPORT"
+echo "Generating $NAME - node='$NODENAME' http=$WEBPORT handoff=$HANDOFFPORT api=$APIPORT"
 sed -e "s/@NODE@/$NODENAME/" \
     -e "s/@WEBPORT@/$WEBPORT/" \
+    -e "s/@APIPORT@/$APIPORT/" \
     -e "s/@HANDOFFPORT@/$HANDOFFPORT/" < $TEMPLATE > $VARFILE
