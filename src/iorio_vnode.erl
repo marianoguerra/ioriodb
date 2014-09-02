@@ -72,7 +72,7 @@ handle_command(ping, _Sender, State) ->
 
 handle_command({put, BucketName, Stream, Data}, _Sender,
                State=#state{partition=Partition}) ->
-    lager:info("put ~s ~s at ~p", [BucketName, Stream, Partition]),
+    lager:debug("put ~s ~s at ~p", [BucketName, Stream, Partition]),
     {State1, Channel} = get_channel(State, BucketName, Stream),
     {NewState, Bucket} = get_bucket(State1, BucketName),
     Entry = gblob_bucket:put(Bucket, Stream, Data),
@@ -81,20 +81,20 @@ handle_command({put, BucketName, Stream, Data}, _Sender,
 
 handle_command({get, BucketName, Stream, From, Count}, _Sender,
                State=#state{partition=Partition}) ->
-    lager:info("get ~s ~s ~p ~p at ~p", [BucketName, Stream, From, Count, Partition]),
+    lager:debug("get ~s ~s ~p ~p at ~p", [BucketName, Stream, From, Count, Partition]),
     {NewState, Bucket} = get_bucket(State, BucketName),
     Entries = gblob_bucket:get(Bucket, Stream, From, Count),
     {reply, Entries, NewState};
 
 handle_command({subscribe, BucketName, Stream, Pid}, _Sender, State=#state{partition=Partition}) ->
-    lager:info("subscribe ~s ~s at ~p", [BucketName, Stream, Partition]),
+    lager:debug("subscribe ~s ~s at ~p", [BucketName, Stream, Partition]),
     {NewState, Channel} = get_channel(State, BucketName, Stream),
     % TODO do something with return value?
     iorio_channel:subscribe(Channel, Pid),
     {reply, ok, NewState};
 
 handle_command({unsubscribe, BucketName, Stream, Pid}, _Sender, State=#state{partition=Partition}) ->
-    lager:info("unsubscribe ~s ~s at ~p", [BucketName, Stream, Partition]),
+    lager:debug("unsubscribe ~s ~s at ~p", [BucketName, Stream, Partition]),
     % TODO: don't create it if it doesn't exist
     {NewState, Channel} = get_channel(State, BucketName, Stream),
     % TODO do something with return value?
