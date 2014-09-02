@@ -2,13 +2,16 @@
 
 -export([init/4, stream/3, info/3, terminate/2]).
 
--include_lib("sblob/include/sblob.hrl").
+% exported for tests
+-export([encode_ok/1, encode_error/2]).
 
--record(state, {channels, iorio}).
+-include_lib("sblob/include/sblob.hrl").
+-include("priv/include/listener.hrl").
 
 init(_Transport, Req, Opts, _Active) ->
     lager:info("listener init ~p~n", [Opts]),
-    {ok, Req, #state{channels=[], iorio=iorio}}.
+    Iorio = proplists:get_value(iorio, Opts, iorio),
+    {ok, Req, #state{channels=[], iorio=Iorio}}.
 
 get_channel_args(Msg) ->
     {proplists:get_value(<<"bucket">>, Msg),
