@@ -43,9 +43,8 @@ content_types_accepted(Req, State) ->
 content_types_provided(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, to_json}], Req, State}.
 
-sblob_to_json(#sblob_entry{seqnum=SeqNum, timestamp=Timestamp, data=Data}) ->
-    [{meta, [{seqnum, SeqNum}, {timestamp, Timestamp}]},
-     {data, jsx:decode(Data)}].
+sblob_to_json(#sblob_entry{seqnum=SeqNum, timestamp=Timestamp, data=_Data}) ->
+    [{meta, [{seqnum, SeqNum}, {timestamp, Timestamp}]}].
 
 to_json(Req, State=#state{bucket=Bucket, stream=Stream, from_sn=From, limit=Limit}) ->
     Blobs = iorio:get(Bucket, Stream, From, Limit),
