@@ -133,7 +133,17 @@ handle_coverage(_Req, _KeySpaces, _Sender, State) ->
     {stop, not_implemented, State}.
 
 handle_exit(_Pid, _Reason, State) ->
-    {noreply, State}.
+    State1 = free_resources(State),
+    {noreply, State1}.
 
-terminate(_Reason, _State) ->
+terminate(_Reason, State) ->
+    _State1 = free_resources(State),
     ok.
+
+%% private api
+
+free_resources(State=#state{buckets=Buckets}) ->
+    EmptyBuckets = sblob_preg:new(),
+    sblob_preg:foreach(Buckets, fun (_Key, Bucket) -> gblob:close(Bucket) end),
+    State1 = State#state{buckets=EmptyBuckets},
+    State1.
