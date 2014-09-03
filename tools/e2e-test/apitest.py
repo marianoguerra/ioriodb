@@ -62,7 +62,7 @@ def parse_args():
     return args
 
 def send(host, port, bucket, stream, data):
-    url = 'http://%s:%d/data/%s/%s' % (host, port, bucket, stream)
+    url = 'http://%s:%d/stream/%s/%s' % (host, port, bucket, stream)
     headers = {'content-type': 'application/json'}
     response = requests.post(url, headers=headers, data=data)
     return response
