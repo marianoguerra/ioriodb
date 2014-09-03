@@ -128,6 +128,75 @@ when you are bored you can stop them::
 
     for d in dev/dev*; do $d/bin/iorio stop; done
 
+Excercise Handoff
+-----------------
+
+first make devrel::
+
+    rm -rf dev
+    make devrel
+
+then start one node::
+
+    ./dev/dev1/bin/iorio console
+
+then send it some events so it has some buckets with data::
+
+    tools/e2e-test/apitest.py -P 8098 -B 20 -i 50
+
+now start a second node::
+
+    ./dev/dev2/bin/iorio console
+
+join it to the first one::
+
+    ./dev/dev2/bin/iorio-admin cluster join iorio1@127.0.0.1
+    ./dev/dev2/bin/iorio-admin cluster plan
+    ./dev/dev2/bin/iorio-admin cluster commit
+
+you should see in the console (if logs set to info/debug) that the data is moving.
+
+you can also watch on the member status how the data moves::
+
+    dev/dev1/bin/iorio-admin member-status
+
+as it moves you should see something like this::
+
+    ================================= Membership ==================================
+    Status     Ring    Pending    Node
+    -------------------------------------------------------------------------------
+    valid      64.1%     50.0%    'iorio1@127.0.0.1'
+    valid      35.9%     50.0%    'iorio2@127.0.0.1'
+    -------------------------------------------------------------------------------
+    Valid:2 / Leaving:0 / Exiting:0 / Joining:0 / Down:0
+
+and at the end::
+
+    ================================= Membership ==================================
+    Status     Ring    Pending    Node
+    -------------------------------------------------------------------------------
+    valid      50.0%      --      'iorio1@127.0.0.1'
+    valid      50.0%      --      'iorio2@127.0.0.1'
+    -------------------------------------------------------------------------------
+    Valid:2 / Leaving:0 / Exiting:0 / Joining:0 / Down:0
+
+you can keep adding nodes until you are happy
+
+shortcut for the lazy, in one terminal::
+
+    rm -rf dev && make devrel && ./dev/dev1/bin/iorio console
+
+in another one::
+
+    tools/e2e-test/apitest.py -P 8098 -B 20 -i 50 && ./dev/dev2/bin/iorio console
+
+in another one::
+
+    ./dev/dev2/bin/iorio-admin cluster join iorio1@127.0.0.1; \
+    ./dev/dev2/bin/iorio-admin cluster plan; \
+    ./dev/dev2/bin/iorio-admin cluster commit
+
+
 License
 -------
 
