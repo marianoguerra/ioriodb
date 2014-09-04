@@ -13,7 +13,7 @@
 init({tcp, http}, _Req, []) -> {upgrade, protocol, cowboy_rest}.
 
 rest_init(Req, []) ->
-    {Bucket, Req1} = cowboy_req:binding(bucket, Req),
+    {Bucket, Req1} = cowboy_req:binding(bucket, Req, nil),
 	{ok, Req1, #state{bucket=Bucket}}.
 
 allowed_methods(Req, State) -> {[<<"GET">>], Req, State}.
@@ -25,8 +25,8 @@ unique(List) ->
     Set = sets:from_list(List),
     sets:to_list(Set).
 
-to_json(Req, State=#state{bucket=Bucket}) ->
-    {Status, Data} = case iorio:list(Bucket) of
+response_to_json(Req, State, Response) ->
+    {Status, Data} = case Response of
                          {partial, _Reason, PartialData} -> {partial, PartialData};
                          {ok, _Data}=OkResp -> OkResp
                      end,
@@ -37,6 +37,11 @@ to_json(Req, State=#state{bucket=Bucket}) ->
     UniqueItems = unique(Items),
 
     {jsx:encode([{status, Status}, {data, UniqueItems}]), Req, State}.
+
+to_json(Req, State=#state{bucket=nil}) ->
+    response_to_json(Req, State, iorio:list());
+to_json(Req, State=#state{bucket=Bucket}) ->
+    response_to_json(Req, State, iorio:list(Bucket)).
 
 rest_terminate(_Req, _State) ->
 	ok.

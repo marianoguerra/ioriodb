@@ -2,7 +2,7 @@
 -include("iorio.hrl").
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 
--export([ping/0, put/3, get/3, get/4, subscribe/3, unsubscribe/3, list/1]).
+-export([ping/0, put/3, get/3, get/4, subscribe/3, unsubscribe/3, list/0, list/1]).
 
 -ignore_xref([ping/0]).
 
@@ -50,6 +50,11 @@ unsubscribe(Bucket, Stream, Pid) ->
     riak_core_vnode_master:sync_spawn_command(IndexNode,
                                               {unsubscribe, Bucket, Stream, Pid},
                                               iorio_vnode_master).
+
+list() ->
+    % TODO: make configurable
+    Timeout = 5000,
+    iorio_coverage_fsm:start({list_buckets}, Timeout).
 
 list(Bucket) ->
     % TODO: make configurable

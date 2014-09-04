@@ -183,6 +183,11 @@ handle_coverage({list_streams, Bucket}, _KeySpaces, {_, RefId, _}, State) ->
     StreamsBin = lists:map(fun list_to_binary/1, Streams),
     {reply, {RefId, StreamsBin}, State};
 
+handle_coverage({list_buckets}, _KeySpaces, {_, RefId, _}, State) ->
+    Buckets = list_bucket_names(State),
+    BucketsBin = lists:map(fun list_to_binary/1, Buckets),
+    {reply, {RefId, BucketsBin}, State};
+
 handle_coverage(Req, _KeySpaces, _Sender, State) ->
     lager:warning("unknown coverage received ~p", [Req]),
     {noreply, State}.
