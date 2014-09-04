@@ -24,6 +24,10 @@ init(_Args) ->
                   {riak_core_vnode_master, start_link, [iorio_vnode]},
                   permanent, 5000, worker, [riak_core_vnode_master]},
 
+    WriteFSMs = {iorio_write_fsm_sup,
+                 {iorio_write_fsm_sup, start_link, []},
+                 permanent, infinity, supervisor, [iorio_write_fsm_sup]},
+         
     { ok,
         { {one_for_one, 5, 10},
-          [VMaster]}}.
+          [VMaster, WriteFSMs]}}.

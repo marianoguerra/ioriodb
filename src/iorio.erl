@@ -22,10 +22,13 @@ ping() ->
     riak_core_vnode_master:sync_spawn_command(IndexNode, ping, iorio_vnode_master).
 
 put(Bucket, Stream, Data) ->
-    IndexNode = get_index_node(Bucket, Stream),
-    riak_core_vnode_master:sync_spawn_command(IndexNode,
-                                              {put, Bucket, Stream, Data},
-                                              iorio_vnode_master).
+    % TODO: make them configurable
+    N = 3,
+    W = 3,
+    Timeout = 5000,
+
+    {ok, ReqID} = iorio_write_fsm:write(N, W, Bucket, Stream, Data),
+    wait_for_reqid(ReqID, Timeout).
 
 get(Bucket, Stream, From) ->
     get(Bucket, Stream, From, 1).
@@ -47,3 +50,10 @@ unsubscribe(Bucket, Stream, Pid) ->
     riak_core_vnode_master:sync_spawn_command(IndexNode,
                                               {unsubscribe, Bucket, Stream, Pid},
                                               iorio_vnode_master).
+
+%% private
+wait_for_reqid(ReqID, Timeout) ->
+    receive {ReqID, Val} -> {ok, Val}
+    after Timeout -> {error, timeout}
+    end.
+

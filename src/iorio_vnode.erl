@@ -80,12 +80,13 @@ do_put(State=#state{partition=Partition}, BucketName, Stream, Timestamp, Data) -
 handle_command(ping, _Sender, State) ->
     {reply, {pong, State#state.partition}, State};
 
-handle_command({put, BucketName, Stream, Data}, _Sender, State) ->
+handle_command({put, ReqId, BucketName, Stream, Data}, _Sender, State) ->
+    lager:debug("put ~p", [{ReqId, BucketName, Stream}]),
     Timestamp = sblob_util:now(),
     {State1, Entry} = do_put(State, BucketName, Stream, Timestamp, Data),
     {NewState, Channel} = get_channel(State1, BucketName, Stream),
     iorio_channel:send(Channel, {entry, BucketName, Stream, Entry}),
-    {reply, Entry, NewState};
+    {reply, {ReqId, Entry}, NewState};
 
 handle_command({get, BucketName, Stream, From, Count}, _Sender,
                State=#state{partition=Partition}) ->

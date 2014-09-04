@@ -59,7 +59,7 @@ from_json(Req, State=#state{bucket=Bucket, stream=Stream}) ->
     {ok, Body, Req1} = cowboy_req:body(Req),
     case jsx:is_json(Body) of
         true ->
-            SblobEntry = iorio:put(Bucket, Stream, Body),
+            {ok, SblobEntry} = iorio:put(Bucket, Stream, Body),
             ResultJson = sblob_to_json(SblobEntry),
             ResultJsonBin = jsx:encode(ResultJson),
             Req2 = cowboy_req:set_resp_body(ResultJsonBin, Req1),
