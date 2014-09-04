@@ -28,6 +28,9 @@ init(_Args) ->
                  {iorio_write_fsm_sup, start_link, []},
                  permanent, infinity, supervisor, [iorio_write_fsm_sup]},
          
+    CoverageFSMs = {iorio_coverage_fsm_sup,
+                 {iorio_coverage_fsm_sup, start_link, []},
+                 permanent, infinity, supervisor, [iorio_coverage_fsm_sup]},
     { ok,
         { {one_for_one, 5, 10},
-          [VMaster, WriteFSMs]}}.
+          [VMaster, WriteFSMs, CoverageFSMs]}}.

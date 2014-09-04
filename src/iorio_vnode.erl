@@ -178,8 +178,14 @@ delete(State=#state{path=Path}) ->
     sblob_util:remove(Path),
     {ok, State}.
 
-handle_coverage(_Req, _KeySpaces, _Sender, State) ->
-    {stop, not_implemented, State}.
+handle_coverage({list_streams, Bucket}, _KeySpaces, {_, RefId, _}, State) ->
+    Streams = list_gblobs_for_bucket(State, Bucket),
+    StreamsBin = lists:map(fun list_to_binary/1, Streams),
+    {reply, {RefId, StreamsBin}, State};
+
+handle_coverage(Req, _KeySpaces, _Sender, State) ->
+    lager:warning("unknown coverage received ~p", [Req]),
+    {noreply, State}.
 
 handle_exit(_Pid, _Reason, State=#state{partition=Partition}) ->
     lager:info("handle exit ~p", [Partition]),
@@ -207,6 +213,10 @@ list_dir(Path) ->
 
 list_bucket_names(#state{path=Path}) ->
     list_dir(Path).
+
+list_gblobs_for_bucket(#state{path=Path}, BucketName) ->
+    BucketPath = filename:join([Path, BucketName]),
+    list_dir(BucketPath).
 
 list_gblob_names(State=#state{path=Path}) ->
     BucketNames = list_bucket_names(State),

@@ -14,6 +14,7 @@ start(_StartType, _StartArgs) ->
         {'_', [
                {"/listen", bullet_handler, [{handler, iorio_listen_handler}]},
                {"/stream/:bucket/:stream", iorio_data_handler, []},
+               {"/list/:bucket", iorio_list_handler, []},
                {"/ping", iorio_ping_handler, []},
                {"/ui/[...]", cowboy_static, {priv_dir, iorio, "assets",
                                              [{mimetypes, cow_mimetypes, all}]}}
