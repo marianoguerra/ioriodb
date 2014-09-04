@@ -136,8 +136,10 @@ handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender, State=#state{
                        end, Acc0),
      {reply, Acc, State};
 
-handle_handoff_command(_Message, _Sender, State) ->
-    {noreply, State}.
+handle_handoff_command(Message, Sender, State=#state{partition=Partition}) ->
+    lager:warning("handling command during handoff, state may diverge ~p",
+                  [Partition]),
+    handle_command(Message, Sender, State).
 
 handoff_starting(_TargetNode, State=#state{partition=Partition}) ->
     lager:info("handoff starting ~p", [Partition]),
