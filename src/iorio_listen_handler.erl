@@ -118,5 +118,5 @@ terminate(_Req, #state{channels=Channels, iorio=Iorio}) ->
 % private
 
 entry_to_json(#sblob_entry{seqnum=SeqNum, timestamp=Timestamp, data=Data}, Bucket, Stream) ->
-    [{meta, [{seqnum, SeqNum}, {timestamp, Timestamp}, {bucket, Bucket}, {stream, Stream}]},
+    [{meta, [{id, SeqNum}, {t, Timestamp}, {bucket, Bucket}, {stream, Stream}]},
      {data, jsx:decode(Data)}].
