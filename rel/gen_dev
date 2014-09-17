@@ -12,6 +12,8 @@ VARFILE=$3
 ## Allocate 10 ports per node
 ##   .7 - http
 
+APISECRET=changeme
+APIALGORITHM=hs256
 NUMBER=${NAME##dev}
 APIBASEPORT=$((8080 + 10 * $NUMBER))
 APIPORT=$(($APIBASEPORT + 8))
@@ -24,4 +26,6 @@ echo "Generating $NAME - node='$NODENAME' http=$WEBPORT handoff=$HANDOFFPORT api
 sed -e "s/@NODE@/$NODENAME/" \
     -e "s/@WEBPORT@/$WEBPORT/" \
     -e "s/@APIPORT@/$APIPORT/" \
+    -e "s/@APISECRET@/$APISECRET/" \
+    -e "s/@APIALGORITHM@/$APIALGORITHM/" \
     -e "s/@HANDOFFPORT@/$HANDOFFPORT/" < $TEMPLATE > $VARFILE

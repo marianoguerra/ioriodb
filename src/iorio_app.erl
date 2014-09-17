@@ -10,10 +10,14 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
+    % TODO: check here that secret is binary and algorigthm is a valid one
+    {ok, ApiSecret} = application:get_env(iorio, secret),
+    {ok, ApiAlgorithm} = application:get_env(iorio, algorithm),
     Dispatch = cowboy_router:compile([
         {'_', [
                {"/listen", bullet_handler, [{handler, iorio_listen_handler}]},
                {"/stream/:bucket/:stream", iorio_data_handler, []},
+               {"/session", iorio_session_handler, [{secret, ApiSecret}, {algorithm, ApiAlgorithm}]},
                {"/list/", iorio_list_handler, []},
                {"/list/:bucket", iorio_list_handler, []},
                {"/ping", iorio_ping_handler, []},
