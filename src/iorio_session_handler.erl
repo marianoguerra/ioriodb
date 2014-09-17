@@ -7,13 +7,14 @@
          allowed_methods/2,
          content_types_accepted/2,
          content_types_provided/2,
+         is_authorized/2,
          from_json/2,
          to_json/2
         ]).
 
 -include_lib("jwt/include/jwt.hrl").
 
--record(state, {secret, algorithm}).
+-record(state, {secret, algorithm, session}).
 
 init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
@@ -29,22 +30,20 @@ content_types_accepted(Req, State) ->
 content_types_provided(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, to_json}], Req, State}.
 
-% TODO: use the cowboy rest callbacks instead of all here
-to_json(Req, State=#state{secret=Secret}) ->
-    {RespBody, Req1} = case cowboy_req:header(<<"x-session">>, Req) of
-                           {undefined, R11} -> {[{ok, false}, {reason, nosession}], R11};
-                           {JWTToken, R12} ->
-                               case jwt:decode(JWTToken, Secret) of
-                                   {ok, #jwt{body=BodyRaw}} ->
-                                       Body = jsx:decode(BodyRaw),
-                                       Username = proplists:get_value(<<"u">>, Body),
-                                       {[{ok, true}, {username, Username}], R12};
-                                   {error, Reason, _} ->
-                                       {[{ok, false}, {reason, Reason}], R12}
-                               end
-                       end,
+is_authorized(Req, State=#state{secret=Secret}) ->
+    {Method, Req0} = cowboy_req:method(Req),
+    case Method of
+        <<"POST">> ->
+            {true, Req0, State};
+        _ ->
+            SetSession = fun (St, Sess) -> St#state{session=Sess} end,
+            iorio_session:handle_is_autorized(Req, Secret, State, SetSession)
+    end.
 
-    {jsx:encode(RespBody), Req1, State}.
+to_json(Req, State=#state{session=Session}) ->
+    Username = proplists:get_value(<<"u">>, Session),
+    RespBody = [{username, Username}],
+    {jsx:encode(RespBody), Req, State}.
 
 % TODO: use the cowboy rest callbacks instead of all here
 from_json(Req, State=#state{secret=Secret, algorithm=Algorithm}) ->
