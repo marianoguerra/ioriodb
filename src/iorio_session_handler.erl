@@ -45,7 +45,6 @@ to_json(Req, State=#state{session=Session}) ->
     RespBody = [{username, Username}],
     {jsx:encode(RespBody), Req, State}.
 
-% TODO: use the cowboy rest callbacks instead of all here
 from_json(Req, State=#state{secret=Secret, algorithm=Algorithm}) ->
     {ok, Body, Req1} = cowboy_req:body(Req),
     AuthInfo = jsx:decode(Body),

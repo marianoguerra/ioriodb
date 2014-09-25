@@ -21,6 +21,8 @@ rel: all
 relclean:
 	rm -rf rel/iorio
 
+newrel: relclean rel
+
 xref: all
 	$(REBAR) skip_deps=true xref
 
