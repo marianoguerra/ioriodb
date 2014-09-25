@@ -5,6 +5,7 @@ import json
 import pprint
 import random
 import argparse
+import threading
 
 import faker
 import requests
@@ -67,12 +68,56 @@ def send(host, port, bucket, stream, data):
     response = requests.post(url, headers=headers, data=data)
     return response
 
+def query(host, port, bucket, stream, limit):
+    url = 'http://%s:%d/stream/%s/%s?limit=%s' % (host, port, bucket, stream, limit)
+    headers = {'content-type': 'application/json'}
+    response = requests.get(url, headers=headers)
+    return response
+
+class Requester(threading.Thread):
+
+    def __init__(self, generators, host, port):
+        threading.Thread.__init__(self)
+        self.daemon = True
+        self.host = host
+        self.port = port
+        self.generators = generators
+        self.stop = False
+        self.errors = 0
+        self.query_count = 0
+        self.item_count = 0
+
+    def run(self):
+        while not self.stop:
+            generator = random.choice(self.generators)
+            bucket = generator.bucket
+            stream = random.choice(generator.streams)
+            limit = random.randint(0, 100)
+
+            response = query(self.host, self.port, bucket, stream, limit)
+            self.query_count += 1
+            self.item_count += limit
+            log('GET %s/%s %d => %d' % (bucket, stream, limit, len(response.text)))
+            if response.status_code != 200:
+                try:
+                    self.errors += 1
+                    log('%s/%s %d' % (bucket, stream, limit))
+                    body = json.loads(response.text)
+                    log('error response')
+                    pprint.pprint(body)
+                except ValueError:
+                    log('response is not json:', response.text)
+
+            time.sleep(random.randint(0, 5))
+
 def main():
     args = parse_args()
     log('using seed', args.seed)
     random.seed(args.seed)
 
     generators = [Generator(i, randint(), args.streams) for i in range(args.buckets)]
+    requester = Requester(generators, args.host, args.port)
+    requester.start()
 
     count = 0
     errors = 0
@@ -95,10 +140,13 @@ def main():
                     log('response is not json:', response.text)
 
 
+    requester.stop = True
     t2 = time.time()
     t_diff = t2 - t1
 
-    log('sent', count, 'events with', errors, 'errors in', t_diff, 'second',
+    log('sent', count, 'events with', errors, 'write errors and queried',
+            requester.query_count, 'times for', requester.item_count, 'items with',
+            requester.errors, 'read errors in', t_diff, 'second',
             count / t_diff, 'events/second')
 
 if __name__ == "__main__":
