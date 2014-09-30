@@ -25,14 +25,20 @@
              start_vnode/1
              ]).
 
--record(state, {partition, path, buckets, channels}).
+-record(state, {partition,
+                path,
+                buckets,
+                channels}).
 
 get_bucket(State=#state{buckets=Buckets, path=Path}, BucketName) ->
+
     case sblob_preg:get(Buckets, BucketName) of
         none -> 
             BucketNameStr = binary_to_list(BucketName),
             BucketPath = filename:join([Path, BucketNameStr]),
-            {ok, Bucket} = gblob_bucket:start(BucketPath, [], []),
+            GblobOpts = [],
+            BucketOpts = [],
+            {ok, Bucket} = gblob_bucket:start(BucketPath, GblobOpts, BucketOpts),
             NewBuckets = sblob_preg:put(Buckets, BucketName, Bucket),
             NewState = State#state{buckets=NewBuckets},
 
@@ -190,6 +196,16 @@ handle_coverage({list_buckets}, _KeySpaces, {_, RefId, _}, State) ->
     BucketsBin = lists:map(fun list_to_binary/1, Buckets),
     {reply, {RefId, BucketsBin}, State};
 
+handle_coverage({size, BucketName}, _KeySpaces, {_, RefId, _}, State=#state{path=Path}) ->
+    HaveBucket = have_bucket(Path, BucketName),
+    {NewState, Result} = if HaveBucket ->
+                                {State1, Bucket} = get_bucket(State, BucketName),
+                                SizeData = gblob_bucket:size(Bucket),
+                                {State1, SizeData};
+                            true -> {State, notfound}
+                         end,
+    {reply, {RefId, Result}, NewState};
+
 handle_coverage(Req, _KeySpaces, _Sender, State) ->
     lager:warning("unknown coverage received ~p", [Req]),
     {noreply, State}.
@@ -211,6 +227,10 @@ free_resources(State=#state{buckets=Buckets}) ->
     sblob_preg:foreach(Buckets, fun (_Key, Bucket) -> gblob_bucket:stop(Bucket) end),
     State1 = State#state{buckets=EmptyBuckets},
     State1.
+
+have_bucket(Path, Bucket) ->
+    BucketPath = filename:join([Path, Bucket]),
+    filelib:is_dir(BucketPath).
 
 list_dir(Path) ->
     case file:list_dir(Path) of
