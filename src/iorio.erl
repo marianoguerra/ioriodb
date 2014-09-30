@@ -3,7 +3,8 @@
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 
 -export([ping/0, put/3, get/3, get/4, subscribe/3, unsubscribe/3, list/0,
-         list/1, list/2, size/1, size/2]).
+         list/1, list/2, bucket_size/1, bucket_size/2, truncate/2,
+         truncate_percentage/2]).
 
 -ignore_xref([ping/0]).
 
@@ -64,10 +65,10 @@ list(Bucket) ->
 list(Bucket, Timeout) ->
     iorio_coverage_fsm:start({list_streams, Bucket}, Timeout).
 
-size(Bucket) ->
-    size(Bucket, ?DEFAULT_TIMEOUT_MS).
+bucket_size(Bucket) ->
+    bucket_size(Bucket, ?DEFAULT_TIMEOUT_MS).
 
-size(Bucket, Timeout) ->
+bucket_size(Bucket, Timeout) ->
     Result = case iorio_coverage_fsm:start({size, Bucket}, Timeout) of
                  {ok, Data} -> Data;
                  {partial, Reason, PartialData} ->
@@ -75,25 +76,49 @@ size(Bucket, Timeout) ->
                                    [Bucket, Reason]),
                      PartialData
              end,
-    AllSizes = lists:filter(fun ({_VNode, _Node, notfound}) -> false;
-                     (_) -> true
-                 end, Result),
+    AllSizes = filter_notfound(Result),
 
     NamesAndSizes = lists:flatmap(fun ({_VNode, _Node, {_TotalSize, Streams}}) ->
                                           Streams
                                   end, AllSizes),
 
-    StreamSizes = lists:usort(fun ({Name1, Size1}, {Name2, Size2}) ->
-                        % TODO: check this
+    SortedStreamSizes = lists:sort(fun ({Name1, Size1}, {Name2, Size2}) ->
+                        % TODO: check this, we want to sort by same stream name
+                        % first and then from bigger sizes to smaller ones
                         if Name1 < Name2 -> true;
-                           Name1 == Name2 -> Size1 =< Size2;
+                           Name1 == Name2 -> Size1 >= Size2;
                            true -> false
                         end
                 end, NamesAndSizes),
+
+    StreamSizes = lists:usort(fun ({Name1, _Size1}, {Name2, _Size2}) ->
+                                      Name1 =< Name2
+                              end, SortedStreamSizes),
+
     TotalSize = lists:foldl(fun ({_Name, Size}, CurTotal) ->
                                     Size + CurTotal
                             end, 0, StreamSizes),
     {TotalSize, StreamSizes}.
+
+truncate_percentage(Bucket, Percentage) ->
+    Timeout = ?DEFAULT_TIMEOUT_MS,
+    lager:info("truncating bucket ~s to ~p%", [Bucket, Percentage * 100]),
+    Result = iorio_coverage_fsm:start({truncate_percentage, Bucket, Percentage},
+                                      Timeout),
+    case Result of
+        {ok, Data} ->
+            {ok, filter_notfound(Data)};
+        {partial, Reason, PartialData} ->
+            {partial, Reason, filter_notfound(PartialData)}
+    end.
+
+truncate(Bucket, MaxSizeBytes) ->
+    {TotalSizeBytes, _} = bucket_size(Bucket),
+    if TotalSizeBytes > MaxSizeBytes ->
+           Percentage = (MaxSizeBytes * 0.5) / TotalSizeBytes,
+           truncate_percentage(Bucket, Percentage);
+       true -> {ok, noaction}
+    end.
 
 %% private
 wait_for_reqid(ReqID, Timeout) ->
@@ -101,3 +126,7 @@ wait_for_reqid(ReqID, Timeout) ->
     after Timeout -> {error, timeout}
     end.
 
+filter_notfound(Items) ->
+    lists:filter(fun ({_VNode, _Node, notfound}) -> false;
+                     (_) -> true
+                 end, Items).

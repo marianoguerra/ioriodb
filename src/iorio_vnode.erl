@@ -206,6 +206,18 @@ handle_coverage({size, BucketName}, _KeySpaces, {_, RefId, _}, State=#state{path
                          end,
     {reply, {RefId, Result}, NewState};
 
+handle_coverage({truncate_percentage, BucketName, Percentage}, _KeySpaces,
+                {_, RefId, _}, State=#state{path=Path}) ->
+    HaveBucket = have_bucket(Path, BucketName),
+    {NewState, Result} = if HaveBucket ->
+                                {State1, Bucket} = get_bucket(State, BucketName),
+                                TResult = gblob_bucket:truncate_percentage(Bucket, Percentage),
+                                {State1, TResult};
+                            true -> {State, notfound}
+                         end,
+    {reply, {RefId, Result}, NewState};
+
+
 handle_coverage(Req, _KeySpaces, _Sender, State) ->
     lager:warning("unknown coverage received ~p", [Req]),
     {noreply, State}.
