@@ -12,6 +12,7 @@ VARFILE=$3
 ## Allocate 10 ports per node
 ##   .7 - http
 
+ADMINPASSWORD=secret
 APISECRET=changeme
 APIALGORITHM=hs256
 NUMBER=${NAME##dev}
@@ -28,4 +29,5 @@ sed -e "s/@NODE@/$NODENAME/" \
     -e "s/@APIPORT@/$APIPORT/" \
     -e "s/@APISECRET@/$APISECRET/" \
     -e "s/@APIALGORITHM@/$APIALGORITHM/" \
+    -e "s/@ADMINPASSWORD@/$ADMINPASSWORD/" \
     -e "s/@HANDOFFPORT@/$HANDOFFPORT/" < $TEMPLATE > $VARFILE
