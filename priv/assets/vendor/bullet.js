@@ -88,6 +88,13 @@
 						contentType:
 							'application/x-www-form-urlencoded; charset=utf-8',
 						headers: {'X-Socket-Transport': 'xhrPolling'},
+                        error: function (jqXHR, textStatus, errorThrown) {
+                            fake.onerror({
+                                request: jqXHR,
+                                status: textStatus,
+                                error: errorThrown
+                            });
+                        },
 						success: function(data){
 							if (data.length !== 0){
 								fake.onmessage({'data': data});
