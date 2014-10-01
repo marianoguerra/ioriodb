@@ -13,6 +13,17 @@ start(_StartType, _StartArgs) ->
     % TODO: check here that secret is binary and algorigthm is a valid one
     {ok, ApiSecret} = application:get_env(iorio, secret),
     {ok, ApiAlgorithm} = application:get_env(iorio, algorithm),
+    {ok, AdminPassword} = application:get_env(iorio, admin_password),
+
+    case iorio_user:create("admin", AdminPassword) of
+        ok ->
+            lager:info("admin user created");
+        {error, role_exists}  ->
+            lager:info("admin user exists");
+        OtherError ->
+            lager:error("creating admin user ~p", [OtherError])
+    end,
+
     Dispatch = cowboy_router:compile([
         {'_', [
                {"/listen", bullet_handler, [{handler, iorio_listen_handler}]},
