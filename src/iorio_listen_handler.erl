@@ -8,10 +8,62 @@
 -include_lib("sblob/include/sblob.hrl").
 -include("priv/include/listener.hrl").
 
-init(_Transport, Req, Opts, _Active) ->
+init(_Transport, Req, [_, {secret, Secret}|_]=Opts, _Active) ->
     lager:info("listener init ~p~n", [Opts]),
     Iorio = proplists:get_value(iorio, Opts, iorio),
-    {ok, Req, #state{channels=[], iorio=Iorio}}.
+    {Token, Req1} = cowboy_req:qs_val(<<"jwt">>, Req, nil),
+    {Params, Req2} = cowboy_req:qs_vals(Req1),
+    Subs = proplists:get_all_values(<<"s">>, Params),
+    if Token == nil ->
+           lager:warning("shutdown listen no token"),
+           {shutdown, Req2, #state{}};
+       true ->
+           % TODO: use subs
+           lager:info("subs ~p", [Subs]),
+           case iorio_session:session_from_token(Token, Secret) of
+               {ok, Session, _JWT} ->
+                   State = #state{channels=[],
+                                  iorio=Iorio,
+                                  secret=Secret,
+                                  token=Token,
+                                  session=Session},
+                   {ok, Req2, State};
+               {error, Reason} ->
+                   lager:warning("shutdown listen ~p", [Reason]),
+                   {shutdown, Req2, #state{}}
+           end
+    end.
+
+
+stream(Data, Req, State) ->
+    lager:debug("msg received ~p~n", [Data]),
+    Msg = jsx:decode(Data),
+    Id = proplists:get_value(<<"id">>, Msg, 0),
+    case proplists:get_value(<<"cmd">>, Msg) of
+        <<"subscribe">> -> handle_subscribe(Msg, Id, Req, State);
+        <<"unsubscribe">> -> handle_unsubscribe(Msg, Id, Req, State);
+        <<"ping">> -> handle_ping(Msg, Id, Req, State);
+        _ -> {reply, encode_error(<<"unknown command">>, Id), Req, State}
+    end.
+
+info({entry, BucketName, Stream, Entry}, Req, State) ->
+    lager:debug("entry received ~s/~s~n", [BucketName, Stream]),
+    Json = entry_to_json(Entry, BucketName, Stream),
+    JsonBin = jsx:encode(Json),
+    {reply, JsonBin, Req, State}.
+
+terminate(_Req, #state{channels=Channels, iorio=Iorio}) ->
+    lists:map(fun ({Bucket, Stream}) ->
+                      lager:debug("unsubscribing from ~s/~s~n", [Bucket, Stream]),
+                      Iorio:unsubscribe(Bucket, Stream, self())
+              end, Channels),
+    ok.
+
+% private
+
+entry_to_json(#sblob_entry{seqnum=SeqNum, timestamp=Timestamp, data=Data}, Bucket, Stream) ->
+    [{meta, [{id, SeqNum}, {t, Timestamp}, {bucket, Bucket}, {stream, Stream}]},
+     {data, jsx:decode(Data)}].
 
 get_channel_args(Msg) ->
     {proplists:get_value(<<"bucket">>, Msg),
@@ -90,33 +142,3 @@ encode_error(Reason, Id) ->
     lager:warning("error ~s ~p~n", [Reason, Id]),
     IdBin = integer_to_binary(Id),
     <<"{\"ok\":false,\"id\":", IdBin/binary, ",\"reason\":\"", Reason/binary, "\"}">>.
-
-stream(Data, Req, State) ->
-    lager:debug("msg received ~p~n", [Data]),
-    Msg = jsx:decode(Data),
-    Id = proplists:get_value(<<"id">>, Msg, 0),
-    case proplists:get_value(<<"cmd">>, Msg) of
-        <<"subscribe">> -> handle_subscribe(Msg, Id, Req, State);
-        <<"unsubscribe">> -> handle_unsubscribe(Msg, Id, Req, State);
-        <<"ping">> -> handle_ping(Msg, Id, Req, State);
-        _ -> {reply, encode_error(<<"unknown command">>, Id), Req, State}
-    end.
-
-info({entry, BucketName, Stream, Entry}, Req, State) ->
-    lager:debug("entry received ~s/~s~n", [BucketName, Stream]),
-    Json = entry_to_json(Entry, BucketName, Stream),
-    JsonBin = jsx:encode(Json),
-    {reply, JsonBin, Req, State}.
-
-terminate(_Req, #state{channels=Channels, iorio=Iorio}) ->
-    lists:map(fun ({Bucket, Stream}) ->
-                      lager:debug("unsubscribing from ~s/~s~n", [Bucket, Stream]),
-                      Iorio:unsubscribe(Bucket, Stream, self())
-              end, Channels),
-    ok.
-
-% private
-
-entry_to_json(#sblob_entry{seqnum=SeqNum, timestamp=Timestamp, data=Data}, Bucket, Stream) ->
-    [{meta, [{id, SeqNum}, {t, Timestamp}, {bucket, Bucket}, {stream, Stream}]},
-     {data, jsx:decode(Data)}].

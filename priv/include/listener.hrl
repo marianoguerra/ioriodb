@@ -1,3 +1,3 @@
 
--record(state, {channels, iorio}).
+-record(state, {channels=[], iorio, secret, token, session=nil}).
 

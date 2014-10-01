@@ -1,21 +1,28 @@
 -module(iorio_session).
 -export([from_request/2,
+         session_from_token/2,
          handle_is_authorized/3,
          handle_is_authorized/4,
          handle_is_authorized_for_bucket/6]).
 
 -include_lib("jwt/include/jwt.hrl").
 
+session_from_token(JWTToken, Secret) ->
+    case jwt:decode(JWTToken, Secret) of
+        {ok, Jwt1=#jwt{body=BodyRaw}} ->
+            Body = jsx:decode(BodyRaw),
+            {ok, Body, Jwt1};
+        {error, _Reason}=Error1 -> Error1;
+        {error, Reason, _Jwt2} -> {error, Reason}
+    end.
+
 from_request(Req, Secret) ->
     case cowboy_req:header(<<"x-session">>, Req) of
         {undefined, R11} -> {error, nosession, R11, nil};
         {JWTToken, R12} ->
-            case jwt:decode(JWTToken, Secret) of
-                {ok, Jwt1=#jwt{body=BodyRaw}} ->
-                    Body = jsx:decode(BodyRaw),
-                    {ok, Body, R12, Jwt1};
-                {error, Reason, Jwt2} ->
-                    {error, Reason, R12, Jwt2}
+            case session_from_token(JWTToken, Secret) of
+                {ok, Body, Jwt1} -> {ok, Body, R12, Jwt1};
+                {error, Reason} -> {error, Reason, R12}
             end
     end.
 
@@ -40,7 +47,7 @@ handle_is_authorized(Req, Secret, State, SetSession) ->
             catch error:badarg ->
                 unauthorized_response(notfound, Req11, State)
             end;
-        {error, Reason, Req12, _Jwt} ->
+        {error, Reason, Req12} ->
             unauthorized_response(Reason, Req12, State)
     end.
 

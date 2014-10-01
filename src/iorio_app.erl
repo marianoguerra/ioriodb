@@ -26,7 +26,7 @@ start(_StartType, _StartArgs) ->
 
     Dispatch = cowboy_router:compile([
         {'_', [
-               {"/listen", bullet_handler, [{handler, iorio_listen_handler}]},
+               {"/listen", bullet_handler, [{handler, iorio_listen_handler}, {secret, ApiSecret}]},
                {"/streams/:bucket", iorio_list_handler, [{secret, ApiSecret}]},
                {"/streams/:bucket/:stream", iorio_stream_handler, [{secret, ApiSecret}]},
                {"/buckets/", iorio_list_handler, [{secret, ApiSecret}]},
