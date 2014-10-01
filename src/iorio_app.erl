@@ -20,6 +20,7 @@ start(_StartType, _StartArgs) ->
                {"/sessions", iorio_session_handler, [{secret, ApiSecret}, {algorithm, ApiAlgorithm}]},
                {"/buckets", iorio_list_handler, []},
                {"/buckets/:bucket", iorio_list_handler, []},
+               {"/users/", iorio_user_handler, [{secret, ApiSecret}]},
                {"/ping", iorio_ping_handler, []},
                {"/ui/[...]", cowboy_static, {priv_dir, iorio, "assets",
                                              [{mimetypes, cow_mimetypes, all}]}}

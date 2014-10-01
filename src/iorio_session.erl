@@ -1,5 +1,5 @@
 -module(iorio_session).
--export([from_request/2, handle_is_autorized/3, handle_is_autorized/4]).
+-export([from_request/2, handle_is_authorized/3, handle_is_authorized/4]).
 
 -include_lib("jwt/include/jwt.hrl").
 
@@ -16,13 +16,15 @@ from_request(Req, Secret) ->
             end
     end.
 
-handle_is_autorized(Req, Secret, State) ->
-    handle_is_autorized(Req, Secret, State, fun (S, _) -> S end).
+handle_is_authorized(Req, Secret, State) ->
+    handle_is_authorized(Req, Secret, State, fun (S, _) -> S end).
 
-handle_is_autorized(Req, Secret, State, SetSession) ->
+handle_is_authorized(Req, Secret, State, SetSession) ->
     case iorio_session:from_request(Req, Secret) of
         {ok, Body, Req11, _Jwt} ->
-            StateWithSession = SetSession(State, Body),
+            Username = proplists:get_value(<<"u">>, Body),
+            SecurityCtx = riak_core_security:get_context(Username),
+            StateWithSession = SetSession(State, {Username, Body, SecurityCtx}),
             {true, Req11, StateWithSession};
 
         {error, Reason, Req12, _Jwt} ->

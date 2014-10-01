@@ -37,11 +37,10 @@ is_authorized(Req, State=#state{secret=Secret}) ->
             {true, Req0, State};
         _ ->
             SetSession = fun (St, Sess) -> St#state{session=Sess} end,
-            iorio_session:handle_is_autorized(Req, Secret, State, SetSession)
+            iorio_session:handle_is_authorized(Req, Secret, State, SetSession)
     end.
 
-to_json(Req, State=#state{session=Session}) ->
-    Username = proplists:get_value(<<"u">>, Session),
+to_json(Req, State=#state{session={Username, _Session, _SecCtx}}) ->
     RespBody = [{username, Username}],
     {jsx:encode(RespBody), Req, State}.
 
@@ -51,15 +50,15 @@ from_json(Req, State=#state{secret=Secret, algorithm=Algorithm}) ->
     Username = proplists:get_value(<<"username">>, AuthInfo),
     Password = proplists:get_value(<<"password">>, AuthInfo),
 
-    % TODO implement auth
-    ResultJson = if
-                     Password == <<"secret">> ->
+    Source = [{ip, {127, 0, 0, 1}}],
+    ResultJson = case riak_core_security:authenticate(Username, Password, Source) of
+                     {ok, _Ctx} ->
                          RespBody = [{u, Username}],
                          {ok, Token} = jwt:encode(Algorithm, RespBody, Secret),
                          [{ok, true}, {token, Token}];
-                     true ->
+                     _ ->
                          [{ok, false}]
-    end,
+                 end,
 
     ResultJsonBin = jsx:encode(ResultJson),
     Req2 = cowboy_req:set_resp_body(ResultJsonBin, Req1),
