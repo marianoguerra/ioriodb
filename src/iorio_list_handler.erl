@@ -6,15 +6,16 @@
          rest_terminate/2,
          allowed_methods/2,
          content_types_provided/2,
+         is_authorized/2,
          to_json/2]).
 
--record(state, {bucket}).
+-record(state, {bucket, secret, session=nil}).
 
-init({tcp, http}, _Req, []) -> {upgrade, protocol, cowboy_rest}.
+init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
-rest_init(Req, []) ->
-    {Bucket, Req1} = cowboy_req:binding(bucket, Req, nil),
-	{ok, Req1, #state{bucket=Bucket}}.
+rest_init(Req, [{secret, Secret}]) ->
+    {Bucket, Req1} = cowboy_req:binding(bucket, Req, all),
+	{ok, Req1, #state{bucket=Bucket, secret=Secret}}.
 
 allowed_methods(Req, State) -> {[<<"GET">>], Req, State}.
 
@@ -24,6 +25,14 @@ content_types_provided(Req, State) ->
 unique(List) ->
     Set = sets:from_list(List),
     sets:to_list(Set).
+
+get_session(#state{session=Session}) -> Session.
+set_session(State, Session) -> State#state{session=Session}.
+
+is_authorized(Req, State=#state{secret=Secret, bucket=Bucket}) ->
+    GetSession = fun get_session/1,
+    SetSession = fun set_session/2,
+    iorio_session:handle_is_authorized_for_bucket(Req, Secret, State, GetSession, SetSession, Bucket).
 
 response_to_json(Req, State, Response) ->
     {Status, Data} = case Response of
@@ -38,7 +47,7 @@ response_to_json(Req, State, Response) ->
 
     {jsx:encode([{status, Status}, {data, UniqueItems}]), Req, State}.
 
-to_json(Req, State=#state{bucket=nil}) ->
+to_json(Req, State=#state{bucket=all}) ->
     response_to_json(Req, State, iorio:list());
 to_json(Req, State=#state{bucket=Bucket}) ->
     response_to_json(Req, State, iorio:list(Bucket)).

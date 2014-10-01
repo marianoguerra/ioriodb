@@ -39,29 +39,13 @@ rest_init(Req, [{secret, Secret}]) ->
 
 allowed_methods(Req, State) -> {[<<"GET">>, <<"POST">>], Req, State}.
 
+get_session(#state{session=Session}) -> Session.
+set_session(State, Session) -> State#state{session=Session}.
+
 is_authorized(Req, State=#state{secret=Secret, bucket=Bucket}) ->
-    SetSession = fun (St, Sess) -> St#state{session=Sess} end,
-    Res = iorio_session:handle_is_authorized(Req, Secret, State, SetSession),
-    {AuthOk, Req1, State1} = Res,
-    Username = case State1#state.session of
-                   nil -> nil;
-                   {User, _, _} -> User
-               end,
-
-
-    case {AuthOk, Username} of
-        % NOTE: for now user can only operate on bucket with his username,
-        % except if he is the admin
-        {true, <<"admin">>} ->
-            Res;
-        {true, Bucket} ->
-            Res;
-        {true, _} ->
-            Req2 = iorio_http:response(<<"{\"type\": \"no-perm\"}">>, Req1),
-            {{false, <<"jwt">>}, Req2, State};
-        _ ->
-            Res
-    end.
+    GetSession = fun get_session/1,
+    SetSession = fun set_session/2,
+    iorio_session:handle_is_authorized_for_bucket(Req, Secret, State, GetSession, SetSession, Bucket).
 
 content_types_accepted(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, from_json}], Req, State}.

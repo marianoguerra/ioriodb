@@ -94,7 +94,7 @@ def authenticate(host, port, username, password):
     if response.status_code == 200:
         return body.get("ok"), body.get("token")
     else:
-        False, None
+        return False, None
 
 def send(host, port, bucket, stream, data, token=None):
     url = format_url(host, port, "streams", bucket, stream)
@@ -110,8 +110,8 @@ def get_json(url, token=None):
     return response
 
 def query(host, port, bucket, stream, limit, token=None):
-    url = format_url(host, port, bucket, stream, limit=limit)
-    return get_json(url)
+    url = format_url(host, port, 'streams', bucket, stream, limit=limit)
+    return get_json(url, token)
 
 
 class BaseRequester(threading.Thread):
@@ -128,7 +128,7 @@ class BaseRequester(threading.Thread):
         self.token = token
 
     def on_no_json_error(self, response, ctx, time_ms):
-        log('response is not json:', response.text)
+        log('response is not json:', response.text, response.status_code, ctx.__dict__)
 
     def on_error(self, response, body, ctx, time_ms):
         log('error response')
@@ -210,21 +210,21 @@ class BucketLister(BaseRequester):
         if ctx.list_buckets:
             log("GET /buckets/ => %s (%f ms)" % (items, time_ms))
         else:
-            log("GET /buckets/%s => %s (%f ms)" % (ctx.bucket, items, time_ms))
+            log("GET /streams/%s => %s (%f ms)" % (ctx.bucket, items, time_ms))
 
     def on_error(self, response, body, ctx, time_ms):
         BaseRequester.on_error(self, response, body, ctx, time_ms)
         if ctx.list_buckets:
             log("Error listing buckets")
         else:
-            log("Error listing bucket %s" % ctx.bucket)
+            log("Error listing streams %s" % ctx.bucket)
 
     def list_buckets(self):
         url = format_url(self.host, self.port, "buckets")
         return get_json(url, self.token)
 
     def list_bucket(self, bucket):
-        url = format_url(self.host, self.port, "buckets", bucket)
+        url = format_url(self.host, self.port, "streams", bucket)
         return get_json(url, self.token)
 
     def request(self):
@@ -283,7 +283,8 @@ def main():
                     log('error response')
                     pprint.pprint(body)
                 except ValueError:
-                    log('response is not json:', response.text)
+                    log('response is not json:', bucket, stream,
+                            response.status_code, response.text)
 
 
     requester.stop = True
