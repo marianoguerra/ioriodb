@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import print_function
 import sys
 import time
 import json
@@ -63,52 +64,146 @@ def parse_args():
     return args
 
 def send(host, port, bucket, stream, data):
-    url = 'http://%s:%d/stream/%s/%s' % (host, port, bucket, stream)
+    url = 'http://%s:%d/streams/%s/%s' % (host, port, bucket, stream)
     headers = {'content-type': 'application/json'}
     response = requests.post(url, headers=headers, data=data)
     return response
 
-def query(host, port, bucket, stream, limit):
-    url = 'http://%s:%d/stream/%s/%s?limit=%s' % (host, port, bucket, stream, limit)
+def get_json(url):
     headers = {'content-type': 'application/json'}
     response = requests.get(url, headers=headers)
     return response
 
-class Requester(threading.Thread):
+def query(host, port, bucket, stream, limit):
+    url = 'http://%s:%d/streams/%s/%s?limit=%s' % (host, port, bucket, stream, limit)
+    return get_json(url)
 
-    def __init__(self, generators, host, port):
+
+class BaseRequester(threading.Thread):
+
+    def __init__(self, host, port):
         threading.Thread.__init__(self)
         self.daemon = True
         self.host = host
         self.port = port
-        self.generators = generators
         self.stop = False
         self.errors = 0
         self.query_count = 0
-        self.item_count = 0
+        self.max_sleep_secs = 5
+
+    def on_no_json_error(self, response, ctx, time_ms):
+        log('response is not json:', response.text)
+
+    def on_error(self, response, body, ctx, time_ms):
+        log('error response')
+        pprint.pprint(body)
+
+    def on_success(self, response, body, ctx, time_ms):
+        pass
+
+    def request(self):
+        raise NotImplementedError()
 
     def run(self):
         while not self.stop:
+            t1 = time.time()
+            response, ctx = self.request()
+            t2 = time.time()
+            time_ms = t2 - t1
+            self.query_count += 1
+
+            is_error = (response.status_code != 200)
+            try:
+                if is_error:
+                    self.errors += 1
+                body = json.loads(response.text)
+
+                if is_error:
+                    self.on_error(response, body, ctx, time_ms)
+                else:
+                    self.on_success(response, body, ctx, time_ms)
+
+            except ValueError:
+                self.on_no_json_error(response, ctx, time_ms)
+
+            time.sleep(random.randint(0, self.max_sleep_secs))
+
+class Obj(object):
+    def __init__(self, **args):
+        self.__dict__ = args
+
+class QueryRequester(BaseRequester):
+
+    def __init__(self, generators, host, port):
+        BaseRequester.__init__(self, host, port)
+        self.generators = generators
+        self.item_count = 0
+
+    def on_success(self, response, body, ctx, time_ms):
+        BaseRequester.on_success(self, response, body, ctx, time_ms)
+        self.item_count += ctx.limit
+        log('GET %s/%s %d => %d (%f ms)' % (ctx.bucket, ctx.stream, ctx.limit,
+            len(response.text), time_ms))
+
+    def on_error(self, response, body, ctx, time_ms):
+        BaseRequester.on_error(self, response, body, ctx, time_ms)
+        log("Error %s/%s (%d)" % (ctx.stream, ctx.bucket, ctx.limit))
+
+    def request(self):
+        generator = random.choice(self.generators)
+        bucket = generator.bucket
+        stream = random.choice(generator.streams)
+        limit = random.randint(0, 100)
+
+        response = query(self.host, self.port, bucket, stream, limit)
+
+
+        return response, Obj(bucket=bucket, stream=stream, limit=limit)
+
+class BucketLister(BaseRequester):
+    def __init__(self, generators, host, port):
+        BaseRequester.__init__(self, host, port)
+        self.generators = generators
+        self.max_sleep_secs = 10
+        self.list_requests = 0
+        self.lists_requests = 0
+
+    def on_success(self, response, body, ctx, time_ms):
+        BaseRequester.on_success(self, response, body, ctx, time_ms)
+        items = ", ".join(body["data"])
+        if ctx.list_buckets:
+            log("GET /buckets/ => %s (%f ms)" % (items, time_ms))
+        else:
+            log("GET /buckets/%s => %s (%f ms)" % (ctx.bucket, items, time_ms))
+
+    def on_error(self, response, body, ctx, time_ms):
+        BaseRequester.on_error(self, response, body, ctx, time_ms)
+        if ctx.list_buckets:
+            log("Error listing buckets")
+        else:
+            log("Error listing bucket %s" % ctx.bucket)
+
+    def list_buckets(self):
+        url = 'http://%s:%d/buckets/' % (self.host, self.port)
+        return get_json(url)
+
+    def list_bucket(self, bucket):
+        url = 'http://%s:%d/buckets/%s' % (self.host, self.port, bucket)
+        return get_json(url)
+
+    def request(self):
+        if random.randint(0, 3) == 2:
+            self.lists_requests += 1
+            return self.list_buckets(), Obj(list_buckets=True, bucket=None)
+        else:
             generator = random.choice(self.generators)
             bucket = generator.bucket
-            stream = random.choice(generator.streams)
-            limit = random.randint(0, 100)
+            self.list_requests += 1
+            return self.list_bucket(bucket), Obj(list_buckets=False, bucket=bucket)
 
-            response = query(self.host, self.port, bucket, stream, limit)
-            self.query_count += 1
-            self.item_count += limit
-            log('GET %s/%s %d => %d' % (bucket, stream, limit, len(response.text)))
-            if response.status_code != 200:
-                try:
-                    self.errors += 1
-                    log('%s/%s %d' % (bucket, stream, limit))
-                    body = json.loads(response.text)
-                    log('error response')
-                    pprint.pprint(body)
-                except ValueError:
-                    log('response is not json:', response.text)
-
-            time.sleep(random.randint(0, 5))
+    def format_summary(self):
+        return "listed buckets %d times, listed streams %d times with %d errors" % (
+                self.lists_requests, self.list_requests, self.errors)
 
 def main():
     args = parse_args()
@@ -116,8 +211,11 @@ def main():
     random.seed(args.seed)
 
     generators = [Generator(i, randint(), args.streams) for i in range(args.buckets)]
-    requester = Requester(generators, args.host, args.port)
+    requester = QueryRequester(generators, args.host, args.port)
     requester.start()
+
+    bucket_lister = BucketLister(generators, args.host, args.port)
+    bucket_lister.start()
 
     count = 0
     errors = 0
@@ -128,6 +226,10 @@ def main():
             data_json = json.dumps(data)
             response = send(args.host, args.port, bucket, stream, data_json)
             count += 1
+
+            if count % 500 == 0:
+                log('%d inserts' % count)
+
             if response.status_code != 200:
                 errors += 1
                 log('error sending data', response.status_code)
@@ -148,6 +250,8 @@ def main():
             requester.query_count, 'times for', requester.item_count, 'items with',
             requester.errors, 'read errors in', t_diff, 'second',
             count / t_diff, 'events/second')
+
+    log(bucket_lister.format_summary())
 
 if __name__ == "__main__":
     main()
