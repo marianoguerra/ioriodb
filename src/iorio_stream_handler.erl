@@ -7,11 +7,12 @@
          allowed_methods/2,
          content_types_accepted/2,
          content_types_provided/2,
+         is_authorized/2,
          from_json/2,
          to_json/2
         ]).
 
--record(state, {bucket, stream, from_sn, limit}).
+-record(state, {bucket, stream, from_sn, limit, secret, session=nil}).
 
 -include_lib("sblob/include/sblob.hrl").
 
@@ -22,9 +23,9 @@ to_int_or(Bin, Default) ->
         _ -> Default
     end.
 
-init({tcp, http}, _Req, []) -> {upgrade, protocol, cowboy_rest}.
+init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
-rest_init(Req, []) ->
+rest_init(Req, [{secret, Secret}]) ->
     {Bucket, Req1} = cowboy_req:binding(bucket, Req),
     {Stream, Req2} = cowboy_req:binding(stream, Req1),
     {FromSNStr, Req3} = cowboy_req:qs_val(<<"from">>, Req2, <<"">>),
@@ -33,9 +34,34 @@ rest_init(Req, []) ->
     FromSN = to_int_or(FromSNStr, nil),
     Limit = to_int_or(LimitStr, 1),
 
-	{ok, Req4, #state{bucket=Bucket, stream=Stream, from_sn=FromSN, limit=Limit}}.
+	{ok, Req4, #state{bucket=Bucket, stream=Stream, from_sn=FromSN,
+                      limit=Limit, secret=Secret}}.
 
 allowed_methods(Req, State) -> {[<<"GET">>, <<"POST">>], Req, State}.
+
+is_authorized(Req, State=#state{secret=Secret, bucket=Bucket}) ->
+    SetSession = fun (St, Sess) -> St#state{session=Sess} end,
+    Res = iorio_session:handle_is_authorized(Req, Secret, State, SetSession),
+    {AuthOk, Req1, State1} = Res,
+    Username = case State1#state.session of
+                   nil -> nil;
+                   {User, _, _} -> User
+               end,
+
+
+    case {AuthOk, Username} of
+        % NOTE: for now user can only operate on bucket with his username,
+        % except if he is the admin
+        {true, <<"admin">>} ->
+            Res;
+        {true, Bucket} ->
+            Res;
+        {true, _} ->
+            Req2 = iorio_http:response(<<"{\"type\": \"no-perm\"}">>, Req1),
+            {{false, <<"jwt">>}, Req2, State};
+        _ ->
+            Res
+    end.
 
 content_types_accepted(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, from_json}], Req, State}.

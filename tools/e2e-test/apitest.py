@@ -43,6 +43,10 @@ def randint():
 def get_arg_parser():
     default_seed = randint()
     parser = argparse.ArgumentParser(description='Iorio DB API tester')
+    parser.add_argument('-u', '--username', default='admin',
+            help='username used for authentication')
+    parser.add_argument('-p', '--password', default='secret',
+            help='password used for authentication')
     parser.add_argument('-H', '--host', default='localhost',
             help='host where ioriodb is running')
     parser.add_argument('-P', '--port', default=8080, type=int,
@@ -63,25 +67,56 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-def send(host, port, bucket, stream, data):
-    url = 'http://%s:%d/streams/%s/%s' % (host, port, bucket, stream)
+def post_json(url, data, token=None):
     headers = {'content-type': 'application/json'}
-    response = requests.post(url, headers=headers, data=data)
-    return response
 
-def get_json(url):
+    if token:
+        headers['x-session'] = token
+
+    return requests.post(url, headers=headers, data=data)
+
+def post_data_json(url, data, token=None):
+    return post_json(url, json.dumps(data), token)
+
+def format_url(host, port, *paths, **query_params):
+    if query_params:
+        params = "?" + "&".join(("%s=%s" % (key, str(val))) for key, val in query_params.items())
+    else:
+        params = ""
+
+    path = "/".join(str(item) for item in paths)
+    return 'http://%s:%d/%s%s' % (host, port, path, params)
+
+def authenticate(host, port, username, password):
+    url = format_url(host, port, "sessions")
+    response = post_data_json(url, dict(username=username, password=password))
+    body = json.loads(response.text)
+    if response.status_code == 200:
+        return body.get("ok"), body.get("token")
+    else:
+        False, None
+
+def send(host, port, bucket, stream, data, token=None):
+    url = format_url(host, port, "streams", bucket, stream)
+    return post_data_json(url, data, token)
+
+def get_json(url, token=None):
     headers = {'content-type': 'application/json'}
+
+    if token:
+        headers['x-session'] = token
+
     response = requests.get(url, headers=headers)
     return response
 
-def query(host, port, bucket, stream, limit):
-    url = 'http://%s:%d/streams/%s/%s?limit=%s' % (host, port, bucket, stream, limit)
+def query(host, port, bucket, stream, limit, token=None):
+    url = format_url(host, port, bucket, stream, limit=limit)
     return get_json(url)
 
 
 class BaseRequester(threading.Thread):
 
-    def __init__(self, host, port):
+    def __init__(self, host, port, token=None):
         threading.Thread.__init__(self)
         self.daemon = True
         self.host = host
@@ -90,6 +125,7 @@ class BaseRequester(threading.Thread):
         self.errors = 0
         self.query_count = 0
         self.max_sleep_secs = 5
+        self.token = token
 
     def on_no_json_error(self, response, ctx, time_ms):
         log('response is not json:', response.text)
@@ -134,8 +170,8 @@ class Obj(object):
 
 class QueryRequester(BaseRequester):
 
-    def __init__(self, generators, host, port):
-        BaseRequester.__init__(self, host, port)
+    def __init__(self, generators, host, port, token=None):
+        BaseRequester.__init__(self, host, port, token)
         self.generators = generators
         self.item_count = 0
 
@@ -155,14 +191,14 @@ class QueryRequester(BaseRequester):
         stream = random.choice(generator.streams)
         limit = random.randint(0, 100)
 
-        response = query(self.host, self.port, bucket, stream, limit)
+        response = query(self.host, self.port, bucket, stream, limit, self.token)
 
 
         return response, Obj(bucket=bucket, stream=stream, limit=limit)
 
 class BucketLister(BaseRequester):
-    def __init__(self, generators, host, port):
-        BaseRequester.__init__(self, host, port)
+    def __init__(self, generators, host, port, token=None):
+        BaseRequester.__init__(self, host, port, token)
         self.generators = generators
         self.max_sleep_secs = 10
         self.list_requests = 0
@@ -184,12 +220,12 @@ class BucketLister(BaseRequester):
             log("Error listing bucket %s" % ctx.bucket)
 
     def list_buckets(self):
-        url = 'http://%s:%d/buckets/' % (self.host, self.port)
-        return get_json(url)
+        url = format_url(self.host, self.port, "buckets")
+        return get_json(url, self.token)
 
     def list_bucket(self, bucket):
-        url = 'http://%s:%d/buckets/%s' % (self.host, self.port, bucket)
-        return get_json(url)
+        url = format_url(self.host, self.port, "buckets", bucket)
+        return get_json(url, self.token)
 
     def request(self):
         if random.randint(0, 3) == 2:
@@ -207,14 +243,23 @@ class BucketLister(BaseRequester):
 
 def main():
     args = parse_args()
+
+    ok, token = authenticate(args.host, args.port, args.username, args.password)
+
+    if not ok:
+        log('authentication failed')
+        return
+    else:
+        log("token", token)
+
     log('using seed', args.seed)
     random.seed(args.seed)
 
     generators = [Generator(i, randint(), args.streams) for i in range(args.buckets)]
-    requester = QueryRequester(generators, args.host, args.port)
+    requester = QueryRequester(generators, args.host, args.port, token)
     requester.start()
 
-    bucket_lister = BucketLister(generators, args.host, args.port)
+    bucket_lister = BucketLister(generators, args.host, args.port, token)
     bucket_lister.start()
 
     count = 0
@@ -223,8 +268,7 @@ def main():
     for i in range(args.iterations):
         for generator in generators:
             bucket, stream, data = generator.generate()
-            data_json = json.dumps(data)
-            response = send(args.host, args.port, bucket, stream, data_json)
+            response = send(args.host, args.port, bucket, stream, data, token)
             count += 1
 
             if count % 500 == 0:

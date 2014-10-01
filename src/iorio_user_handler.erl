@@ -24,15 +24,15 @@ content_types_accepted(Req, State) ->
 is_authorized(Req, State=#state{secret=Secret}) ->
     SetSession = fun (St, Sess) -> St#state{session=Sess} end,
     Res = iorio_session:handle_is_authorized(Req, Secret, State, SetSession),
-    {AuthOk, Req1, StateWithSession} = Res,
-    {Username, _, _} = StateWithSession#state.session,
+    {AuthOk, Req1, State1} = Res,
+    {Username, _, _} = State1#state.session,
 
     case {AuthOk, Username} of
         % NOTE: for now only admin is authorized to create users
         {true, <<"admin">>} ->
             Res;
         {true, _} ->
-            Req2 = response(<<"{\"type\": \"no-perm\"}">>, Req1),
+            Req2 = iorio_http:response(<<"{\"type\": \"no-perm\"}">>, Req1),
             {{false, <<"jwt">>}, Req2, State};
         _ ->
             Res
@@ -54,31 +54,28 @@ terminate(_Reason, _Req, _State) ->
 
 %% private
 
-response(Body, Req) ->
-    cowboy_req:set_resp_body(Body, Req).
-
 create_user(undefined, undefined, Req) ->
-    {false, response(<<"{\"type\": \"no-user-and-pass\"}">>, Req)};
+    {false, iorio_http:response(<<"{\"type\": \"no-user-and-pass\"}">>, Req)};
 
 create_user(undefined, _, Req) ->
-    {false, response(<<"{\"type\": \"no-user\"}">>, Req)};
+    {false, iorio_http:response(<<"{\"type\": \"no-user\"}">>, Req)};
 
 create_user(_, undefined, Req) ->
-    {false, response(<<"{\"type\": \"no-pass\"}">>, Req)};
+    {false, iorio_http:response(<<"{\"type\": \"no-pass\"}">>, Req)};
 
 create_user(Username, Password, Req) ->
     lager:info("creating user '~s'", [Username]),
     case iorio_user:create(Username, Password) of
         ok ->
-            {true, response(<<"{\"ok\": true}">>, Req)};
+            {true, iorio_http:response(<<"{\"ok\": true}">>, Req)};
         {error, role_exists} ->
             lager:error("creating existing user '~s'", [Username]),
-            {false, response(<<"{\"type\": \"user-exists\"}">>, Req)};
+            {false, iorio_http:response(<<"{\"type\": \"user-exists\"}">>, Req)};
         {error, illegal_name_char} ->
             lager:error("creating user '~s'", [Username]),
-            {false, response(<<"{\"type\": \"illegal-username\"}">>, Req)};
+            {false, iorio_http:response(<<"{\"type\": \"illegal-username\"}">>, Req)};
         Error ->
             lager:error("creating user '~s' ~p", [Username, Error]),
-            {false, response(<<"{\"ok\": false}">>, Req)}
+            {false, iorio_http:response(<<"{\"ok\": false}">>, Req)}
     end.
 
