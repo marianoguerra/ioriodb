@@ -1,3 +1,4 @@
+/*globals  window, navigator, jQuery*/
 /*
 	Copyright (c) 2011-2012, Loïc Hoguin <essen@ninenines.eu>
 
@@ -32,7 +33,9 @@
 	onheartbeat is called once every few seconds to allow you to easily setup
 	a ping/pong mechanism.
 */
-(function($){$.extend({bullet: function(url){
+(function($){
+    'use strict';
+    $.extend({bullet: function(url){
 	var CONNECTING = 0;
 	var OPEN = 1;
 	var CLOSING = 2;
@@ -52,7 +55,7 @@
 			}
 
 			if (window.MozWebSocket
-					&& navigator.userAgent.indexOf("Firefox/6.0") == -1){
+					&& navigator.userAgent.indexOf("Firefox/6.0") === -1){
 				ret = window.MozWebSocket;
 			}
 
@@ -70,7 +73,7 @@
 			var fake = {
 				readyState: CONNECTING,
 				send: function(data){
-					if (this.readyState != CONNECTING && this.readyState != OPEN){
+					if (this.readyState !== CONNECTING && this.readyState !== OPEN){
 						return false;
 					}
 
@@ -87,7 +90,7 @@
 							'application/x-www-form-urlencoded; charset=utf-8',
 						headers: {'X-Socket-Transport': 'xhrPolling'},
 						success: function(data){
-							if (data.length != 0){
+							if (data.length !== 0){
 								fake.onmessage({'data': data});
 							}
 						}
@@ -98,7 +101,7 @@
 				close: function(){
 					this.readyState = CLOSED;
 					xhr.abort();
-					clearTimeout(timeout);
+					window.clearTimeout(timeout);
 					fake.onclose();
 				},
 				onopen: function(){},
@@ -118,15 +121,15 @@
 					data: {},
 					headers: {'X-Socket-Transport': 'xhrPolling'},
 					success: function(data){
-						if (fake.readyState == CONNECTING){
+						if (fake.readyState === CONNECTING){
 							fake.readyState = OPEN;
 							fake.onopen(fake);
 						}
 						// Connection might have closed without a response body
-						if (data.length != 0){
+						if (data.length !== 0){
 							fake.onmessage({'data': data});
 						}
-						if (fake.readyState == OPEN){
+						if (fake.readyState === OPEN){
 							nextPoll();
 						}
 					},
@@ -137,7 +140,7 @@
 			}
 
 			function nextPoll(){
-				timeout = setTimeout(function(){poll();}, 100);
+				timeout = window.setTimeout(function(){poll();}, 100);
 			}
 
 			nextPoll();
@@ -151,7 +154,7 @@
 		var c = 0;
 
 		for (var f in transports){
-			if (tn == c){
+			if (tn === c){
 				var t = transports[f]();
 				if (t){
 					var ret = new t.transport(url);
@@ -159,20 +162,21 @@
 					return ret;
 				}
 
-				tn++;
+				tn += 1;
 			}
 
-			c++;
+			c += 1;
 		}
 
 		return false;
 	}
 
-	var stream = new function(){
+	function Stream (){
 		var isClosed = true;
 		var readyState = CLOSED;
 		var heartbeat;
-		var delay = delayDefault = 80;
+		var delay = 80;
+        var delayDefault = delay;
 		var delayMax = 10000;
 
 		var transport;
@@ -186,7 +190,7 @@
 				delay = delayDefault;
 				tn = 0;
 				stream.ondisconnect();
-				setTimeout(function(){init();}, delayMax);
+				window.setTimeout(function(){init();}, delayMax);
 				return false;
 			}
 
@@ -195,10 +199,10 @@
 				delay = delayDefault;
 
 				if (transport.heart){
-					heartbeat = setInterval(function(){stream.onheartbeat();}, 20000);
+					heartbeat = window.setInterval(function(){stream.onheartbeat();}, 20000);
 				}
 
-				if (readyState != OPEN){
+				if (readyState !== OPEN){
 					readyState = OPEN;
 					stream.onopen();
 				}
@@ -210,15 +214,15 @@
 					return;
 				}
 
-				clearInterval(heartbeat);
+				window.clearInterval(heartbeat);
 
-				if (readyState == CLOSING){
+				if (readyState === CLOSING){
 					readyState = CLOSED;
 					stream.onclose();
 				} else{
 					// Close happened on connect, select next transport
-					if (readyState == CONNECTING){
-						tn++;
+					if (readyState === CONNECTING){
+						tn += 1;
 					}
 
 					delay *= 2;
@@ -228,7 +232,7 @@
 
 					isClosed = true;
 
-					setTimeout(function(){
+					window.setTimeout(function(){
 						init();
 					}, delay);
 				}
@@ -256,7 +260,9 @@
 			readyState = CLOSING;
 			transport.close();
 		};
-	};
+	}
+
+    var stream = new Stream();
 
 	return stream;
-}})})(jQuery);
+}});})(jQuery);
