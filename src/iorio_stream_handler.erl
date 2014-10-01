@@ -1,4 +1,4 @@
--module(iorio_data_handler).
+-module(iorio_stream_handler).
 
 -export([init/3, terminate/3]).
 
