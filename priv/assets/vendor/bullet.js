@@ -80,7 +80,6 @@
 					var fakeurl = url.replace('ws:', 'http:').replace('wss:', 'https:');
 
 					$.ajax({
-						async: false,
 						cache: false,
 						type: 'POST',
 						url: fakeurl,
