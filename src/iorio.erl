@@ -2,7 +2,7 @@
 -include("iorio.hrl").
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 
--export([ping/0, put/3, get/3, get/4, subscribe/3, unsubscribe/3, list/0,
+-export([ping/0, put/3, get/3, get/4, subscribe/4, unsubscribe/3, list/0,
          list/1, list/2, bucket_size/1, bucket_size/2, truncate/2,
          truncate_percentage/2]).
 
@@ -43,10 +43,10 @@ get(Bucket, Stream, From, Count) ->
                                               {get, Bucket, Stream, From, Count},
                                               iorio_vnode_master).
 
-subscribe(Bucket, Stream, Pid) ->
+subscribe(Bucket, Stream, FromSeqNum, Pid) ->
     IndexNode = get_index_node(Bucket, Stream),
     riak_core_vnode_master:sync_spawn_command(IndexNode,
-                                              {subscribe, Bucket, Stream, Pid},
+                                              {subscribe, Bucket, Stream, FromSeqNum, Pid},
                                               iorio_vnode_master).
 
 unsubscribe(Bucket, Stream, Pid) ->

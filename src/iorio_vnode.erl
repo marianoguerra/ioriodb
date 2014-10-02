@@ -51,7 +51,9 @@ get_channel(State=#state{channels=Channels}, BucketName, Key) ->
     ChannelKey = {BucketName, Key},
     case sblob_preg:get(Channels, ChannelKey) of
         none -> 
-            {ok, Channel} = iorio_channel:new(),
+            % TODO: make it configurable
+            BufferSize = 50,
+            {ok, Channel} = iorio_hist_channel:new(BufferSize),
             NewChannels= sblob_preg:put(Channels, ChannelKey, Channel),
             NewState = State#state{channels=NewChannels},
 
@@ -91,7 +93,7 @@ handle_command({put, ReqId, BucketName, Stream, Data}, _Sender, State) ->
     Timestamp = sblob_util:now(),
     {State1, Entry} = do_put(State, BucketName, Stream, Timestamp, Data),
     {NewState, Channel} = get_channel(State1, BucketName, Stream),
-    iorio_channel:send(Channel, {entry, BucketName, Stream, Entry}),
+    iorio_hist_channel:send(Channel, {entry, BucketName, Stream, Entry}),
     {reply, {ReqId, Entry}, NewState};
 
 handle_command({get, BucketName, Stream, From, Count}, _Sender,
@@ -101,19 +103,17 @@ handle_command({get, BucketName, Stream, From, Count}, _Sender,
     Entries = gblob_bucket:get(Bucket, Stream, From, Count),
     {reply, Entries, NewState};
 
-handle_command({subscribe, BucketName, Stream, Pid}, _Sender, State=#state{partition=Partition}) ->
+handle_command({subscribe, BucketName, Stream, FromSeqNum, Pid}, _Sender, State=#state{partition=Partition}) ->
     lager:debug("subscribe ~s ~s at ~p", [BucketName, Stream, Partition]),
     {NewState, Channel} = get_channel(State, BucketName, Stream),
-    % TODO do something with return value?
-    iorio_channel:subscribe(Channel, Pid),
+    iorio_hist_channel:subscribe(Channel, Pid, FromSeqNum),
     {reply, ok, NewState};
 
 handle_command({unsubscribe, BucketName, Stream, Pid}, _Sender, State=#state{partition=Partition}) ->
     lager:debug("unsubscribe ~s ~s at ~p", [BucketName, Stream, Partition]),
     % TODO: don't create it if it doesn't exist
     {NewState, Channel} = get_channel(State, BucketName, Stream),
-    % TODO do something with return value?
-    iorio_channel:unsubscribe(Channel, Pid),
+    iorio_hist_channel:unsubscribe(Channel, Pid),
     {reply, ok, NewState};
 
 handle_command(Message, _Sender, State) ->

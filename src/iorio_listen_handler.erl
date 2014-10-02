@@ -43,11 +43,13 @@ stream(Data, Req, State) ->
         _ -> {reply, encode_error(<<"unknown command">>, Id), Req, State}
     end.
 
-info({entry, BucketName, Stream, Entry}, Req, State) ->
+info({entry, BucketName, Stream, _Entry}=FullEntry, Req, State) ->
     lager:debug("entry received ~s/~s~n", [BucketName, Stream]),
-    Json = entry_to_json(Entry, BucketName, Stream),
-    JsonBin = jsx:encode(Json),
-    {reply, JsonBin, Req, State}.
+    reply_entries_json([FullEntry], Req, State);
+
+info(Entries, Req, State) when is_list(Entries) ->
+    lager:debug("entries received~n"),
+    reply_entries_json(Entries, Req, State).
 
 terminate(_Req, #state{channels=Channels, iorio=Iorio}) ->
     lists:map(fun ({Bucket, Stream}) ->
@@ -58,7 +60,15 @@ terminate(_Req, #state{channels=Channels, iorio=Iorio}) ->
 
 % private
 
-entry_to_json(#sblob_entry{seqnum=SeqNum, timestamp=Timestamp, data=Data}, Bucket, Stream) ->
+reply_entries_json(Entries, Req, State) ->
+    Json = entries_to_json(Entries),
+    JsonBin = jsx:encode(Json),
+    {reply, JsonBin, Req, State}.
+
+entries_to_json(Entries) ->
+    lists:map(fun entry_to_json/1, Entries).
+
+entry_to_json({entry, Bucket, Stream, #sblob_entry{seqnum=SeqNum, timestamp=Timestamp, data=Data}}) ->
     [{meta, [{id, SeqNum}, {t, Timestamp}, {bucket, Bucket}, {stream, Stream}]},
      {data, jsx:decode(Data)}].
 
@@ -105,21 +115,22 @@ remove(V, [H|T], Accum) -> remove(V, T, [H|Accum]).
 
 subscribe_all(Subs, State) ->
     lists:foldl(fun ({Bucket, Stream}, State0) ->
-                        subscribe(Bucket, Stream, State0);
-                    ({Bucket, Stream, _FromSeqNum}, State0) ->
-                        subscribe(Bucket, Stream, State0);
+                        subscribe(Bucket, Stream, nil, State0);
+                    ({Bucket, Stream, FromSeqNum}, State0) ->
+                        subscribe(Bucket, Stream, FromSeqNum, State0);
                     (Sub, State0) ->
                         lager:warning("malformed sub? ~p", [Sub]),
                         State0
                 end, State, Subs).
 
-subscribe(Bucket, Stream, State=#state{channels=Channels, iorio=Iorio}) ->
+subscribe(Bucket, Stream, FromSeqNum, State=#state{channels=Channels, iorio=Iorio}) ->
     Key = {Bucket, Stream},
     lager:info("subscribing ~s/~s~n", [Bucket, Stream]),
-    Iorio:subscribe(Bucket, Stream, self()),
+    Iorio:subscribe(Bucket, Stream, FromSeqNum, self()),
     NewChannels = [Key|Channels],
     State#state{channels=NewChannels}.
 
+% NOTE handle subscribing here from a seqnum?
 handle_subscribe(Msg, Id, Req, State=#state{channels=Channels}) ->
     with_stream(fun (Bucket, Stream) ->
                         Key = {Bucket, Stream},
@@ -130,7 +141,7 @@ handle_subscribe(Msg, Id, Req, State=#state{channels=Channels}) ->
                                 {encode_error(<<"already subscribed">>, Id), State};
 
                             true ->
-                                {encode_ok(Id), subscribe(Bucket, Stream, State)}
+                                {encode_ok(Id), subscribe(Bucket, Stream, nil, State)}
                         end
                 end, Msg, Id, Req, State).
 
