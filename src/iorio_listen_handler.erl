@@ -21,7 +21,7 @@ init(_Transport, Req, [_, {secret, Secret}|_]=Opts, _Active) ->
            % TODO: use subs
            lager:info("subs ~p", [Subs]),
            case iorio_session:session_from_token(Token, Secret) of
-               {ok, Session, _JWT} ->
+               {ok, Session} ->
                    State = #state{channels=[],
                                   iorio=Iorio,
                                   secret=Secret,
@@ -76,16 +76,22 @@ encode_ok(Id) ->
 handle_ping(_Msg, Id, Req, State) ->
     {reply, encode_ok(Id), Req, State}.
 
-with_stream(Fn, Msg, Id, Req, State) ->
+fail(Msg, Id, State) ->
+    {encode_error(Msg, Id), State}.
+
+with_stream(Fn, Msg, Id, Req, State=#state{session={Username, _, _}}) ->
     {Body, NewState} = case get_channel_args(Msg) of
                {undefined, undefined} ->
-                               {encode_error(<<"missing bucket and stream">>, Id), State};
+                               fail(<<"missing bucket and stream">>, Id, State);
                {undefined, _} ->
-                               {encode_error(<<"missing bucket">>, Id), State};
+                               fail(<<"missing bucket">>, Id, State);
                {_, undefined} ->
-                               {encode_error(<<"missing stream">>, Id), State};
+                               fail(<<"missing stream">>, Id, State);
                {Bucket, Stream} ->
-                               Fn(Bucket, Stream)
+                               AuthOk = iorio_session:is_authorized_for_stream(Username, Bucket, Stream),
+                               if AuthOk -> Fn(Bucket, Stream);
+                                  true -> fail(<<"unauthorized">>, Id, State)
+                               end
            end,
 
     {reply, Body, Req, NewState}.
@@ -100,7 +106,14 @@ remove(_V, [], Accum) -> lists:reverse(Accum);
 remove(V, [V|T], Accum) -> remove(V, T, Accum);
 remove(V, [H|T], Accum) -> remove(V, T, [H|Accum]).
 
-handle_subscribe(Msg, Id, Req, State=#state{channels=Channels, iorio=Iorio}) ->
+subscribe(Bucket, Stream, State=#state{channels=Channels, iorio=Iorio}) ->
+    Key = {Bucket, Stream},
+    lager:info("subscribing ~s/~s~n", [Bucket, Stream]),
+    Iorio:subscribe(Bucket, Stream, self()),
+    NewChannels = [Key|Channels],
+    State#state{channels=NewChannels}.
+
+handle_subscribe(Msg, Id, Req, State=#state{channels=Channels}) ->
     with_stream(fun (Bucket, Stream) ->
                         Key = {Bucket, Stream},
                         IsSubscribed = contains(Key, Channels),
@@ -110,11 +123,7 @@ handle_subscribe(Msg, Id, Req, State=#state{channels=Channels, iorio=Iorio}) ->
                                 {encode_error(<<"already subscribed">>, Id), State};
 
                             true ->
-                                lager:info("subscribing ~s/~s~n", [Bucket, Stream]),
-                                Iorio:subscribe(Bucket, Stream, self()),
-                                NewChannels = [Key|Channels],
-                                State1 = State#state{channels=NewChannels},
-                                {encode_ok(Id), State1}
+                                {encode_ok(Id), subscribe(Bucket, Stream, State)}
                         end
                 end, Msg, Id, Req, State).
 

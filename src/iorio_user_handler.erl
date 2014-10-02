@@ -32,7 +32,7 @@ is_authorized(Req, State=#state{secret=Secret}) ->
         {true, <<"admin">>} ->
             Res;
         {true, _} ->
-            Req2 = iorio_http:response(<<"{\"type\": \"no-perm\"}">>, Req1),
+            Req2 = iorio_http:no_permission(Req1),
             {{false, <<"jwt">>}, Req2, State};
         _ ->
             Res

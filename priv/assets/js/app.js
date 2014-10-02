@@ -1,7 +1,7 @@
 /*globals $, document, window, console, Iorio, React, JsonHuman*/
 function startApp(document, window, $, console, Iorio) {
     'use strict';
-    var iorio = new Iorio('ws://localhost:8080/listen', {}),
+    var iorio,
         output = document.getElementById('traffic'),
         mConnections, mConnection, mNewConnection, mConnectionManager, mLogin,
         mPage,
@@ -11,9 +11,6 @@ function startApp(document, window, $, console, Iorio) {
         var node = JsonHuman.format(data);
         output.appendChild(node);
     }
-
-    iorio.onSend.add(addTraffic);
-    iorio.onData.add(addTraffic);
 
     function post(path, data) {
         return $.ajax({
@@ -65,6 +62,10 @@ function startApp(document, window, $, console, Iorio) {
                     if (response.ok) {
                         console.log('login succeeded', response);
                         token = response.token;
+                        iorio = new Iorio('ws://localhost:8080/listen?jwt=' + token, {});
+                        iorio.onSend.add(addTraffic);
+                        iorio.onData.add(addTraffic);
+
                     } else {
                         console.warn('login failed', response);
                         self.state.error = 'login failed';
