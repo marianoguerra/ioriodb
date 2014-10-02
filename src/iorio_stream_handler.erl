@@ -42,10 +42,10 @@ allowed_methods(Req, State) -> {[<<"GET">>, <<"POST">>], Req, State}.
 get_session(#state{session=Session}) -> Session.
 set_session(State, Session) -> State#state{session=Session}.
 
-is_authorized(Req, State=#state{secret=Secret, bucket=Bucket}) ->
+is_authorized(Req, State=#state{secret=Secret, bucket=Bucket, stream=Stream}) ->
     GetSession = fun get_session/1,
     SetSession = fun set_session/2,
-    iorio_session:handle_is_authorized_for_bucket(Req, Secret, State, GetSession, SetSession, Bucket).
+    iorio_session:handle_is_authorized_for_stream(Req, Secret, State, GetSession, SetSession, Bucket, Stream).
 
 content_types_accepted(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, from_json}], Req, State}.

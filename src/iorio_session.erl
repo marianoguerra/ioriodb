@@ -5,7 +5,8 @@
          is_authorized_for_stream/3,
          handle_is_authorized/3,
          handle_is_authorized/4,
-         handle_is_authorized_for_bucket/6]).
+         handle_is_authorized_for_bucket/6,
+         handle_is_authorized_for_stream/7]).
 
 -include_lib("jwt/include/jwt.hrl").
 
@@ -71,16 +72,24 @@ username_from_session(undefined) -> nil;
 username_from_session({Username, _, _}) -> Username.
 
 % Bucket is the atom all when operating on all buckets
-handle_is_authorized_for_bucket(Req, Secret, State, GetSession, SetSession, Bucket) ->
+handle_is_authorized_for(Req, Secret, State, GetSession, SetSession, CheckAuth) ->
     Res = handle_is_authorized(Req, Secret, State, SetSession),
     {AuthOk, Req1, State1} = Res,
     Username = username_from_session(GetSession(State1)),
     if AuthOk ->
-           IsAuthorized = is_authorized_for_bucket(Username, Bucket),
+           IsAuthorized = CheckAuth(Username),
            if IsAuthorized -> Res;
               true ->
-                  Req2 = iorio_http:no_permission( Req1),
+                  Req2 = iorio_http:no_permission(Req1),
                   {{false, <<"jwt">>}, Req2, State}
            end;
        true -> Res
     end.
+
+handle_is_authorized_for_bucket(Req, Secret, State, GetSession, SetSession, Bucket) ->
+    CheckAuth = fun (Username) -> is_authorized_for_bucket(Username, Bucket) end,
+    handle_is_authorized_for(Req, Secret, State, GetSession, SetSession, CheckAuth).
+
+handle_is_authorized_for_stream(Req, Secret, State, GetSession, SetSession, Bucket, Stream) ->
+    CheckAuth = fun (Username) -> is_authorized_for_stream(Username, Bucket, Stream) end,
+    handle_is_authorized_for(Req, Secret, State, GetSession, SetSession, CheckAuth).
