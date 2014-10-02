@@ -9,25 +9,22 @@
 -include("priv/include/listener.hrl").
 
 init(_Transport, Req, [_, {secret, Secret}|_]=Opts, _Active) ->
-    lager:info("listener init ~p~n", [Opts]),
     Iorio = proplists:get_value(iorio, Opts, iorio),
     {Token, Req1} = cowboy_req:qs_val(<<"jwt">>, Req, nil),
     {Params, Req2} = cowboy_req:qs_vals(Req1),
-    Subs = proplists:get_all_values(<<"s">>, Params),
+    RawSubs = proplists:get_all_values(<<"s">>, Params),
     if Token == nil ->
            lager:warning("shutdown listen no token"),
            {shutdown, Req2, #state{}};
        true ->
-           % TODO: use subs
-           lager:info("subs ~p", [Subs]),
+           Subs = iorio_parse:subscriptions(RawSubs),
            case iorio_session:session_from_token(Token, Secret) of
                {ok, Session} ->
-                   State = #state{channels=[],
-                                  iorio=Iorio,
-                                  secret=Secret,
-                                  token=Token,
-                                  session=Session},
-                   {ok, Req2, State};
+                   State = #state{channels=[], iorio=Iorio,
+                                  secret=Secret, token=Token, session=Session},
+
+                   State1 = subscribe_all(Subs, State),
+                   {ok, Req2, State1};
                {error, Reason} ->
                    lager:warning("shutdown listen ~p", [Reason]),
                    {shutdown, Req2, #state{}}
@@ -105,6 +102,16 @@ remove(V, L) -> remove(V, L, []).
 remove(_V, [], Accum) -> lists:reverse(Accum);
 remove(V, [V|T], Accum) -> remove(V, T, Accum);
 remove(V, [H|T], Accum) -> remove(V, T, [H|Accum]).
+
+subscribe_all(Subs, State) ->
+    lists:foldl(fun ({Bucket, Stream}, State0) ->
+                        subscribe(Bucket, Stream, State0);
+                    ({Bucket, Stream, _FromSeqNum}, State0) ->
+                        subscribe(Bucket, Stream, State0);
+                    (Sub, State0) ->
+                        lager:warning("malformed sub? ~p", [Sub]),
+                        State0
+                end, State, Subs).
 
 subscribe(Bucket, Stream, State=#state{channels=Channels, iorio=Iorio}) ->
     Key = {Bucket, Stream},
