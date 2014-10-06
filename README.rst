@@ -97,17 +97,18 @@ to run the unit tests::
     ./rebar eunit skip_deps=true
 
 to test from he api::
-
-    cd tools/e2e-test
-
-    ./apitest.py -h
-    usage: apitest.py [-h] [-H HOST] [-P PORT] [-B BUCKETS] [-S STREAMS] [-s SEED]
-                      [-i ITERATIONS]
+    ./tools/e2e-test/apitest.py -h
+    usage: apitest.py [-h] [-u USERNAME] [-p PASSWORD] [-H HOST] [-P PORT]
+                      [-B BUCKETS] [-S STREAMS] [-s SEED] [-i ITERATIONS]
 
     Iorio DB API tester
 
     optional arguments:
       -h, --help            show this help message and exit
+      -u USERNAME, --username USERNAME
+                            username used for authentication
+      -p PASSWORD, --password PASSWORD
+                            password used for authentication
       -H HOST, --host HOST  host where ioriodb is running
       -P PORT, --port PORT  port where ioriodb is running
       -B BUCKETS, --buckets BUCKETS
@@ -118,10 +119,10 @@ to test from he api::
       -i ITERATIONS, --iterations ITERATIONS
                             number of iterations to run
 
-    # 100 iterations for 5 buckets with 5 streams each
+    # 100 iterations for 5 buckets with 5 streams each, use default credentials
     ./apitest.py -i 100
 
-    # 10 clients in parallel, 500 iterations each
+    # 10 clients in parallel, 500 iterations each, use default credentials
     for i in $(seq 10); do ./apitest.py -i 500 &; done
 
 Multinode
