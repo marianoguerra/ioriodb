@@ -4,6 +4,36 @@ Iorio DB
 a stream database.
 
 like a pubsub with history.
+or "apache kafka made by couchdb devs"
+
+Iorio DB is a data store that stores streams of events, it's objective is to
+allow the following:
+
+* PUT a binary blob (mainly JSON) on a stream, get a sequence number (seqnum) back
+* GET last N blobs from a stream
+* GET N blobs from a stream starting from a seqnum
+* LISTEN to new blobs on one or more streams
+
+  + push (websockets)
+  + pull (comet, providing the seqnum you saw last for each stream)
+
+  + catch up to recent events without touching the disk, each streams "remembers" last N events in memory
+
+* provide access control to who can do what on a per stream/bucket level
+
+  + a group of streams is a bucket
+
+* administer user credentials, permissions and sessions
+* list streams in a bucket and buckets
+* provide eviction policies per stream and/or bucket
+
+  + only keep last N events for a stream
+  + only keep X bytes per stream (say 4KB)
+  + only keep blobls for the last 7 days
+
+* append only (eviction is done by removing "chunk" files from a stream)
+
+All through a RESTful HTTP API
 
 WARNING
 -------
