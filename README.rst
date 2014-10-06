@@ -97,6 +97,7 @@ to run the unit tests::
     ./rebar eunit skip_deps=true
 
 to test from he api::
+
     ./tools/e2e-test/apitest.py -h
     usage: apitest.py [-h] [-u USERNAME] [-p PASSWORD] [-H HOST] [-P PORT]
                       [-B BUCKETS] [-S STREAMS] [-s SEED] [-i ITERATIONS]
