@@ -230,4 +230,4 @@ in another one::
 License
 -------
 
-AGPL v3
+`MPL 2 <https://www.mozilla.org/MPL/2.0/>`_
