@@ -31,6 +31,53 @@ allow the following:
 
 All through a RESTful HTTP API
 
+API
+---
+
+until we have some docs here is a brief description of the api, check
+tools/e2e-test/apitest.py to see how it's used
+
+::
+
+    # put a json document in bucket-id/stream-id
+    POST /streams/<bucket-id>/<stream-id>
+        X-SESSION: <auth-token>
+
+        <json-body>
+
+    # GET <limit> documents starting from <seqnum> (or last N if seqnum not
+    # provided) from bucket-id/stream-id
+    GET /streams/<bucket-id>/<stream-id>?[limit=<limit>[&from=<seqnum>]]
+        X-SESSION: <auth-token>
+
+    # listen to one or more subscriptions for bucket-id/stream-id
+    # (optionally starting at seqnum)
+    # this can be also done using websockets, see priv/assets/js/app.js
+    # for details
+    # NOTE: the auth-token in this case is in the request because websockets
+    # don't allow to pass arbitrary headers during handshake
+    GET /listen?jwt=<auth-token>[&s=<bucket-id>:<stream-id>[:<seqnum>]]+
+
+    # list buckets (if you have permissions)
+    GET /buckets/
+        X-SESSION: <auth-token>
+
+    # list streams for <bucket-id> (if you have permissions)
+    GET /streams/<bucket-id>
+        X-SESSION: <auth-token>
+
+    # get current session details
+    GET /sessions
+        X-SESSION: <auth-token>
+
+    # login, returns jwt token back that you must use for other requests
+    POST /sessions
+         {"username": <username>, "password": <password>}
+
+    # create a user (if you have permissions and the user doesn't exist)
+    POST /users
+         {"username": <username>, "password": <password>}
+
 WARNING
 -------
 
