@@ -45,7 +45,9 @@ set_session(State, Session) -> State#state{session=Session}.
 is_authorized(Req, State=#state{secret=Secret, bucket=Bucket, stream=Stream}) ->
     GetSession = fun get_session/1,
     SetSession = fun set_session/2,
-    iorio_session:handle_is_authorized_for_stream(Req, Secret, State, GetSession, SetSession, Bucket, Stream).
+    iorio_session:handle_is_authorized_for_stream(Req, Secret, State,
+                                                  GetSession, SetSession,
+                                                  Bucket, Stream).
 
 content_types_accepted(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, from_json}], Req, State}.
@@ -65,18 +67,23 @@ to_json(Req, State=#state{bucket=Bucket, stream=Stream, from_sn=From, limit=Limi
 
     {jsx:encode(Items), Req, State}.
 
+store_blob(Bucket, Stream, Body) ->
+    {ok, SblobEntry} = iorio:put(Bucket, Stream, Body),
+    ResultJson = sblob_to_json(SblobEntry),
+    jsx:encode(ResultJson).
+
+store_blob_and_reply(Req, State, Bucket, Stream, Body) ->
+    Result = store_blob(Bucket, Stream, Body),
+    Req1 = cowboy_req:set_resp_body(Result, Req),
+    {true, Req1, State}.
+
 from_json(Req, State=#state{bucket=Bucket, stream=Stream}) ->
     {ok, Body, Req1} = cowboy_req:body(Req),
     case jsx:is_json(Body) of
         true ->
-            {ok, SblobEntry} = iorio:put(Bucket, Stream, Body),
-            ResultJson = sblob_to_json(SblobEntry),
-            ResultJsonBin = jsx:encode(ResultJson),
-            Req2 = cowboy_req:set_resp_body(ResultJsonBin, Req1),
-            {true, Req2, State};
+            store_blob_and_reply(Req1, State, Bucket, Stream, Body);
         false ->
-            Req2 = cowboy_req:set_resp_body(<<"{\"type\": \"invalid-body\"}">>, Req1),
-            {false, Req2, State}
+            {false, iorio_http:invalid_body(Req1), State}
     end.
 
 
