@@ -101,6 +101,7 @@ to test from he api::
     ./tools/e2e-test/apitest.py -h
     usage: apitest.py [-h] [-u USERNAME] [-p PASSWORD] [-H HOST] [-P PORT]
                       [-B BUCKETS] [-S STREAMS] [-s SEED] [-i ITERATIONS]
+                      [-t THREADS]
 
     Iorio DB API tester
 
@@ -119,12 +120,13 @@ to test from he api::
       -s SEED, --seed SEED  number of streams to use per bucket
       -i ITERATIONS, --iterations ITERATIONS
                             number of iterations to run
+      -t THREADS, --threads THREADS
+                            number of threads to use
 
     # 100 iterations for 5 buckets with 5 streams each, use default credentials
-    ./apitest.py -i 100
-
-    # 10 clients in parallel, 500 iterations each, use default credentials
-    for i in $(seq 10); do ./apitest.py -i 500 &; done
+    # use 4 threads
+    #  (that means 4 threads inserting, 4 querying and 4 listing buckets and steams
+    ./apitest.py -i 100 -t 4
 
 Multinode
 ---------
