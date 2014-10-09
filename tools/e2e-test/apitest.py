@@ -7,6 +7,7 @@ import pprint
 import random
 import argparse
 import threading
+import multiprocessing
 
 import faker
 import requests
@@ -42,6 +43,7 @@ def randint():
 
 def get_arg_parser():
     default_seed = randint()
+    cpu_count = multiprocessing.cpu_count()
     parser = argparse.ArgumentParser(description='Iorio DB API tester')
     parser.add_argument('-u', '--username', default='admin',
             help='username used for authentication')
@@ -59,6 +61,8 @@ def get_arg_parser():
                        help='number of streams to use per bucket')
     parser.add_argument('-i', '--iterations', default=10, type=int,
                        help='number of iterations to run')
+    parser.add_argument('-t', '--threads', default=cpu_count, type=int,
+                       help='number of threads to use')
 
     return parser
 
@@ -193,8 +197,11 @@ class QueryRequester(BaseRequester):
 
         response = query(self.host, self.port, bucket, stream, limit, self.token)
 
-
         return response, Obj(bucket=bucket, stream=stream, limit=limit)
+
+    def format_summary(self):
+        return 'queried %d times for %d items with %d read errors' % (
+            self.query_count, self.item_count, self.errors)
 
 class BucketLister(BaseRequester):
     def __init__(self, generators, host, port, token=None):
@@ -241,8 +248,56 @@ class BucketLister(BaseRequester):
         return "listed buckets %d times, listed streams %d times with %d errors" % (
                 self.lists_requests, self.list_requests, self.errors)
 
+class Inserter(threading.Thread):
+
+    def __init__(self, token, generators, args):
+        threading.Thread.__init__(self)
+        self.token = token
+        self.generators = generators
+        self.args = args
+        self.count = 0
+        self.errors = 0
+        self.t_diff = 0
+
+    def run(self):
+        args = self.args
+        t_1 = time.time()
+
+        for _ in range(args.iterations):
+            for generator in self.generators:
+                bucket, stream, data = generator.generate()
+                response = send(args.host, args.port, bucket, stream, data,
+                        self.token)
+                self.count += 1
+
+                if self.count % 500 == 0:
+                    log('%d inserts' % self.count)
+
+                if response.status_code != 200:
+                    self.errors += 1
+                    log('error sending data', response.status_code)
+                    pprint.pprint(data)
+                    try:
+                        body = json.loads(response.text)
+                        log('error response')
+                        pprint.pprint(body)
+                    except ValueError:
+                        log('response is not json:', bucket, stream,
+                                response.status_code, response.text)
+
+
+        t_2 = time.time()
+        self.t_diff = t_2 - t_1
+
+    def format_summary(self):
+        return 'sent %d with %d write errors in %f s, %f events/s' % (
+                self.count, self.errors, self.t_diff,
+                (self.count / self.t_diff))
+
 def main():
     args = parse_args()
+    log('using seed', args.seed)
+    random.seed(args.seed)
 
     ok, token = authenticate(args.host, args.port, args.username, args.password)
 
@@ -252,51 +307,39 @@ def main():
     else:
         log("token", token)
 
-    log('using seed', args.seed)
-    random.seed(args.seed)
+    generators = [Generator(i, randint(), args.streams) \
+            for i in range(args.buckets)]
 
-    generators = [Generator(i, randint(), args.streams) for i in range(args.buckets)]
-    requester = QueryRequester(generators, args.host, args.port, token)
-    requester.start()
+    inserters = []
+    requesters = []
+    listers = []
+    for _ in range(args.threads):
+        inserter = Inserter(token, generators, args)
+        inserter.start()
+        inserters.append(inserter)
 
-    bucket_lister = BucketLister(generators, args.host, args.port, token)
-    bucket_lister.start()
+        requester = QueryRequester(generators, args.host, args.port, token)
+        requester.start()
+        requesters.append(requester)
 
-    count = 0
-    errors = 0
-    t1 = time.time()
-    for i in range(args.iterations):
-        for generator in generators:
-            bucket, stream, data = generator.generate()
-            response = send(args.host, args.port, bucket, stream, data, token)
-            count += 1
+        bucket_lister = BucketLister(generators, args.host, args.port, token)
+        bucket_lister.start()
+        listers.append(bucket_lister)
 
-            if count % 500 == 0:
-                log('%d inserts' % count)
-
-            if response.status_code != 200:
-                errors += 1
-                log('error sending data', response.status_code)
-                pprint.pprint(data)
-                try:
-                    body = json.loads(response.text)
-                    log('error response')
-                    pprint.pprint(body)
-                except ValueError:
-                    log('response is not json:', bucket, stream,
-                            response.status_code, response.text)
+    for inserter in inserters:
+        inserter.join()
+        log(inserter.format_summary())
 
 
-    requester.stop = True
-    t2 = time.time()
-    t_diff = t2 - t1
+    for requester in requesters:
+        requester.stop = True
+        requester.join()
+        log(requester.format_summary())
 
-    log('sent', count, 'events with', errors, 'write errors and queried',
-            requester.query_count, 'times for', requester.item_count, 'items with',
-            requester.errors, 'read errors in', t_diff, 'second',
-            count / t_diff, 'events/second')
-
-    log(bucket_lister.format_summary())
+    for bucket_lister in listers:
+        bucket_lister.stop = True
+        bucket_lister.join()
+        log(bucket_lister.format_summary())
 
 if __name__ == "__main__":
     main()
