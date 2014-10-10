@@ -39,6 +39,7 @@ start_vnode(I) ->
     riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
 
 init([Partition]) ->
+    lager:debug("partition init ~p", [Partition]),
     CurrentDir = filename:absname("."),
     DefaultDataDir = filename:join([CurrentDir, "iorio_data"]),
     BasePath = application:get_env(iorio, data_path, DefaultDataDir),
@@ -55,8 +56,11 @@ init([Partition]) ->
     spawn(fun () ->
                   % distribute intervals to avoid calling all of them at once
                   % on the same node
-                  RandomSleep = random:uniform(BucketEvictTimeInterval),
+                  Now = sblob_util:now_fast(),
+                  {RandomSleep, _} = random:uniform_s(BucketEvictTimeInterval, now()),
                   timer:sleep(RandomSleep),
+                  lager:debug("~p (~pms) setting interval for ~p",
+                             [Now, RandomSleep, Partition]),
                   {ok, _TimerRef} = timer:send_interval(BucketEvictTimeInterval,
                                                         Pid, evict_bucket)
           end),
@@ -222,8 +226,7 @@ handle_info(evict_bucket, State=#state{partition=Partition,
                    end,
 
     if NextBucketIndex > BucketCount ->
-           lager:info("no buckets in vnode? ~p ~p",
-                      [BucketCount, NextBucketIndex]),
+           lager:debug("no eviction, no buckets in vnode ~p", [Partition]),
            ok;
        true ->
            BucketName = lists:nth(NextBucketIndex, BucketNames),
@@ -271,7 +274,7 @@ evict_bucket(BucketName, Partition, MaxSizeBytes, MaxTimeMsNoEviction) ->
            spawn(DoEvict),
         {ok, evicting};
        true ->
-           lager:info("no bucket eviction needed ~s ~p", [BucketName, Partition]),
+           lager:debug("no bucket eviction needed ~s ~p", [BucketName, Partition]),
            {ok, noaction}
     end.
 
