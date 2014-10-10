@@ -10,7 +10,8 @@
 %% API
 
 start_link(ReqId, From, Request, Timeout) ->
-    riak_core_coverage_fsm:start_link(?MODULE, {pid, ReqId, From}, [ReqId, From, Request, Timeout]).
+    riak_core_coverage_fsm:start_link(?MODULE, {pid, ReqId, From},
+                                      [ReqId, From, Request, Timeout]).
 
 start(Request, Timeout) ->
     ReqId = iorio_util:reqid(),

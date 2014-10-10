@@ -17,6 +17,7 @@
          handoff_cancelled/1,
          handoff_finished/2,
          handle_handoff_data/2,
+         handle_info/2,
          encode_handoff_item/2,
          handle_coverage/4,
          handle_exit/3]).
@@ -27,40 +28,11 @@
 
 -record(state, {partition,
                 path,
+                next_bucket_index=1,
+                max_bucket_time_no_evict_ms=60000,
+                max_bucket_size_bytes=52428800,
                 buckets,
                 channels}).
-
-get_bucket(State=#state{buckets=Buckets, path=Path}, BucketName) ->
-
-    case sblob_preg:get(Buckets, BucketName) of
-        none -> 
-            BucketNameStr = binary_to_list(BucketName),
-            BucketPath = filename:join([Path, BucketNameStr]),
-            GblobOpts = [],
-            BucketOpts = [],
-            {ok, Bucket} = gblob_bucket:start(BucketPath, GblobOpts, BucketOpts),
-            NewBuckets = sblob_preg:put(Buckets, BucketName, Bucket),
-            NewState = State#state{buckets=NewBuckets},
-
-            {NewState, Bucket};
-        {value, Bucket} ->
-            {State, Bucket}
-    end.
-
-get_channel(State=#state{channels=Channels}, BucketName, Key) ->
-    ChannelKey = {BucketName, Key},
-    case sblob_preg:get(Channels, ChannelKey) of
-        none -> 
-            % TODO: make it configurable
-            BufferSize = 50,
-            {ok, Channel} = iorio_hist_channel:new(BufferSize),
-            NewChannels= sblob_preg:put(Channels, ChannelKey, Channel),
-            NewState = State#state{channels=NewChannels},
-
-            {NewState, Channel};
-        {value, Channel} ->
-            {State, Channel}
-    end.
 
 %% API
 start_vnode(I) ->
@@ -76,13 +48,21 @@ init([Partition]) ->
     Buckets = sblob_preg:new(),
     Channels = sblob_preg:new(),
 
-    {ok, #state{partition=Partition, path=Path, buckets=Buckets, channels=Channels}}.
+    % TODO: configure and calculate based on number of buckets
+    BucketEvictTimeInterval = 60000,
 
-do_put(State=#state{partition=Partition}, BucketName, Stream, Timestamp, Data) ->
-    lager:debug("put ~s ~s at ~p", [BucketName, Stream, Partition]),
-    {NewState, Bucket} = get_bucket(State, BucketName),
-    Entry = gblob_bucket:put(Bucket, Stream, Timestamp, Data),
-    {NewState, Entry}.
+    Pid = self(),
+    spawn(fun () ->
+                  % distribute intervals to avoid calling all of them at once
+                  % on the same node
+                  RandomSleep = random:uniform(BucketEvictTimeInterval),
+                  timer:sleep(RandomSleep),
+                  {ok, _TimerRef} = timer:send_interval(BucketEvictTimeInterval,
+                                                        Pid, evict_bucket)
+          end),
+
+    {ok, #state{partition=Partition, path=Path, buckets=Buckets,
+                channels=Channels}}.
 
 %% Sample command: respond to a ping
 handle_command(ping, _Sender, State) ->
@@ -193,8 +173,7 @@ handle_coverage({list_streams, Bucket}, _KeySpaces, {_, RefId, _}, State) ->
 
 handle_coverage({list_buckets}, _KeySpaces, {_, RefId, _}, State) ->
     Buckets = list_bucket_names(State),
-    BucketsBin = lists:map(fun list_to_binary/1, Buckets),
-    {reply, {RefId, BucketsBin}, State};
+    {reply, {RefId, Buckets}, State};
 
 handle_coverage({size, BucketName}, _KeySpaces, {_, RefId, _}, State=#state{path=Path}) ->
     HaveBucket = have_bucket(Path, BucketName),
@@ -227,12 +206,74 @@ handle_exit(_Pid, _Reason, State=#state{partition=Partition}) ->
     State1 = free_resources(State),
     {noreply, State1}.
 
+handle_info(evict_bucket, State=#state{partition=Partition,
+                                       next_bucket_index=NextBucketIndex,
+                                       max_bucket_time_no_evict_ms=MaxTimeMsNoEviction,
+                                       max_bucket_size_bytes=MaxBucketSize}) ->
+    BucketNames = lists:sort(list_bucket_names(State)),
+    BucketCount = length(BucketNames),
+    NewNextIndex = if
+                       BucketCount == 0 ->
+                           NextBucketIndex;
+                       BucketCount > NextBucketIndex ->
+                           1;
+                       true ->
+                           NextBucketIndex + 1
+                   end,
+
+    if NextBucketIndex > BucketCount ->
+           lager:info("no buckets in vnode? ~p ~p",
+                      [BucketCount, NextBucketIndex]),
+           ok;
+       true ->
+           BucketName = lists:nth(NextBucketIndex, BucketNames),
+           evict_bucket(BucketName, Partition, MaxBucketSize, MaxTimeMsNoEviction)
+    end,
+
+    {ok, State#state{next_bucket_index=NewNextIndex}}.
+
 terminate(_Reason, State=#state{partition=Partition}) ->
     lager:info("terminate ~p", [Partition]),
     _State1 = free_resources(State),
     ok.
 
 %% private api
+
+should_evict(BucketName, MaxTimeMsNoEviction) ->
+    Now = sblob_util:now_fast(),
+    LastEviction = get_last_eviction(BucketName),
+    ShouldEvict = (LastEviction + MaxTimeMsNoEviction) < Now,
+    ShouldEvict.
+
+get_last_eviction(BucketName) ->
+    riak_core_metadata:get({<<"bucket">>, <<"eviction">>}, BucketName,
+                           [{default, 0}]).
+
+set_last_eviction(BucketName) ->
+    Now = sblob_util:now_fast(),
+    riak_core_metadata:put({<<"bucket">>, <<"eviction">>}, BucketName, Now),
+    Now.
+
+evict_bucket(BucketName, Partition, MaxSizeBytes, MaxTimeMsNoEviction) ->
+    ShouldEvict = should_evict(BucketName, MaxTimeMsNoEviction),
+
+    DoEvict = fun () ->
+                      T1 = sblob_util:now_fast(),
+                      _Result = iorio:truncate(BucketName, MaxSizeBytes),
+                      T2 = sblob_util:now_fast(),
+                      TDiff = T2 - T1,
+                      lager:info("bucket eviction ~s in ~pms ~p",
+                                 [BucketName, TDiff, Partition]),
+                      set_last_eviction(BucketName)
+              end,
+
+    if ShouldEvict ->
+           spawn(DoEvict),
+        {ok, evicting};
+       true ->
+           lager:info("no bucket eviction needed ~s ~p", [BucketName, Partition]),
+           {ok, noaction}
+    end.
 
 free_resources(State=#state{buckets=Buckets}) ->
     EmptyBuckets = sblob_preg:new(),
@@ -251,7 +292,7 @@ list_dir(Path) ->
     end.
 
 list_bucket_names(#state{path=Path}) ->
-    list_dir(Path).
+    lists:map(fun list_to_binary/1, list_dir(Path)).
 
 list_gblobs_for_bucket(#state{path=Path}, BucketName) ->
     BucketPath = filename:join([Path, BucketName]),
@@ -261,11 +302,10 @@ list_gblob_names(State=#state{path=Path}) ->
     BucketNames = list_bucket_names(State),
     lists:foldl(fun (BucketName, AccIn) ->
                         BucketPath = filename:join([Path, BucketName]),
-                        BucketNameBin = list_to_binary(BucketName),
                         GblobNames = list_dir(BucketPath),
                         lists:foldl(fun (StreamName, Items) ->
                                             StreamNameBin = list_to_binary(StreamName),
-                                            [{BucketNameBin, StreamNameBin}|Items]
+                                            [{BucketName, StreamNameBin}|Items]
                                     end, AccIn, GblobNames)
                 end, [], BucketNames).
 
@@ -280,3 +320,42 @@ foldl_gblobs(State=#state{path=Path}, Fun, Acc0) ->
 
                         AccOut
                 end, Acc0, GblobNames).
+
+get_bucket(State=#state{buckets=Buckets, path=Path}, BucketName) ->
+
+    case sblob_preg:get(Buckets, BucketName) of
+        none ->
+            BucketNameStr = binary_to_list(BucketName),
+            BucketPath = filename:join([Path, BucketNameStr]),
+            GblobOpts = [],
+            BucketOpts = [],
+            {ok, Bucket} = gblob_bucket:start(BucketPath, GblobOpts, BucketOpts),
+            NewBuckets = sblob_preg:put(Buckets, BucketName, Bucket),
+            NewState = State#state{buckets=NewBuckets},
+
+            {NewState, Bucket};
+        {value, Bucket} ->
+            {State, Bucket}
+    end.
+
+get_channel(State=#state{channels=Channels}, BucketName, Key) ->
+    ChannelKey = {BucketName, Key},
+    case sblob_preg:get(Channels, ChannelKey) of
+        none ->
+            % TODO: make it configurable
+            BufferSize = 50,
+            {ok, Channel} = iorio_hist_channel:new(BufferSize),
+            NewChannels= sblob_preg:put(Channels, ChannelKey, Channel),
+            NewState = State#state{channels=NewChannels},
+
+            {NewState, Channel};
+        {value, Channel} ->
+            {State, Channel}
+    end.
+
+do_put(State=#state{partition=Partition}, BucketName, Stream, Timestamp, Data) ->
+    lager:debug("put ~s ~s at ~p", [BucketName, Stream, Partition]),
+    {NewState, Bucket} = get_bucket(State, BucketName),
+    Entry = gblob_bucket:put(Bucket, Stream, Timestamp, Data),
+    {NewState, Entry}.
+
