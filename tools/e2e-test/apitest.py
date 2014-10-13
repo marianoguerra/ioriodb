@@ -71,16 +71,16 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-def post_json(url, data, token=None):
+def post_json(rsession, url, data, token=None):
     headers = {'content-type': 'application/json'}
 
     if token:
         headers['x-session'] = token
 
-    return requests.post(url, headers=headers, data=data)
+    return rsession.post(url, headers=headers, data=data)
 
-def post_data_json(url, data, token=None):
-    return post_json(url, json.dumps(data), token)
+def post_data_json(rsession, url, data, token=None):
+    return post_json(rsession, url, json.dumps(data), token)
 
 def format_url(host, port, *paths, **query_params):
     if query_params:
@@ -91,31 +91,31 @@ def format_url(host, port, *paths, **query_params):
     path = "/".join(str(item) for item in paths)
     return 'http://%s:%d/%s%s' % (host, port, path, params)
 
-def authenticate(host, port, username, password):
+def authenticate(rsession, host, port, username, password):
     url = format_url(host, port, "sessions")
-    response = post_data_json(url, dict(username=username, password=password))
+    response = post_data_json(rsession, url, dict(username=username, password=password))
     body = json.loads(response.text)
     if response.status_code == 200:
         return body.get("ok"), body.get("token")
     else:
         return False, None
 
-def send(host, port, bucket, stream, data, token=None):
+def send(rsession, host, port, bucket, stream, data, token=None):
     url = format_url(host, port, "streams", bucket, stream)
-    return post_data_json(url, data, token)
+    return post_data_json(rsession, url, data, token)
 
-def get_json(url, token=None):
+def get_json(rsession, url, token=None):
     headers = {'content-type': 'application/json'}
 
     if token:
         headers['x-session'] = token
 
-    response = requests.get(url, headers=headers)
+    response = rsession.get(url, headers=headers)
     return response
 
-def query(host, port, bucket, stream, limit, token=None):
+def query(rsession, host, port, bucket, stream, limit, token=None):
     url = format_url(host, port, 'streams', bucket, stream, limit=limit)
-    return get_json(url, token)
+    return get_json(rsession, url, token)
 
 
 class BaseRequester(threading.Thread):
@@ -130,6 +130,7 @@ class BaseRequester(threading.Thread):
         self.query_count = 0
         self.max_sleep_secs = 5
         self.token = token
+        self.rsession = requests.Session()
 
     def on_no_json_error(self, response, ctx, time_ms):
         log('response is not json:', response.text, response.status_code, ctx.__dict__)
@@ -146,10 +147,10 @@ class BaseRequester(threading.Thread):
 
     def run(self):
         while not self.stop:
-            t1 = time.time()
+            t_1 = time.time()
             response, ctx = self.request()
-            t2 = time.time()
-            time_ms = t2 - t1
+            t_2 = time.time()
+            time_ms = t_2 - t_1
             self.query_count += 1
 
             is_error = (response.status_code != 200)
@@ -195,7 +196,8 @@ class QueryRequester(BaseRequester):
         stream = random.choice(generator.streams)
         limit = random.randint(0, 100)
 
-        response = query(self.host, self.port, bucket, stream, limit, self.token)
+        response = query(self.rsession, self.host, self.port, bucket, stream,
+                limit, self.token)
 
         return response, Obj(bucket=bucket, stream=stream, limit=limit)
 
@@ -228,11 +230,11 @@ class BucketLister(BaseRequester):
 
     def list_buckets(self):
         url = format_url(self.host, self.port, "buckets")
-        return get_json(url, self.token)
+        return get_json(self.rsession, url, self.token)
 
     def list_bucket(self, bucket):
         url = format_url(self.host, self.port, "streams", bucket)
-        return get_json(url, self.token)
+        return get_json(self.rsession, url, self.token)
 
     def request(self):
         if random.randint(0, 3) == 2:
@@ -258,6 +260,7 @@ class Inserter(threading.Thread):
         self.count = 0
         self.errors = 0
         self.t_diff = 0
+        self.rsession = requests.Session()
 
     def run(self):
         args = self.args
@@ -266,8 +269,8 @@ class Inserter(threading.Thread):
         for _ in range(args.iterations):
             for generator in self.generators:
                 bucket, stream, data = generator.generate()
-                response = send(args.host, args.port, bucket, stream, data,
-                        self.token)
+                response = send(self.rsession, args.host, args.port, bucket,
+                        stream, data, self.token)
                 self.count += 1
 
                 if self.count % 500 == 0:
@@ -299,7 +302,8 @@ def main():
     log('using seed', args.seed)
     random.seed(args.seed)
 
-    ok, token = authenticate(args.host, args.port, args.username, args.password)
+    ok, token = authenticate(requests, args.host, args.port, args.username,
+            args.password)
 
     if not ok:
         log('authentication failed')
