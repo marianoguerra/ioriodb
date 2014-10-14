@@ -33,6 +33,7 @@
                 max_bucket_size_bytes=52428800,
                 buckets_sup,
                 buckets,
+                channels_sup,
                 channels}).
 
 %% API
@@ -50,6 +51,7 @@ init([Partition]) ->
     Buckets = sblob_preg:new(),
     Channels = sblob_preg:new(),
     {ok, BucketsSup} = gblob_buckets_sup:start_link(),
+    {ok, ChannelsSup} = iorio_channels_sup:start_link(),
 
     % TODO: configure and calculate based on number of buckets
     BucketEvictTimeInterval = 60000,
@@ -68,7 +70,8 @@ init([Partition]) ->
           end),
 
     {ok, #state{partition=Partition, path=Path, buckets=Buckets,
-                channels=Channels, buckets_sup=BucketsSup}}.
+                channels=Channels, buckets_sup=BucketsSup,
+                channels_sup=ChannelsSup}}.
 
 %% Sample command: respond to a ping
 handle_command(ping, _Sender, State) ->
@@ -237,9 +240,14 @@ handle_info(evict_bucket, State=#state{partition=Partition,
 
     {ok, State#state{next_bucket_index=NewNextIndex}};
 
-handle_info({'DOWN', _MonitorRef, process, Pid, _Info}, State=#state{buckets=Buckets}) ->
+handle_info({'DOWN', _MonitorRef, process, Pid, _Info},
+            State=#state{buckets=Buckets, channels=Channels}) ->
+
+    % TODO: don't do it like this, create one process for each to handle the
+    % DOWN events
     NewBuckets = sblob_preg:remove_reverse(Buckets, Pid),
-    {noreply, State#state{buckets=NewBuckets}}.
+    NewChannels = sblob_preg:remove_reverse(Channels, Pid),
+    {noreply, State#state{buckets=NewBuckets, channels=NewChannels}}.
 
 terminate(_Reason, State=#state{partition=Partition}) ->
     lager:info("terminate ~p", [Partition]),
@@ -349,13 +357,14 @@ get_bucket(State=#state{buckets=Buckets, path=Path, buckets_sup=BucketsSup}, Buc
             {State, Bucket}
     end.
 
-get_channel(State=#state{channels=Channels}, BucketName, Key) ->
+get_channel(State=#state{channels=Channels, channels_sup=ChannelsSup}, BucketName, Key) ->
     ChannelKey = {BucketName, Key},
     case sblob_preg:get(Channels, ChannelKey) of
         none ->
             % TODO: make it configurable
             BufferSize = 50,
-            {ok, Channel} = iorio_hist_channel:new(BufferSize),
+            {ok, Channel} = iorio_channels_sup:start_child(ChannelsSup, [BufferSize]),
+            erlang:monitor(process, Channel),
             NewChannels= sblob_preg:put(Channels, ChannelKey, Channel),
             NewState = State#state{channels=NewChannels},
 

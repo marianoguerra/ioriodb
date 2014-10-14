@@ -1,7 +1,8 @@
 -module(iorio_hist_channel).
 -behaviour(gen_server).
 
--export([new/0, new/1, subscribe/2, subscribe/3, unsubscribe/2, send/2, replay/3]).
+-export([start_link/0, start_link/1, subscribe/2, subscribe/3, unsubscribe/2,
+         send/2, replay/3]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
@@ -11,10 +12,10 @@
 
 %% API
 
-new() -> new(50).
+start_link() -> start_link(50).
 
-new(BufferSize) ->
-    gen_server:start(?MODULE, [BufferSize], []).
+start_link(BufferSize) ->
+    gen_server:start_link(?MODULE, [BufferSize], []).
 
 replay(Channel, Pid, FromSeqNum) ->
     gen_server:call(Channel, {replay, Pid, FromSeqNum}).
