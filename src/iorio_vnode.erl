@@ -31,6 +31,7 @@
                 next_bucket_index=1,
                 max_bucket_time_no_evict_ms=60000,
                 max_bucket_size_bytes=52428800,
+                buckets_sup,
                 buckets,
                 channels}).
 
@@ -48,6 +49,7 @@ init([Partition]) ->
     Path = filename:join([BasePath, PartitionStr]),
     Buckets = sblob_preg:new(),
     Channels = sblob_preg:new(),
+    {ok, BucketsSup} = gblob_buckets_sup:start_link(),
 
     % TODO: configure and calculate based on number of buckets
     BucketEvictTimeInterval = 60000,
@@ -66,7 +68,7 @@ init([Partition]) ->
           end),
 
     {ok, #state{partition=Partition, path=Path, buckets=Buckets,
-                channels=Channels}}.
+                channels=Channels, buckets_sup=BucketsSup}}.
 
 %% Sample command: respond to a ping
 handle_command(ping, _Sender, State) ->
@@ -233,7 +235,11 @@ handle_info(evict_bucket, State=#state{partition=Partition,
            evict_bucket(BucketName, Partition, MaxBucketSize, MaxTimeMsNoEviction)
     end,
 
-    {ok, State#state{next_bucket_index=NewNextIndex}}.
+    {ok, State#state{next_bucket_index=NewNextIndex}};
+
+handle_info({'DOWN', _MonitorRef, process, Pid, _Info}, State=#state{buckets=Buckets}) ->
+    NewBuckets = sblob_preg:remove_reverse(Buckets, Pid),
+    {noreply, State#state{buckets=NewBuckets}}.
 
 terminate(_Reason, State=#state{partition=Partition}) ->
     lager:info("terminate ~p", [Partition]),
@@ -324,7 +330,7 @@ foldl_gblobs(State=#state{path=Path}, Fun, Acc0) ->
                         AccOut
                 end, Acc0, GblobNames).
 
-get_bucket(State=#state{buckets=Buckets, path=Path}, BucketName) ->
+get_bucket(State=#state{buckets=Buckets, path=Path, buckets_sup=BucketsSup}, BucketName) ->
 
     case sblob_preg:get(Buckets, BucketName) of
         none ->
@@ -332,8 +338,10 @@ get_bucket(State=#state{buckets=Buckets, path=Path}, BucketName) ->
             BucketPath = filename:join([Path, BucketNameStr]),
             GblobOpts = [],
             BucketOpts = [],
-            {ok, Bucket} = gblob_bucket:start(BucketPath, GblobOpts, BucketOpts),
+            {ok, Bucket} = gblob_buckets_sup:start_child(BucketsSup,
+                                                         [BucketPath, GblobOpts, BucketOpts]),
             NewBuckets = sblob_preg:put(Buckets, BucketName, Bucket),
+            erlang:monitor(process, Bucket),
             NewState = State#state{buckets=NewBuckets},
 
             {NewState, Bucket};
