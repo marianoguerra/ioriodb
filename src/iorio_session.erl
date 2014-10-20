@@ -1,12 +1,12 @@
 -module(iorio_session).
 -export([from_request/2,
          session_from_token/2,
-         is_authorized_for_bucket/2,
-         is_authorized_for_stream/3,
+         is_authorized_for_bucket/4,
+         is_authorized_for_stream/5,
          handle_is_authorized/3,
          handle_is_authorized/4,
-         handle_is_authorized_for_bucket/6,
-         handle_is_authorized_for_stream/7]).
+         handle_is_authorized_for_bucket/7,
+         handle_is_authorized_for_stream/8]).
 
 -include_lib("jwt/include/jwt.hrl").
 
@@ -61,40 +61,64 @@ handle_is_authorized(Req, Secret, State, SetSession) ->
             unauthorized_response(Reason, Req1, State)
     end.
 
-% NOTE: for now user can only operate on bucket with his username,
-% except if he is the admin
-is_authorized_for_bucket(nil, _Bucket)         -> false;
-is_authorized_for_bucket(<<"admin">>, _Bucket) -> true;
-is_authorized_for_bucket(Username, Username)   -> true;
-is_authorized_for_bucket(_Username, _Bucket)   -> false.
+% XXX I'm not using the NewCtx returned
+can_do_on(Action, Thing, Ctx) ->
+    riak_core_security:check_permissions({Action, Thing}, Ctx).
 
-% NOTE: we don't still support per stream permissions
-is_authorized_for_stream(Username, Bucket, _Stream) ->
-    is_authorized_for_bucket(Username, Bucket).
+can_do_on_bucket(Ctx, Bucket, Action) ->
+    can_do_on(Action, {<<"default">>, Bucket}, Ctx).
 
-username_from_session(nil)              -> nil;
-username_from_session(undefined)        -> nil;
-username_from_session({Username, _, _}) -> Username.
+can_do_on_stream(Ctx, Bucket, Stream, Action) ->
+    can_do_on(Action, {Bucket, Stream}, Ctx).
+
+is_authorized_for_bucket(Ctx, nil, _Bucket, _Action) ->
+    {false, "No user", Ctx};
+is_authorized_for_bucket(Ctx, <<"admin">>, _Bucket, _Action) -> {true, Ctx};
+is_authorized_for_bucket(Ctx, Username, Username, _Action)   -> {true, Ctx};
+is_authorized_for_bucket(Ctx, _Username, Bucket, Action)   ->
+    can_do_on_bucket(Ctx, Bucket, Action).
+
+is_authorized_for_stream(Ctx, nil, _Bucket, _Stream, _Action) ->
+    {false, "No user", Ctx};
+is_authorized_for_stream(Ctx, <<"admin">>, _Bucket, _Stream, _Action) -> {true, Ctx};
+is_authorized_for_stream(Ctx, Username, Username, _Stream, _Action)   -> {true, Ctx};
+is_authorized_for_stream(Ctx, Username, Bucket, Stream, Action) ->
+    case is_authorized_for_bucket(Ctx, Username, Bucket, Action) of
+        {true, _NewCtx}=Result -> Result;
+        _Other -> can_do_on_stream(Ctx, Bucket, Stream, Action)
+    end.
 
 % Bucket is the atom all when operating on all buckets
 handle_is_authorized_for(Req, Secret, State, GetSession, SetSession, CheckAuth) ->
     Res = handle_is_authorized(Req, Secret, State, SetSession),
     {AuthOk, Req1, State1} = Res,
-    Username = username_from_session(GetSession(State1)),
+    Session = GetSession(State1),
+    {Username, SessionBody, Ctx} = Session,
     if AuthOk ->
-           IsAuthorized = CheckAuth(Username),
-           if IsAuthorized -> Res;
-              true ->
+           case CheckAuth(Ctx, Username) of
+               {true, NewCtx} ->
+                   NewSession = {Username, SessionBody, NewCtx},
+                   State2 = SetSession(State1, NewSession),
+                   {true, Req1, State2};
+               {false, Reason, NewCtx} ->
+                  lager:info("unauthorized ~p", [Reason]),
+                  NewSession = {Username, SessionBody, NewCtx},
+                  State2 = SetSession(State1, NewSession),
                   Req2 = iorio_http:no_permission(Req1),
-                  {{false, <<"jwt">>}, Req2, State}
+                  {{false, <<"jwt">>}, Req2, State2}
            end;
        true -> Res
     end.
 
-handle_is_authorized_for_bucket(Req, Secret, State, GetSession, SetSession, Bucket) ->
-    CheckAuth = fun (Username) -> is_authorized_for_bucket(Username, Bucket) end,
+handle_is_authorized_for_bucket(Req, Secret, State, GetSession, SetSession, Bucket, Action) ->
+    CheckAuth = fun (Ctx, Username) ->
+                        is_authorized_for_bucket(Ctx, Username, Bucket, Action)
+                end,
     handle_is_authorized_for(Req, Secret, State, GetSession, SetSession, CheckAuth).
 
-handle_is_authorized_for_stream(Req, Secret, State, GetSession, SetSession, Bucket, Stream) ->
-    CheckAuth = fun (Username) -> is_authorized_for_stream(Username, Bucket, Stream) end,
+handle_is_authorized_for_stream(Req, Secret, State, GetSession, SetSession,
+                                Bucket, Stream, Action) ->
+    CheckAuth = fun (Ctx, Username) ->
+                        is_authorized_for_stream(Ctx, Username, Bucket, Stream, Action)
+                end,
     handle_is_authorized_for(Req, Secret, State, GetSession, SetSession, CheckAuth).

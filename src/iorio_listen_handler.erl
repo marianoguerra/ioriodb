@@ -7,6 +7,7 @@
 
 -include_lib("sblob/include/sblob.hrl").
 -include("priv/include/listener.hrl").
+-include("include/iorio.hrl").
 
 init(_Transport, Req, [_, {secret, Secret}|_]=Opts, _Active) ->
     Iorio = proplists:get_value(iorio, Opts, iorio),
@@ -86,7 +87,7 @@ handle_ping(_Msg, Id, Req, State) ->
 fail(Msg, Id, State) ->
     {encode_error(Msg, Id), State}.
 
-with_stream(Fn, Msg, Id, Req, State=#state{session={Username, _, _}}) ->
+with_stream(Fn, Msg, Id, Req, State=#state{session={Username, _, Ctx}}) ->
     {Body, NewState} = case get_channel_args(Msg) of
                {undefined, undefined} ->
                                fail(<<"missing bucket and stream">>, Id, State);
@@ -95,7 +96,8 @@ with_stream(Fn, Msg, Id, Req, State=#state{session={Username, _, _}}) ->
                {_, undefined} ->
                                fail(<<"missing stream">>, Id, State);
                {Bucket, Stream} ->
-                               AuthOk = iorio_session:is_authorized_for_stream(Username, Bucket, Stream),
+                               Action = ?PERM_STREAM_GET,
+                               AuthOk = iorio_session:is_authorized_for_stream(Ctx, Username, Bucket, Stream, Action),
                                if AuthOk -> Fn(Bucket, Stream);
                                   true -> fail(<<"unauthorized">>, Id, State)
                                end

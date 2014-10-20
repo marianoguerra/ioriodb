@@ -10,6 +10,7 @@
          to_json/2]).
 
 -record(state, {bucket, secret, session=nil}).
+-include("include/iorio.hrl").
 
 init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
@@ -30,9 +31,12 @@ get_session(#state{session=Session}) -> Session.
 set_session(State, Session) -> State#state{session=Session}.
 
 is_authorized(Req, State=#state{secret=Secret, bucket=Bucket}) ->
+    Action = ?PERM_BUCKET_LIST,
     GetSession = fun get_session/1,
     SetSession = fun set_session/2,
-    iorio_session:handle_is_authorized_for_bucket(Req, Secret, State, GetSession, SetSession, Bucket).
+    iorio_session:handle_is_authorized_for_bucket(Req, Secret, State,
+                                                  GetSession, SetSession,
+                                                  Bucket, Action).
 
 response_to_json(Req, State, Response) ->
     {Status, Data} = case Response of

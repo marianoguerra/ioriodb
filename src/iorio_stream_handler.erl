@@ -15,6 +15,7 @@
 -record(state, {bucket, stream, from_sn, limit, secret, session=nil}).
 
 -include_lib("sblob/include/sblob.hrl").
+-include("include/iorio.hrl").
 
 to_int_or(Bin, Default) ->
     Str = binary_to_list(Bin),
@@ -42,12 +43,23 @@ allowed_methods(Req, State) -> {[<<"GET">>, <<"POST">>], Req, State}.
 get_session(#state{session=Session}) -> Session.
 set_session(State, Session) -> State#state{session=Session}.
 
+action_for_method(<<"POST">>) ->
+    ?PERM_STREAM_PUT;
+action_for_method(<<"GET">>) ->
+    ?PERM_STREAM_GET.
+
+action_for_request(Req) ->
+    {Method, Req1} = cowboy_req:method(Req),
+    Action = action_for_method(Method),
+    {Req1, Action}.
+
 is_authorized(Req, State=#state{secret=Secret, bucket=Bucket, stream=Stream}) ->
     GetSession = fun get_session/1,
     SetSession = fun set_session/2,
-    iorio_session:handle_is_authorized_for_stream(Req, Secret, State,
+    {Req1, Action} = action_for_request(Req),
+    iorio_session:handle_is_authorized_for_stream(Req1, Secret, State,
                                                   GetSession, SetSession,
-                                                  Bucket, Stream).
+                                                  Bucket, Stream, Action).
 
 content_types_accepted(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, from_json}], Req, State}.
