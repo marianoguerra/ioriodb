@@ -1,7 +1,12 @@
--define(PERM_STREAM_GET, "iorio-stream.get").
--define(PERM_STREAM_PUT, "iorio-stream.put").
+-define(PERM_GET, "iorio.get").
 
--define(PERM_BUCKET_GET, "iorio-bucket.get").
--define(PERM_BUCKET_PUT, "iorio-bucket.put").
+-define(PERM_STREAM_GET, "iorio.get").
+-define(PERM_STREAM_PUT, "iorio.put").
+-define(PERM_STREAM_GRANT, "iorio.grant").
 
--define(PERM_BUCKET_LIST, "iorio-bucket.list").
+-define(PERM_BUCKET_GET, "iorio.get").
+-define(PERM_BUCKET_PUT, "iorio.put").
+-define(PERM_BUCKET_GRANT, "iorio.grant").
+
+-define(PERM_BUCKET_LIST, "iorio.list").
+

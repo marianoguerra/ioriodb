@@ -32,6 +32,8 @@ start(_StartType, _StartArgs) ->
                {"/streams/:bucket", iorio_list_handler, [{secret, ApiSecret}]},
                {"/streams/:bucket/:stream", iorio_stream_handler, [{secret, ApiSecret}]},
                {"/buckets/", iorio_list_handler, [{secret, ApiSecret}]},
+               {"/access/:bucket/", iorio_access_handler, [{secret, ApiSecret}]},
+               {"/access/:bucket/:stream", iorio_access_handler, [{secret, ApiSecret}]},
 
                {"/sessions", iorio_session_handler, [{secret, ApiSecret}, {algorithm, ApiAlgorithm}]},
                {"/users/", iorio_user_handler, [{secret, ApiSecret}]},

@@ -1,6 +1,9 @@
 -module(iorio_session).
 -export([from_request/2,
          session_from_token/2,
+         permission_to_internal/3,
+         grant/4,
+         revoke/4,
          is_authorized_for_bucket/4,
          is_authorized_for_stream/5,
          handle_is_authorized/3,
@@ -9,6 +12,29 @@
          handle_is_authorized_for_stream/8]).
 
 -include_lib("jwt/include/jwt.hrl").
+-include("include/iorio.hrl").
+
+permission_to_internal(_Bucket, all, <<"get">>) -> ?PERM_BUCKET_GET;
+permission_to_internal(_Bucket, all, <<"put">>) -> ?PERM_BUCKET_PUT;
+permission_to_internal(_Bucket, all, <<"list">>) -> ?PERM_BUCKET_LIST;
+permission_to_internal(_Bucket, all, <<"grant">>) -> ?PERM_BUCKET_GRANT;
+
+permission_to_internal(_Bucket, _Stream, <<"get">>) -> ?PERM_STREAM_GET;
+permission_to_internal(_Bucket, _Stream, <<"put">>) -> ?PERM_STREAM_PUT;
+permission_to_internal(_Bucket, _Stream, <<"grant">>) -> ?PERM_STREAM_GRANT;
+permission_to_internal(_Bucket, _Stream, _Perm) -> notfound.
+
+grant(Username, Bucket, all, Permission) ->
+    riak_core_security:add_grant([Username], Bucket, [Permission]);
+
+grant(Username, Bucket, Stream, Permission) ->
+    riak_core_security:add_grant([Username], {Bucket, Stream}, [Permission]).
+
+revoke(Username, Bucket, all, Permission) ->
+    riak_core_security:add_revoke([Username], Bucket, [Permission]);
+
+revoke(Username, Bucket, Stream, Permission) ->
+    riak_core_security:add_revoke([Username], {Bucket, Stream}, [Permission]).
 
 get_security_context(Username) ->
     % TODO: don't try catch
@@ -66,7 +92,7 @@ can_do_on(Action, Thing, Ctx) ->
     riak_core_security:check_permissions({Action, Thing}, Ctx).
 
 can_do_on_bucket(Ctx, Bucket, Action) ->
-    can_do_on(Action, {<<"default">>, Bucket}, Ctx).
+    can_do_on(Action, Bucket, Ctx).
 
 can_do_on_stream(Ctx, Bucket, Stream, Action) ->
     can_do_on(Action, {Bucket, Stream}, Ctx).
