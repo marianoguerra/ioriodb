@@ -273,6 +273,20 @@ in another one::
     ./dev/dev2/bin/iorio-admin cluster plan; \
     ./dev/dev2/bin/iorio-admin cluster commit
 
+Tunning
+-------
+
+this section is a draft for now.
+
+you may want to increase some environment variables, just as an example::
+
+    ERL_MAX_PORTS=65536
+    ERL_PROCESSES=250000
+    ERL_MAX_ETS_TABLES=20000
+
+also see the following post to get some tips:
+
+http://www.metabrew.com/article/a-million-user-comet-application-with-mochiweb-part-1
 
 License
 -------
