@@ -231,7 +231,7 @@ class Inserter(threading.Thread):
                 if self.count % 500 == 0:
                     log('%d inserts' % self.count)
 
-                if response.status_code != 200:
+                if response.status_code != 201:
                     self.errors += 1
                     log('error sending data', response.status_code)
                     pprint.pprint(data)
