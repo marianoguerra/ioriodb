@@ -1,5 +1,5 @@
 -module(iorio_cbuf).
--export([new/1, new/2, add/2, takewhile_reverse/2]).
+-export([new/1, new/2, add/2, remove_percentage/2, size/1, takewhile_reverse/2]).
 
 % a kind of circular buffer that is only useful for iorio_channel to keep the
 % last N events, it has a MinSize and a MaxSize to avoid calling sublist on
@@ -22,6 +22,13 @@ add({MinSize, MaxSize, Size, Items}, Item) when Size >= MaxSize ->
 
 add({MinSize, MaxSize, Size, Items}, Item) ->
     {MinSize, MaxSize, Size + 1, [Item|Items]}.
+
+size({_MinSize, _MaxSize, Size, _Items}) -> Size.
+
+remove_percentage({MinSize, MaxSize, Size, Items}, Percentage) ->
+    NewItemCount = trunc(Size * Percentage),
+    NewItems = lists:sublist(Items, MinSize),
+    {MinSize, MaxSize, NewItemCount, NewItems}.
 
 takewhile_reverse({_MinSize, _MaxSize, _Size, Items}, Fun) ->
     lists:takewhile(Fun, Items).

@@ -247,7 +247,7 @@ handle_info({'DOWN', _MonitorRef, process, Pid, _Info},
     % DOWN events
     NewBuckets = sblob_preg:remove_reverse(Buckets, Pid),
     NewChannels = sblob_preg:remove_reverse(Channels, Pid),
-    {noreply, State#state{buckets=NewBuckets, channels=NewChannels}}.
+    {ok, State#state{buckets=NewBuckets, channels=NewChannels}}.
 
 terminate(_Reason, State=#state{partition=Partition}) ->
     lager:info("terminate ~p", [Partition]),

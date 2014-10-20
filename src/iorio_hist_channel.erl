@@ -7,7 +7,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
 
--record(state, {buffer, channel}).
+-record(state, {buffer, channel, check_interval_ms=30000}).
 -include_lib("sblob/include/sblob.hrl").
 
 %% API
@@ -40,34 +40,49 @@ init([BufferSize]) ->
     Buffer = iorio_cbuf:new(BufferSize),
     {ok, Channel} = iorio_channel:new(),
     State = #state{channel=Channel, buffer=Buffer},
-    {ok, State}.
+    {ok, State, State#state.check_interval_ms}.
 
 handle_call({subscribe, Pid, nil}, _From, State=#state{channel=Channel}) ->
     iorio_channel:subscribe(Channel, Pid),
-    {reply, ok, State};
+    {reply, ok, State, State#state.check_interval_ms};
 
 handle_call({subscribe, Pid, FromSeqNum}, _From, State=#state{channel=Channel, buffer=Buffer}) ->
     do_replay(Pid, FromSeqNum, Buffer),
     iorio_channel:subscribe(Channel, Pid),
-    {reply, ok, State};
+    {reply, ok, State, State#state.check_interval_ms};
 
 handle_call({unsubscribe, Pid}, _From, State=#state{channel=Channel}) ->
     iorio_channel:unsubscribe(Channel, Pid),
-    {reply, ok, State};
+    {reply, ok, State, State#state.check_interval_ms};
 
 handle_call({send, Event}, _From, State=#state{channel=Channel, buffer=Buffer}) ->
     NewBuffer = iorio_cbuf:add(Buffer, Event),
     NewState = State#state{buffer=NewBuffer},
     iorio_channel:send(Channel, Event),
-    {reply, ok, NewState};
+    {reply, ok, NewState, State#state.check_interval_ms};
 
 handle_call({replay, Pid, FromSeqNum}, _From, State=#state{buffer=Buffer}) ->
     do_replay(Pid, FromSeqNum, Buffer),
-    {reply, ok, State}.
+    {reply, ok, State, State#state.check_interval_ms}.
 
 handle_cast(Msg, State) ->
     io:format("Unexpected handle cast message: ~p~n", [Msg]),
     {noreply, State}.
+
+handle_info(timeout, State=#state{buffer=Buffer}) ->
+    NewBuffer = iorio_cbuf:remove_percentage(Buffer, 0.5),
+    NewBufferSize = iorio_cbuf:size(NewBuffer),
+    NewState = State#state{buffer=NewBuffer},
+
+    if
+        NewBufferSize == 0 ->
+            lager:info("channel buffer empty, stopping channel"),
+            {stop, normal, NewState};
+        true ->
+            lager:debug("reduced channel buffer because of inactivity to ~p items",
+                      [NewBufferSize]),
+            {noreply, NewState, State#state.check_interval_ms}
+    end;
 
 handle_info(Msg, State) ->
     io:format("Unexpected handle info message: ~p~n",[Msg]),
