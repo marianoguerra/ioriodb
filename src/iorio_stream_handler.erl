@@ -79,15 +79,17 @@ to_json(Req, State=#state{bucket=Bucket, stream=Stream, from_sn=From, limit=Limi
 
     {jsx:encode(Items), Req, State}.
 
-store_blob(Bucket, Stream, Body) ->
-    {ok, SblobEntry} = iorio:put(Bucket, Stream, Body),
-    ResultJson = sblob_to_json(SblobEntry),
-    jsx:encode(ResultJson).
-
 store_blob_and_reply(Req, State, Bucket, Stream, Body) ->
-    Result = store_blob(Bucket, Stream, Body),
-    Req1 = cowboy_req:set_resp_body(Result, Req),
-    {true, Req1, State}.
+    case iorio:put(Bucket, Stream, Body) of
+        {ok, SblobEntry} ->
+            ResultJson = sblob_to_json(SblobEntry),
+            Result = jsx:encode(ResultJson),
+            Req1 = cowboy_req:set_resp_body(Result, Req),
+            {true, Req1, State};
+        {error, Reason} ->
+            Req1 = iorio_http:error(Req, <<"error">>, Reason),
+            {false, Req1, State}
+    end.
 
 from_json(Req, State=#state{bucket=Bucket, stream=Stream}) ->
     {ok, Body, Req1} = cowboy_req:body(Req),
