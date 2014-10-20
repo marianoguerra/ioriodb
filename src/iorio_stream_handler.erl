@@ -8,6 +8,7 @@
          content_types_accepted/2,
          content_types_provided/2,
          is_authorized/2,
+         resource_exists/2,
          from_json/2,
          to_json/2
         ]).
@@ -39,6 +40,14 @@ rest_init(Req, [{secret, Secret}]) ->
                       limit=Limit, secret=Secret}}.
 
 allowed_methods(Req, State) -> {[<<"GET">>, <<"POST">>], Req, State}.
+
+resource_exists(Req, State) ->
+    {Method, Req1} = cowboy_req:method(Req),
+    Exists = case Method of
+                 <<"POST">> -> false;
+                 _ -> true
+             end,
+    {Exists, Req1, State}.
 
 get_session(#state{session=Session}) -> Session.
 set_session(State, Session) -> State#state{session=Session}.
@@ -85,7 +94,10 @@ store_blob_and_reply(Req, State, Bucket, Stream, Body) ->
             ResultJson = sblob_to_json(SblobEntry),
             Result = jsx:encode(ResultJson),
             Req1 = cowboy_req:set_resp_body(Result, Req),
-            {true, Req1, State};
+            SeqNum = SblobEntry#sblob_entry.seqnum,
+            UriStr = io_lib:format("/streams/~s/~s/?limit=1&from=~p",
+                                   [Bucket, Stream, SeqNum]),
+            {{true, UriStr}, Req1, State};
         {error, Reason} ->
             Req1 = iorio_http:error(Req, <<"error">>, Reason),
             {false, Req1, State}

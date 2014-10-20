@@ -25,7 +25,7 @@ def authenticate(rsession, host, port, username, password):
     req_body = dict(username=username, password=password)
     response = post_data_json(rsession, url, req_body)
     body = json.loads(response.text)
-    if response.status_code == 200:
+    if response.status_code == 201:
         return body.get("ok"), body.get("token")
     else:
         return False, None

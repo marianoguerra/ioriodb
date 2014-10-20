@@ -6,6 +6,7 @@
          rest_terminate/2,
          allowed_methods/2,
          is_authorized/2,
+         resource_exists/2,
          content_types_accepted/2,
          from_json/2]).
 
@@ -17,6 +18,14 @@ rest_init(Req, [{secret, Secret}]) ->
 	{ok, Req, #state{secret=Secret}}.
 
 allowed_methods(Req, State) -> {[<<"POST">>], Req, State}.
+
+resource_exists(Req, State) ->
+    {Method, Req1} = cowboy_req:method(Req),
+    Exists = case Method of
+                 <<"POST">> -> false;
+                 _ -> true
+             end,
+    {Exists, Req1, State}.
 
 content_types_accepted(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, from_json}], Req, State}.
@@ -67,7 +76,8 @@ create_user(Username, Password, Req) ->
     lager:info("creating user '~s'", [Username]),
     case iorio_user:create(Username, Password) of
         ok ->
-            {true, iorio_http:response(<<"{\"ok\": true}">>, Req)};
+            UriStr = io_lib:format("/users/~s", [Username]),
+            {{true, UriStr}, iorio_http:response(<<"{\"ok\": true}">>, Req)};
         {error, role_exists} ->
             lager:error("creating existing user '~s'", [Username]),
             {false, iorio_http:response(<<"{\"type\": \"user-exists\"}">>, Req)};

@@ -8,6 +8,7 @@
          content_types_accepted/2,
          content_types_provided/2,
          is_authorized/2,
+         resource_exists/2,
          from_json/2,
          to_json/2
         ]).
@@ -23,6 +24,14 @@ rest_init(Req, [{secret, Secret}, {algorithm, Algorithm}]) ->
 
 allowed_methods(Req, State) ->
     {[<<"GET">>, <<"POST">>], Req, State}.
+
+resource_exists(Req, State) ->
+    {Method, Req1} = cowboy_req:method(Req),
+    Exists = case Method of
+                 <<"POST">> -> false;
+                 _ -> true
+             end,
+    {Exists, Req1, State}.
 
 content_types_accepted(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, from_json}], Req, State}.
@@ -62,7 +71,7 @@ from_json(Req, State=#state{secret=Secret, algorithm=Algorithm}) ->
 
     ResultJsonBin = jsx:encode(ResultJson),
     Req2 = cowboy_req:set_resp_body(ResultJsonBin, Req1),
-    {true, Req2, State}.
+    {{true, <<"/session">>}, Req2, State}.
 
 rest_terminate(_Req, _State) ->
 	ok.

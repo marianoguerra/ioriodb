@@ -13,8 +13,7 @@ USER_PASS = 'secreto'
 
 
 OK_STATUS = 200
-# TODO: change for 201
-CREATED_STATUS = 200
+CREATED_STATUS = 201
 BAD_REQUEST_STATUS = 400
 UNAUTHORIZED_STATUS = 401
 
@@ -180,13 +179,13 @@ def test_cant_grant_other_bucket(session, args, token, user, user1):
 def test_can_grant_own_bucket(session, args, token, user, user1):
     bucket = user
     result, body = grant_bucket(session, args, token, bucket, 'put', user1)
-    assert result.status_code == CREATED_STATUS
+    assert result.status_code == OK_STATUS 
     assert_field(body, "ok", True)
 
 def test_can_revoke_own_bucket(session, args, token, user, user1):
     bucket = user
     result, body = revoke_bucket(session, args, token, bucket, 'put', user1)
-    assert result.status_code == CREATED_STATUS
+    assert result.status_code == OK_STATUS
     assert_field(body, "ok", True)
 
 def test_can_put_other_granted_bucket(session, args, token, owner):
@@ -217,7 +216,7 @@ def test_can_grant_own_stream(session, args, token, user, user1):
     stream = "stream1"
     result, body = grant_stream(session, args, token, bucket, 'put', stream,
             user1)
-    assert result.status_code == CREATED_STATUS
+    assert result.status_code == OK_STATUS
     assert_field(body, "ok", True)
 
 def test_can_revoke_own_stream(session, args, token, user, user1):
@@ -225,7 +224,7 @@ def test_can_revoke_own_stream(session, args, token, user, user1):
     stream = "stream1"
     result, body = revoke_stream(session, args, token, bucket, stream, 'put',
             user1)
-    assert result.status_code == CREATED_STATUS
+    assert result.status_code == OK_STATUS
     assert_field(body, "ok", True)
 
 def test_can_put_other_granted_stream(session, args, token, owner):
