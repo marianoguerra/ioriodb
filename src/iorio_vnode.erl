@@ -77,13 +77,13 @@ init([Partition]) ->
 handle_command(ping, _Sender, State) ->
     {reply, {pong, State#state.partition}, State};
 
-handle_command({put, ReqId, BucketName, Stream, Data}, _Sender, State) ->
+handle_command({put, ReqId, BucketName, Stream, Data}, Sender, State) ->
     lager:debug("put ~p", [{ReqId, BucketName, Stream}]),
     Timestamp = sblob_util:now(),
-    {State1, Entry} = do_put(State, BucketName, Stream, Timestamp, Data),
+    {State1, Bucket} = get_bucket(State, BucketName),
     {NewState, Channel} = get_channel(State1, BucketName, Stream),
-    iorio_hist_channel:send(Channel, {entry, BucketName, Stream, Entry}),
-    {reply, {ReqId, Entry}, NewState};
+    do_put_cb(Bucket, BucketName, Stream, Timestamp, Data, ReqId, Sender, Channel),
+    {noreply, NewState};
 
 handle_command({get, BucketName, Stream, From, Count}, _Sender,
                State=#state{partition=Partition}) ->
@@ -373,9 +373,19 @@ get_channel(State=#state{channels=Channels, channels_sup=ChannelsSup}, BucketNam
             {State, Channel}
     end.
 
-do_put(State=#state{partition=Partition}, BucketName, Stream, Timestamp, Data) ->
-    lager:debug("put ~s ~s at ~p", [BucketName, Stream, Partition]),
+
+do_put(State, BucketName, Stream, Timestamp, Data) ->
     {NewState, Bucket} = get_bucket(State, BucketName),
     Entry = gblob_bucket:put(Bucket, Stream, Timestamp, Data),
     {NewState, Entry}.
+
+
+do_put_cb(Bucket, BucketName, Stream, Timestamp, Data, ReqId, Sender, Channel) ->
+    Callback = fun (Entry) ->
+                       riak_core_vnode:reply(Sender, {ReqId, Entry}),
+                       iorio_hist_channel:send(Channel, {entry, BucketName, Stream, Entry}),
+                       ok
+               end,
+    gblob_bucket:put_cb(Bucket, Stream, Timestamp, Data, Callback),
+    ok.
 
