@@ -76,23 +76,30 @@ content_types_accepted(Req, State) ->
 content_types_provided(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, to_json}], Req, State}.
 
-sblob_to_json(#sblob_entry{seqnum=SeqNum, timestamp=Timestamp, data=_Data}) ->
-    [{meta, [{id, SeqNum}, {t, Timestamp}]}].
+%sblob_to_json(#sblob_entry{seqnum=SeqNum, timestamp=Timestamp, data=_Data}) ->
+%    [{meta, [{id, SeqNum}, {t, Timestamp}]}].
+
+%sblob_to_json_full(#sblob_entry{seqnum=SeqNum, timestamp=Timestamp, data=Data}) ->
+%    [{meta, [{id, SeqNum}, {t, Timestamp}]}, {data, jsx:decode(Data)}].
 
 sblob_to_json_full(#sblob_entry{seqnum=SeqNum, timestamp=Timestamp, data=Data}) ->
-    [{meta, [{id, SeqNum}, {t, Timestamp}]}, {data, jsx:decode(Data)}].
+    ["{\"meta\":{\"id\":", integer_to_list(SeqNum), ",\"t\":",
+     integer_to_list(Timestamp), "}, \"data\":", Data, "}"].
 
 to_json(Req, State=#state{bucket=Bucket, stream=Stream, from_sn=From, limit=Limit}) ->
     Blobs = iorio:get(Bucket, Stream, From, Limit),
-    Items = lists:map(fun sblob_to_json_full/1, Blobs),
+    ItemList = lists:map(fun sblob_to_json_full/1, Blobs),
+    ItemsJoined = string:join(ItemList, ","),
+    Items = ["[", ItemsJoined, "]"],
 
-    {jsx:encode(Items), Req, State}.
+    {Items, Req, State}.
 
 store_blob_and_reply(Req, State, Bucket, Stream, Body) ->
     case iorio:put(Bucket, Stream, Body) of
         {ok, SblobEntry} ->
-            ResultJson = sblob_to_json(SblobEntry),
-            Result = jsx:encode(ResultJson),
+            #sblob_entry{seqnum=SeqNum, timestamp=Timestamp} = SblobEntry,
+            Result = ["{\"meta\":{\"id\":", integer_to_list(SeqNum), ",\"t\":",
+                      integer_to_list(Timestamp), "}}"],
             Req1 = cowboy_req:set_resp_body(Result, Req),
             SeqNum = SblobEntry#sblob_entry.seqnum,
             UriStr = io_lib:format("/streams/~s/~s/?limit=1&from=~p",
