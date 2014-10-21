@@ -15,7 +15,7 @@
 init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
 rest_init(Req, [{secret, Secret}]) ->
-    {Bucket, Req1} = cowboy_req:binding(bucket, Req, all),
+    {Bucket, Req1} = cowboy_req:binding(bucket, Req, any),
 	{ok, Req1, #state{bucket=Bucket, secret=Secret}}.
 
 allowed_methods(Req, State) -> {[<<"GET">>], Req, State}.
@@ -51,7 +51,7 @@ response_to_json(Req, State, Response) ->
 
     {jsx:encode([{status, Status}, {data, UniqueItems}]), Req, State}.
 
-to_json(Req, State=#state{bucket=all}) ->
+to_json(Req, State=#state{bucket=any}) ->
     response_to_json(Req, State, iorio:list());
 to_json(Req, State=#state{bucket=Bucket}) ->
     response_to_json(Req, State, iorio:list(Bucket)).

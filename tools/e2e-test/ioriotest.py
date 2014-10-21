@@ -159,8 +159,14 @@ def revoke_stream(session, args, token, bucket, stream, access, username):
     return call_access_stream(session, args, token, bucket, stream, access,
             username, "revoke")
 
-def list_bucket(session, args, token, bucket):
+def list_streams(session, args, token, bucket):
     url = iorio.format_url(args.host, args.port, 'streams', bucket)
+    result = iorio.get_json(session, url, token)
+    body = parse(result.text)
+    return result, body
+
+def list_buckets(session, args, token):
+    url = iorio.format_url(args.host, args.port, 'buckets')
     result = iorio.get_json(session, url, token)
     body = parse(result.text)
     return result, body
@@ -188,30 +194,42 @@ def test_can_grant_own_bucket(session, args, token, user, user1):
     assert result.status_code == OK_STATUS
     assert_field(body, "ok", True)
 
-def test_can_grant_list_bucket(session, args, token, user, user1):
+def test_can_grant_list_streams(session, args, token, user, user1):
     bucket = user
     result, body = grant_bucket(session, args, token, bucket, 'list', user1)
     assert result.status_code == OK_STATUS
     assert_field(body, "ok", True)
 
-def test_can_list_own_bucket(session, args, token, user):
+def test_can_list_own_streams(session, args, token, user):
     bucket = user
-    result, body = list_bucket(session, args, token, bucket)
+    result, body = list_streams(session, args, token, bucket)
     assert result.status_code == OK_STATUS
     assert_field(body, 'status', 'ok')
     assert 'stream1' in body['data']
 
-def test_cant_list_other_bucket(session, args, token, user):
+def test_cant_list_other_streams(session, args, token, user):
     bucket = user
-    result, body = list_bucket(session, args, token, bucket)
+    result, body = list_streams(session, args, token, bucket)
     assert result.status_code == UNAUTHORIZED_STATUS
     assert_no_perm(result)
 
-def test_can_list_other_bucket(session, args, token, user):
+def test_can_list_other_streams(session, args, token, user):
     bucket = user
-    result, body = list_bucket(session, args, token, bucket)
+    result, body = list_streams(session, args, token, bucket)
+    assert result.status_code == OK_STATUS
     assert_field(body, 'status', 'ok')
     assert 'stream1' in body['data']
+
+def test_can_list_buckets(session, args, token, user):
+    result, body = list_buckets(session, args, token)
+    assert result.status_code == OK_STATUS
+    assert_field(body, 'status', 'ok')
+    assert user in body['data']
+
+def test_cant_list_buckets(session, args, token, _user):
+    result, _body = list_buckets(session, args, token)
+    assert result.status_code == UNAUTHORIZED_STATUS
+    assert_no_perm(result)
 
 def test_can_revoke_own_bucket(session, args, token, user, user1, perm='put'):
     bucket = user
@@ -280,8 +298,9 @@ def test():
     asession = requests.session()
 
     args = parse_args()
-    ok, admin_token = iorio.authenticate(asession, args.host, args.port,
-            args.adminusername, args.adminpassword)
+    admin = args.adminusername
+    ok, admin_token = iorio.authenticate(asession, args.host, args.port, admin,
+            args.adminpassword)
 
     if not ok:
         log('admin authentication failed')
@@ -348,12 +367,15 @@ def test():
 
     test_cant_put_other_stream(u1session, args, user1_token, user1, user)
 
-    test_can_list_own_bucket(usession, args, user_token, user)
-    test_cant_list_other_bucket(usession, args, user_token, user1)
-    test_can_grant_list_bucket(usession, args, user_token, user, user1)
-    test_can_list_other_bucket(u1session, args, user1_token, user)
+    test_can_list_own_streams(usession, args, user_token, user)
+    test_cant_list_other_streams(usession, args, user_token, user1)
+    test_can_grant_list_streams(usession, args, user_token, user, user1)
+    test_can_list_other_streams(u1session, args, user1_token, user)
     test_can_revoke_own_bucket(usession, args, user_token, user, user1, 'list')
-    test_cant_list_other_bucket(u1session, args, user1_token, user)
+    test_cant_list_other_streams(u1session, args, user1_token, user)
+
+    test_can_list_buckets(asession, args, admin_token, user)
+    test_cant_list_buckets(usession, args, user_token, user)
 
 if __name__ == '__main__':
     test()

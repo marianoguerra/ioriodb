@@ -14,23 +14,23 @@
 -include_lib("jwt/include/jwt.hrl").
 -include("include/iorio.hrl").
 
-permission_to_internal(_Bucket, all, <<"get">>) -> ?PERM_BUCKET_GET;
-permission_to_internal(_Bucket, all, <<"put">>) -> ?PERM_BUCKET_PUT;
-permission_to_internal(_Bucket, all, <<"list">>) -> ?PERM_BUCKET_LIST;
-permission_to_internal(_Bucket, all, <<"grant">>) -> ?PERM_BUCKET_GRANT;
+permission_to_internal(_Bucket, any, <<"get">>) -> ?PERM_BUCKET_GET;
+permission_to_internal(_Bucket, any, <<"put">>) -> ?PERM_BUCKET_PUT;
+permission_to_internal(_Bucket, any, <<"list">>) -> ?PERM_BUCKET_LIST;
+permission_to_internal(_Bucket, any, <<"grant">>) -> ?PERM_BUCKET_GRANT;
 
 permission_to_internal(_Bucket, _Stream, <<"get">>) -> ?PERM_STREAM_GET;
 permission_to_internal(_Bucket, _Stream, <<"put">>) -> ?PERM_STREAM_PUT;
 permission_to_internal(_Bucket, _Stream, <<"grant">>) -> ?PERM_STREAM_GRANT;
 permission_to_internal(_Bucket, _Stream, _Perm) -> notfound.
 
-grant(Username, Bucket, all, Permission) ->
+grant(Username, Bucket, any, Permission) ->
     riak_core_security:add_grant([Username], Bucket, [Permission]);
 
 grant(Username, Bucket, Stream, Permission) ->
     riak_core_security:add_grant([Username], {Bucket, Stream}, [Permission]).
 
-revoke(Username, Bucket, all, Permission) ->
+revoke(Username, Bucket, any, Permission) ->
     riak_core_security:add_revoke([Username], Bucket, [Permission]);
 
 revoke(Username, Bucket, Stream, Permission) ->
@@ -114,7 +114,7 @@ is_authorized_for_stream(Ctx, Username, Bucket, Stream, Action) ->
         _Other -> can_do_on_stream(Ctx, Bucket, Stream, Action)
     end.
 
-% Bucket is the atom all when operating on all buckets
+% Bucket is the atom any when operating on all buckets
 handle_is_authorized_for(Req, Secret, State, GetSession, SetSession, CheckAuth) ->
     Res = handle_is_authorized(Req, Secret, State, SetSession),
     {AuthOk, Req1, State1} = Res,

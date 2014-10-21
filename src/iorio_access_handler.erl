@@ -21,7 +21,7 @@ init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
 rest_init(Req, [{secret, Secret}]) ->
     {Bucket, Req1} = cowboy_req:binding(bucket, Req),
-    {Stream, Req2} = cowboy_req:binding(stream, Req1, all),
+    {Stream, Req2} = cowboy_req:binding(stream, Req1, any),
 	{ok, Req2, #state{secret=Secret, bucket=Bucket, stream=Stream}}.
 
 allowed_methods(Req, State) -> {[<<"POST">>], Req, State}.
@@ -53,7 +53,7 @@ terminate(_Reason, _Req, _State) ->
 
 % private api
 
-check_auth(Req, Secret, State, GetSession, SetSession, Bucket, all) ->
+check_auth(Req, Secret, State, GetSession, SetSession, Bucket, any) ->
     iorio_session:handle_is_authorized_for_bucket(Req, Secret, State,
                                                   GetSession, SetSession,
                                                   Bucket, ?PERM_BUCKET_GRANT);
