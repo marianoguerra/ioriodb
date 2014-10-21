@@ -159,6 +159,12 @@ def revoke_stream(session, args, token, bucket, stream, access, username):
     return call_access_stream(session, args, token, bucket, stream, access,
             username, "revoke")
 
+def list_bucket(session, args, token, bucket):
+    url = iorio.format_url(args.host, args.port, 'streams', bucket)
+    result = iorio.get_json(session, url, token)
+    body = parse(result.text)
+    return result, body
+
 def test_call_access_invalid_action(session, args, token, owner, username):
     bucket = owner
     stream = "stream1"
@@ -179,12 +185,37 @@ def test_cant_grant_other_bucket(session, args, token, user, user1):
 def test_can_grant_own_bucket(session, args, token, user, user1):
     bucket = user
     result, body = grant_bucket(session, args, token, bucket, 'put', user1)
-    assert result.status_code == OK_STATUS 
+    assert result.status_code == OK_STATUS
     assert_field(body, "ok", True)
 
-def test_can_revoke_own_bucket(session, args, token, user, user1):
+def test_can_grant_list_bucket(session, args, token, user, user1):
     bucket = user
-    result, body = revoke_bucket(session, args, token, bucket, 'put', user1)
+    result, body = grant_bucket(session, args, token, bucket, 'list', user1)
+    assert result.status_code == OK_STATUS
+    assert_field(body, "ok", True)
+
+def test_can_list_own_bucket(session, args, token, user):
+    bucket = user
+    result, body = list_bucket(session, args, token, bucket)
+    assert result.status_code == OK_STATUS
+    assert_field(body, 'status', 'ok')
+    assert 'stream1' in body['data']
+
+def test_cant_list_other_bucket(session, args, token, user):
+    bucket = user
+    result, body = list_bucket(session, args, token, bucket)
+    assert result.status_code == UNAUTHORIZED_STATUS
+    assert_no_perm(result)
+
+def test_can_list_other_bucket(session, args, token, user):
+    bucket = user
+    result, body = list_bucket(session, args, token, bucket)
+    assert_field(body, 'status', 'ok')
+    assert 'stream1' in body['data']
+
+def test_can_revoke_own_bucket(session, args, token, user, user1, perm='put'):
+    bucket = user
+    result, body = revoke_bucket(session, args, token, bucket, perm, user1)
     assert result.status_code == OK_STATUS
     assert_field(body, "ok", True)
 
@@ -316,6 +347,13 @@ def test():
     test_cant_put_other_revoked_bucket(u1session, args, user1_token, user)
 
     test_cant_put_other_stream(u1session, args, user1_token, user1, user)
+
+    test_can_list_own_bucket(usession, args, user_token, user)
+    test_cant_list_other_bucket(usession, args, user_token, user1)
+    test_can_grant_list_bucket(usession, args, user_token, user, user1)
+    test_can_list_other_bucket(u1session, args, user1_token, user)
+    test_can_revoke_own_bucket(usession, args, user_token, user, user1, 'list')
+    test_cant_list_other_bucket(u1session, args, user1_token, user)
 
 if __name__ == '__main__':
     test()
