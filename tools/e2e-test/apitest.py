@@ -63,8 +63,12 @@ def get_arg_parser():
                        help='number of streams to use per bucket')
     parser.add_argument('-i', '--iterations', default=10, type=int,
                        help='number of iterations to run')
-    parser.add_argument('-t', '--threads', default=cpu_count, type=int,
-                       help='number of threads to use')
+    parser.add_argument('-I', '--inserters', default=cpu_count, type=int,
+                       help='number of threads for inserters to use')
+    parser.add_argument('-L', '--listers', default=1, type=int,
+                       help='number of threads for listers to use')
+    parser.add_argument('-R', '--requesters', default=1, type=int,
+                       help='number of threads for requesters to use')
 
     return parser
 
@@ -279,15 +283,17 @@ def main():
     inserters = []
     requesters = []
     listers = []
-    for _ in range(args.threads):
+    for _ in range(args.inserters):
         inserter = Inserter(token, generators, args)
         inserter.start()
         inserters.append(inserter)
 
+    for _ in range(args.requesters):
         requester = QueryRequester(generators, args.host, args.port, token)
         requester.start()
         requesters.append(requester)
 
+    for _ in range(args.listers):
         bucket_lister = BucketLister(generators, args.host, args.port, token)
         bucket_lister.start()
         listers.append(bucket_lister)
@@ -295,7 +301,6 @@ def main():
     for inserter in inserters:
         inserter.join()
         log(inserter.format_summary())
-
 
     for requester in requesters:
         requester.stop = True
