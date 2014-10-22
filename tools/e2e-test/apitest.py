@@ -225,8 +225,14 @@ class Inserter(threading.Thread):
         for _ in range(loop_count):
             for generator in self.generators:
                 bucket, stream, data = generator.generate()
-                response = send(self.rsession, args.host, args.port, bucket,
-                        stream, data, self.token)
+                try:
+                    response = send(self.rsession, args.host, args.port, bucket,
+                            stream, data, self.token)
+                except Exception as error:
+                    self.errors += 1
+                    log('error sending data', error)
+                    continue
+
                 self.count += 1
 
                 if self.count % 500 == 0:
