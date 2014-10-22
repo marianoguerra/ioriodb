@@ -221,7 +221,8 @@ class Inserter(threading.Thread):
         args = self.args
         t_1 = time.time()
 
-        for _ in range(args.iterations):
+        loop_count = int(args.iterations / len(self.generators))
+        for _ in range(loop_count):
             for generator in self.generators:
                 bucket, stream, data = generator.generate()
                 response = send(self.rsession, args.host, args.port, bucket,
