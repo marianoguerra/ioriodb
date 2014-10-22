@@ -85,12 +85,15 @@ handle_command({put, ReqId, BucketName, Stream, Data}, Sender, State) ->
     do_put_cb(Bucket, BucketName, Stream, Timestamp, Data, ReqId, Sender, Channel),
     {noreply, NewState};
 
-handle_command({get, BucketName, Stream, From, Count}, _Sender,
+handle_command({get, BucketName, Stream, From, Count}, Sender,
                State=#state{partition=Partition}) ->
     lager:debug("get ~s ~s ~p ~p at ~p", [BucketName, Stream, From, Count, Partition]),
     {NewState, Bucket} = get_bucket(State, BucketName),
-    Entries = gblob_bucket:get(Bucket, Stream, From, Count),
-    {reply, Entries, NewState};
+    Callback = fun (Entries) ->
+                       riak_core_vnode:reply(Sender, Entries)
+               end,
+    gblob_bucket:get_cb(Bucket, Stream, From, Count, Callback),
+    {noreply, NewState};
 
 handle_command({subscribe, BucketName, Stream, FromSeqNum, Pid}, _Sender, State=#state{partition=Partition}) ->
     lager:debug("subscribe ~s ~s at ~p", [BucketName, Stream, Partition]),
