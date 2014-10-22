@@ -6,3 +6,7 @@ rel/iorio
 dev
 apps/iorio/src/*
 rel/vars/dev[0-9]_vars.config
+tools/e2e-test/__pycache__/
+scratch
+errors.txt
+notes.txt
