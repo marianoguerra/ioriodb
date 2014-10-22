@@ -12,6 +12,9 @@
 +K true
 +A 5
 
+# play with this flag if the vm crashes on startup
+#-smp enable
+
 ## Increase number of concurrent ports/sockets
 -env ERL_MAX_PORTS 16384
 
