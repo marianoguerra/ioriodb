@@ -1,4 +1,5 @@
 import json
+import urllib
 import requests
 
 def body_json(rsession, url, data, method, token=None, content_type='application/json'):
@@ -57,6 +58,11 @@ def list_buckets(rsession, host, port, token=None):
 
 def list_streams(rsession, host, port, bucket, token=None):
     url = format_url(host, port, "streams", bucket)
+    return get_json(rsession, url, token)
+
+def listen(rsession, host, port, subs, token=None):
+    url_base = format_url(host, port, "listen", jwt=urllib.parse.quote(token))
+    url = url_base + '&' + '&'.join(['s=%s' % sub for sub in subs])
     return get_json(rsession, url, token)
 
 def get_json(rsession, url, token=None):

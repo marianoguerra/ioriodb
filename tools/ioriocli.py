@@ -30,8 +30,8 @@ def get_arg_parser():
     p_list_buckets = subparsers.add_parser('list-buckets', help='list buckets')
     p_list_streams = subparsers.add_parser('list-streams', help='list streams')
     p_get = subparsers.add_parser('get', help='get content from a stream')
-    #p_listen = subparsers.add_parser('listen',
-    #help='listen to new content from streams')
+    p_listen = subparsers.add_parser('listen',
+            help='listen to new content from streams')
 
     #p_admin = subparsers.add_parser('admin', help='admin tasks')
 
@@ -64,6 +64,10 @@ def get_arg_parser():
 
     p_list_streams.set_defaults(action='list-streams')
     p_list_streams.add_argument('bucket', help='bucket name')
+
+    p_listen.set_defaults(action='listen')
+    p_listen.add_argument('subscriptions', nargs='+',
+        help="subscription descriptiors (bucket:stream or bucket:stream:from)")
 
     return parser
 
@@ -187,10 +191,89 @@ def handle_list_buckets(args):
 
     do_when_authenticated(args, fun)
 
+def parse_subscription(sub):
+    '''parse a subscription in notation bucket:stream[:from]'''
+
+    parts = sub.split(':')
+    parts_count = len(parts)
+
+    if parts_count == 2:
+        return True, parts + [None]
+    elif parts_count == 3:
+        try:
+            seqnum = int(parts[2])
+            return True, [parts[0], parts[1], seqnum]
+        except ValueError:
+            return (False, "expected subscription to have format " +
+                    "bucket:stream:from where from is a number, got %s" % sub)
+    else:
+        return (False, "expected subscription to have format " +
+                "bucket:stream[:from], got %s" % sub)
+
+def handle_listen(args):
+    '''listen to events in subscriptions'''
+    host = args.host
+    port = args.port
+
+    raw_subs = args.subscriptions
+    subs_by_stream = {}
+    for sub in raw_subs:
+        ok, result = parse_subscription(sub)
+        if not ok:
+            print(result)
+            return
+
+        bucket, stream, _count = result
+        key = bucket + ':' + stream
+        subs_by_stream[key] = result
+
+    def format_sub(parts):
+        '''format a sub to raw from a 3 item array where the last one may be
+        None'''
+        bucket, stream, count = parts
+
+        if count is None:
+            return bucket + ':' + stream
+        else:
+            return bucket + ':' + stream + ':' + str(count)
+
+    def fun(rsession, token):
+        '''fun that does the work'''
+        while True:
+            current_subs = [format_sub(p) for p in subs_by_stream.values()]
+            print('listening', ' '.join(current_subs))
+            response = iorio.listen(rsession, host, port, current_subs, token)
+            show_response(response)
+            print()
+            if response.status_code == 200:
+                body = json.loads(response.text)
+
+                for event in body:
+                    meta = event['meta']
+                    bucket = meta['bucket']
+                    stream = meta['stream']
+                    seqnum = meta['id']
+
+                    key = bucket + ':' + stream
+
+                    if key in subs_by_stream:
+                        current_count = subs_by_stream[key][2]
+                        if current_count is None or seqnum > current_count:
+                            subs_by_stream[key][2] = seqnum
+                    else:
+                        subs_by_stream[key] = [bucket, stream, seqnum]
+
+
+
+
+    do_when_authenticated(args, fun)
+
+
 HANDLERS = {
         'post': handle_post_event,
         'patch': handle_patch_event,
         'get': handle_get_events,
+        'listen': handle_listen,
         'list-buckets': handle_list_buckets,
         'list-streams': handle_list_streams
 }
