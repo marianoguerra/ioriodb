@@ -10,3 +10,4 @@ tools/e2e-test/__pycache__/
 scratch
 errors.txt
 notes.txt
+.rebar

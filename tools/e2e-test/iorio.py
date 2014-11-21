@@ -1,15 +1,21 @@
 import json
 
-def post_json(rsession, url, data, token=None):
-    headers = {'content-type': 'application/json'}
+def body_json(rsession, url, data, method, token=None, content_type='application/json'):
+    headers = {'content-type': content_type}
 
     if token:
         headers['x-session'] = token
 
-    return rsession.post(url, headers=headers, data=data)
+    return getattr(rsession, method)(url, headers=headers, data=data)
+
+def body_data_json(rsession, url, data, method, token=None, content_type='application/json'):
+    return body_json(rsession, url, json.dumps(data), method, token, content_type)
 
 def post_data_json(rsession, url, data, token=None):
-    return post_json(rsession, url, json.dumps(data), token)
+    return body_data_json(rsession, url, data, 'post', token)
+
+def patch_data_json(rsession, url, data, token=None):
+    return body_data_json(rsession, url, data, 'patch', token, 'application/json-patch+json')
 
 def format_url(host, port, *paths, **query_params):
     if query_params:
@@ -33,6 +39,10 @@ def authenticate(rsession, host, port, username, password):
 def send(rsession, host, port, bucket, stream, data, token=None):
     url = format_url(host, port, "streams", bucket, stream)
     return post_data_json(rsession, url, data, token)
+
+def patch(rsession, host, port, bucket, stream, data, token=None):
+    url = format_url(host, port, "streams", bucket, stream)
+    return patch_data_json(rsession, url, data, token)
 
 def get_json(rsession, url, token=None):
     headers = {'content-type': 'application/json'}

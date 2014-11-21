@@ -7,10 +7,10 @@
   {applications, [
                   kernel,
                   stdlib,
+                  sasl,
                   riak_core,
                   cowboy,
                   bullet,
-                  jsx,
                   lager
                  ]},
   {mod, { iorio_app, []}},

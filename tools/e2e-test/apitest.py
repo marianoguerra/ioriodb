@@ -69,6 +69,8 @@ def get_arg_parser():
                        help='number of threads for listers to use')
     parser.add_argument('-R', '--requesters', default=1, type=int,
                        help='number of threads for requesters to use')
+    parser.add_argument('-Q', '--patchers', default=1, type=int,
+                       help='number of threads for patchers to use')
 
     return parser
 
@@ -263,6 +265,70 @@ class Inserter(threading.Thread):
                 self.count, self.errors, self.t_diff,
                 (self.count / self.t_diff))
 
+class Patcher(threading.Thread):
+
+    def __init__(self, token, generators, args):
+        threading.Thread.__init__(self)
+        self.token = token
+        self.generators = generators
+        self.args = args
+        self.count = 0
+        self.errors = 0
+        self.t_diff = 0
+        self.rsession = requests.Session()
+
+    def run(self):
+        args = self.args
+        t_1 = time.time()
+
+        loop_count = int(args.iterations / len(self.generators))
+        for i in range(loop_count):
+            for generator in self.generators:
+                bucket, stream_base, _data = generator.generate()
+                stream = stream_base + 'patch'
+                data = [{"op": "add", "path": "/numbers/-", "value": i}]
+                try:
+                    response = patch(self.rsession, args.host, args.port, bucket,
+                            stream, data, self.token)
+
+                    if response.status_code in (400, 404):
+                        log("patch failed", response.status_code, "trying to create it", response.text)
+                        r1 = send(self.rsession, args.host, args.port, bucket,
+                                stream, {"data": "patch", "numbers": []}, self.token)
+                        log("patch creation", r1.status_code, bucket, stream)
+                        continue
+
+                except Exception as error:
+                    self.errors += 1
+                    log('error sending data', error)
+                    continue
+
+                self.count += 1
+
+                if self.count % 500 == 0:
+                    log('%d inserts' % self.count)
+
+                if response.status_code != 200:
+                    self.errors += 1
+                    log('error sending data', response.status_code)
+                    pprint.pprint(data)
+                    try:
+                        body = json.loads(response.text)
+                        log('error response')
+                        pprint.pprint(body)
+                    except ValueError:
+                        log('response is not json:', bucket, stream,
+                                response.status_code, response.text)
+
+
+        t_2 = time.time()
+        self.t_diff = t_2 - t_1
+
+    def format_summary(self):
+        return 'patched %d with %d write errors in %f s, %f events/s' % (
+                self.count, self.errors, self.t_diff,
+                (self.count / self.t_diff))
+
 def main():
     args = parse_args()
     log('using seed', args.seed)
@@ -281,12 +347,18 @@ def main():
             for i in range(args.buckets)]
 
     inserters = []
+    patchers = []
     requesters = []
     listers = []
     for _ in range(args.inserters):
         inserter = Inserter(token, generators, args)
         inserter.start()
         inserters.append(inserter)
+
+    for _ in range(args.patchers):
+        patcher = Patcher(token, generators, args)
+        patcher.start()
+        patchers.append(patcher)
 
     for _ in range(args.requesters):
         requester = QueryRequester(generators, args.host, args.port, token)
@@ -301,6 +373,10 @@ def main():
     for inserter in inserters:
         inserter.join()
         log(inserter.format_summary())
+
+    for patcher in patchers:
+        patcher.join()
+        log(patcher.format_summary())
 
     for requester in requesters:
         requester.stop = True

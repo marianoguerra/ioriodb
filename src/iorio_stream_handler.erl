@@ -10,6 +10,7 @@
          is_authorized/2,
          resource_exists/2,
          from_json/2,
+         from_json_patch/2,
          to_json/2
         ]).
 
@@ -39,7 +40,7 @@ rest_init(Req, [{secret, Secret}]) ->
 	{ok, Req4, #state{bucket=Bucket, stream=Stream, from_sn=FromSN,
                       limit=Limit, secret=Secret}}.
 
-allowed_methods(Req, State) -> {[<<"GET">>, <<"POST">>], Req, State}.
+allowed_methods(Req, State) -> {[<<"GET">>, <<"POST">>, <<"PATCH">>], Req, State}.
 
 resource_exists(Req, State) ->
     {Method, Req1} = cowboy_req:method(Req),
@@ -53,6 +54,8 @@ get_session(#state{session=Session}) -> Session.
 set_session(State, Session) -> State#state{session=Session}.
 
 action_for_method(<<"POST">>) ->
+    ?PERM_STREAM_PUT;
+action_for_method(<<"PATCH">>) ->
     ?PERM_STREAM_PUT;
 action_for_method(<<"GET">>) ->
     ?PERM_STREAM_GET.
@@ -71,7 +74,9 @@ is_authorized(Req, State=#state{secret=Secret, bucket=Bucket, stream=Stream}) ->
                                                   Bucket, Stream, Action).
 
 content_types_accepted(Req, State) ->
-    {[{{<<"application">>, <<"json">>, '*'}, from_json}], Req, State}.
+    % XXX check for PATCH/POST depending the content type?
+    {[{{<<"application">>, <<"json">>, '*'}, from_json},
+      {{<<"application">>, <<"json-patch+json">>, '*'}, from_json_patch}], Req, State}.
 
 content_types_provided(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, to_json}], Req, State}.
@@ -94,7 +99,7 @@ to_json(Req, State=#state{bucket=Bucket, stream=Stream, from_sn=From, limit=Limi
 
     {Items, Req, State}.
 
-store_blob_and_reply(Req, State, Bucket, Stream, Body) ->
+store_blob_and_reply(Req, State, Bucket, Stream, Body, WithUriStr) ->
     case iorio:put(Bucket, Stream, Body) of
         {ok, SblobEntry} ->
             #sblob_entry{seqnum=SeqNum, timestamp=Timestamp} = SblobEntry,
@@ -104,7 +109,9 @@ store_blob_and_reply(Req, State, Bucket, Stream, Body) ->
             SeqNum = SblobEntry#sblob_entry.seqnum,
             UriStr = io_lib:format("/streams/~s/~s/?limit=1&from=~p",
                                    [Bucket, Stream, SeqNum]),
-            {{true, UriStr}, Req1, State};
+            if WithUriStr -> {{true, UriStr}, Req1, State};
+               true -> {true, Req1, State}
+            end;
         {error, Reason} ->
             Req1 = iorio_http:error(Req, <<"error">>, Reason),
             {false, Req1, State}
@@ -114,11 +121,40 @@ from_json(Req, State=#state{bucket=Bucket, stream=Stream}) ->
     {ok, Body, Req1} = cowboy_req:body(Req),
     case jsx:is_json(Body) of
         true ->
-            store_blob_and_reply(Req1, State, Bucket, Stream, Body);
+            store_blob_and_reply(Req1, State, Bucket, Stream, Body, true);
         false ->
             {false, iorio_http:invalid_body(Req1), State}
     end.
 
+% TODO: send the revision of the currently updated blob to sblob if it's
+% not the last one then return conflict
+from_json_patch(Req, State=#state{bucket=Bucket, stream=Stream}) ->
+    {ok, Body, Req1} = cowboy_req:body(Req),
+    case jsx:is_json(Body) of
+        true ->
+            case jsonpatch:parse(Body) of
+                {ok, ParsedPatch} ->
+                    case iorio:get_last(Bucket, Stream) of
+                        {ok, #sblob_entry{data=Data}} ->
+                            ParsedBlob = jsxn:decode(Data),
+                            case jsonpatch:patch(ParsedPatch, ParsedBlob) of
+                                {ok, PatchResult} ->
+                                    EncodedPatchResult = jsxn:encode(PatchResult),
+                                    store_blob_and_reply(Req1, State, Bucket, Stream, EncodedPatchResult, false);
+                                _Other ->
+                                    %lager:warning("Error applying patch ~p", [Other]),
+                                    {false, iorio_http:invalid_body(Req1), State}
+                            end;
+                        notfound ->
+                            {false, iorio_http:error(Req1, <<"not-found">>, <<"Not Found">>), State}
+                    end;
+                {error, Reason} ->
+                    lager:warning("Error parsing patch ~p", [Reason]),
+                    {false, iorio_http:invalid_body(Req1), State}
+            end;
+        false ->
+            {false, iorio_http:invalid_body(Req1), State}
+    end.
 
 rest_terminate(_Req, _State) ->
 	ok.
