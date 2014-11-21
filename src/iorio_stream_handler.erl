@@ -147,14 +147,16 @@ from_json_patch(Req, State=#state{bucket=Bucket, stream=Stream}) ->
                                     EncodedPatchResult = jsxn:encode(PatchResult),
                                     store_blob_and_reply(Req1, State, Bucket, Stream, EncodedPatchResult, false);
                                 _Other ->
-                                    %lager:warning("Error applying patch ~p", [Other]),
+                                    % lager doesn't know how to handle maps yet
+                                    lager:warning("Error applying patch ~s", [Body]),
                                     {false, iorio_http:invalid_body(Req1), State}
                             end;
                         notfound ->
                             {false, iorio_http:error(Req1, <<"not-found">>, <<"Not Found">>), State}
                     end;
                 {error, Reason} ->
-                    lager:warning("Error parsing patch ~p", [Reason]),
+                    % lager doesn't know how to handle maps yet
+                    lager:warning("Error parsing patch ~p", [element(1, Reason)]),
                     {false, iorio_http:invalid_body(Req1), State}
             end;
         false ->
