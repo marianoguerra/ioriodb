@@ -12,7 +12,6 @@ import multiprocessing
 from iorio import *
 
 import faker
-import requests
 
 class Generator(object):
     def __init__(self, index, seed, stream_count):
@@ -91,7 +90,7 @@ class BaseRequester(threading.Thread):
         self.query_count = 0
         self.max_sleep_secs = 5
         self.token = token
-        self.rsession = requests.Session()
+        self.rsession = new_session()
 
     def on_no_json_error(self, response, ctx, time_ms):
         log('response is not json:', response.text, response.status_code, ctx.__dict__)
@@ -190,12 +189,11 @@ class BucketLister(BaseRequester):
             log("Error listing streams %s" % ctx.bucket)
 
     def list_buckets(self):
-        url = format_url(self.host, self.port, "buckets")
-        return get_json(self.rsession, url, self.token)
+        return list_buckets(self.rsession, self.host, self.port, self.token)
 
     def list_bucket(self, bucket):
-        url = format_url(self.host, self.port, "streams", bucket)
-        return get_json(self.rsession, url, self.token)
+        return list_streams(self.rsession, self.host, self.port, bucket,
+                self.token)
 
     def request(self):
         if random.randint(0, 3) == 2:
@@ -221,7 +219,7 @@ class Inserter(threading.Thread):
         self.count = 0
         self.errors = 0
         self.t_diff = 0
-        self.rsession = requests.Session()
+        self.rsession = new_session()
 
     def run(self):
         args = self.args
@@ -275,7 +273,7 @@ class Patcher(threading.Thread):
         self.count = 0
         self.errors = 0
         self.t_diff = 0
-        self.rsession = requests.Session()
+        self.rsession = new_session()
 
     def run(self):
         args = self.args
@@ -334,7 +332,8 @@ def main():
     log('using seed', args.seed)
     random.seed(args.seed)
 
-    ok, token = authenticate(requests, args.host, args.port, args.username,
+    rsession = new_session()
+    ok, token = authenticate(rsession, args.host, args.port, args.username,
             args.password)
 
     if not ok:

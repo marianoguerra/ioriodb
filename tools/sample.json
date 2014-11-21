@@ -1,0 +1,13 @@
+{
+    "age": 29,
+    "friends": [
+        "sandy",
+        "patrick"
+    ],
+    "height": 1.83,
+    "name": "bob",
+    "pets": {
+        "gary": "snailcat"
+    },
+    "yellow": true
+}
