@@ -81,3 +81,55 @@ def query(rsession, host, port, bucket, stream, limit, token=None):
 def new_session():
     '''return a new http session'''
     return requests.Session()
+
+class Subscriptions(object):
+    '''class to handle subscriptions state'''
+    def __init__(self):
+        self.subs = {}
+
+    def format_key(self, bucket, stream):
+        'format bucket and stream to a string key'
+        return '%s:%s' % (bucket, stream)
+
+    def format_subscription(self, parts):
+        '''format a sub to raw from a 3 item array where the last one may be
+        None'''
+        bucket, stream, count = parts
+
+        if count is None:
+            return bucket + ':' + stream
+        else:
+            return bucket + ':' + stream + ':' + str(count)
+
+    def add(self, bucket, stream, seqnum=None):
+        '''add a subscription to the list'''
+        key = self.format_key(bucket, stream)
+        self.subs[key] = [bucket, stream, seqnum]
+
+    def to_list(self):
+        '''format to a list of strings to be used in a query'''
+        return [self.format_subscription(sub) for sub in self.subs.values()]
+
+    def update_seqnums(self, body):
+        '''update to latest seqnum for each stream'''
+        # done in two steps to go back to a smaller seqnum in case our
+        # subscription is ahead of it
+        latest = {}
+        for event in body:
+            meta = event['meta']
+            bucket = meta['bucket']
+            stream = meta['stream']
+            seqnum = meta['id']
+
+            key = bucket + ':' + stream
+
+            if key in latest:
+                current_count = latest[key][2]
+                if current_count is None or seqnum > current_count:
+                    latest[key][2] = seqnum
+            else:
+                latest[key] = [bucket, stream, seqnum]
+
+        for key, val in latest.items():
+            self.subs[key] = val
+

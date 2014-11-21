@@ -70,6 +70,8 @@ def get_arg_parser():
                        help='number of threads for requesters to use')
     parser.add_argument('-Q', '--patchers', default=1, type=int,
                        help='number of threads for patchers to use')
+    parser.add_argument('--listeners', default=1, type=int,
+                       help='number of threads for listen to events')
 
     return parser
 
@@ -327,6 +329,52 @@ class Patcher(threading.Thread):
                 self.count, self.errors, self.t_diff,
                 (self.count / self.t_diff))
 
+class Listener(threading.Thread):
+
+    def __init__(self, generators, listener_count, host, port, token, args):
+        threading.Thread.__init__(self)
+        self.stop = False
+        self.host = host
+        self.port = port
+        self.token = token
+        self.generators = generators
+        self.subs = Subscriptions()
+
+        for i in range(listener_count):
+            generator_i = (i - 1) % len(generators)
+            bucket, stream, _data = generators[generator_i].generate()
+            self.subs.add(bucket, stream)
+
+        self.args = args
+        self.count = 0
+        self.errors = 0
+        self.t_diff = 0
+        self.rsession = new_session()
+
+    def run(self):
+        t_1 = time.time()
+
+        while not self.stop:
+            current_subs = self.subs.to_list()
+            response = listen(self.rsession, self.host, self.port,
+                    current_subs, self.token)
+
+            if response.status_code == 200:
+                body = json.loads(response.text)
+                self.count += len(body)
+                self.subs.update_seqnums(body)
+            else:
+                log('got error listening')
+                show_response(response)
+
+        t_2 = time.time()
+        self.t_diff = t_2 - t_1
+
+    def format_summary(self):
+        return 'listened %d with %d errors in %f s, %f events/s' % (
+                self.count, self.errors, self.t_diff,
+                (self.count / (self.t_diff or 1)))
+
 def main():
     args = parse_args()
     log('using seed', args.seed)
@@ -349,6 +397,8 @@ def main():
     patchers = []
     requesters = []
     listers = []
+    listeners = []
+
     for _ in range(args.inserters):
         inserter = Inserter(token, generators, args)
         inserter.start()
@@ -369,6 +419,13 @@ def main():
         bucket_lister.start()
         listers.append(bucket_lister)
 
+    for i in range(args.listeners):
+        listener = Listener(generators, i + 1, args.host, args.port, token,
+                args)
+        listener.start()
+        listeners.append(listener)
+
+
     for inserter in inserters:
         inserter.join()
         log(inserter.format_summary())
@@ -386,6 +443,11 @@ def main():
         bucket_lister.stop = True
         bucket_lister.join()
         log(bucket_lister.format_summary())
+
+    for listener in listeners:
+        listener.stop = True
+        listener.join()
+        log(listener.format_summary())
 
 if __name__ == "__main__":
     main()

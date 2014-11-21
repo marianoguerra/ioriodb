@@ -216,55 +216,28 @@ def handle_listen(args):
     port = args.port
 
     raw_subs = args.subscriptions
-    subs_by_stream = {}
+    subs = iorio.Subscriptions()
+
     for sub in raw_subs:
         ok, result = parse_subscription(sub)
         if not ok:
             print(result)
             return
 
-        bucket, stream, _count = result
-        key = bucket + ':' + stream
-        subs_by_stream[key] = result
-
-    def format_sub(parts):
-        '''format a sub to raw from a 3 item array where the last one may be
-        None'''
-        bucket, stream, count = parts
-
-        if count is None:
-            return bucket + ':' + stream
-        else:
-            return bucket + ':' + stream + ':' + str(count)
+        bucket, stream, count = result
+        subs.add(bucket, stream, count)
 
     def fun(rsession, token):
         '''fun that does the work'''
         while True:
-            current_subs = [format_sub(p) for p in subs_by_stream.values()]
+            current_subs = subs.to_list()
             print('listening', ' '.join(current_subs))
             response = iorio.listen(rsession, host, port, current_subs, token)
             show_response(response)
             print()
             if response.status_code == 200:
                 body = json.loads(response.text)
-
-                for event in body:
-                    meta = event['meta']
-                    bucket = meta['bucket']
-                    stream = meta['stream']
-                    seqnum = meta['id']
-
-                    key = bucket + ':' + stream
-
-                    if key in subs_by_stream:
-                        current_count = subs_by_stream[key][2]
-                        if current_count is None or seqnum > current_count:
-                            subs_by_stream[key][2] = seqnum
-                    else:
-                        subs_by_stream[key] = [bucket, stream, seqnum]
-
-
-
+                subs.update_seqnums(body)
 
     do_when_authenticated(args, fun)
 
