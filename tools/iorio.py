@@ -1,4 +1,5 @@
 import json
+import pprint
 import urllib
 import requests
 
@@ -48,7 +49,7 @@ def send(rsession, host, port, bucket, stream, data, token=None,
     return post_data_json(rsession, url, data, token, content_type)
 
 def patch(rsession, host, port, bucket, stream, data, token=None,
-          content_type='application/json'):
+          content_type='application/json-patch+json'):
     url = format_url(host, port, "streams", bucket, stream)
     return patch_data_json(rsession, url, data, token, content_type)
 
@@ -132,4 +133,19 @@ class Subscriptions(object):
 
         for key, val in latest.items():
             self.subs[key] = val
+
+def show_response(resp):
+    '''show content of request response'''
+    print("Status:", resp.status_code)
+
+    if not resp.text:
+        print("No Response Body")
+        return
+
+    try:
+        json_body = json.loads(resp.text)
+        print("JSON Response:")
+        pprint.pprint(json_body)
+    except ValueError:
+        print("Raw Response:", resp.text)
 

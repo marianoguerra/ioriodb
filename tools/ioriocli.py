@@ -92,21 +92,6 @@ def get_auth_token(rsession, args):
         return iorio.authenticate(rsession, args.host, args.port,
                 args.username, args.password)
 
-def show_response(resp):
-    '''show content of request response'''
-    print("Status:", resp.status_code)
-
-    if not resp.text:
-        print("No Response Body")
-        return
-
-    try:
-        json_body = json.loads(resp.text)
-        print("JSON Response:")
-        pprint.pprint(json_body)
-    except ValueError:
-        print("Raw Response:", resp.text)
-
 def do_when_authenticated(args, fun, rsession=None):
     '''if auth works run fun'''
     if rsession is None:
@@ -117,11 +102,11 @@ def do_when_authenticated(args, fun, rsession=None):
     if auth_ok:
         token = auth_data
         response = fun(rsession, token)
-        show_response(response)
+        iorio.show_response(response)
     else:
         auth_response = auth_data
         print("Auth Failed")
-        show_response(auth_response)
+        iorio.show_response(auth_response)
 
 def post_or_patch(args, name):
     '''avoid duplication'''
@@ -233,7 +218,7 @@ def handle_listen(args):
             current_subs = subs.to_list()
             print('listening', ' '.join(current_subs))
             response = iorio.listen(rsession, host, port, current_subs, token)
-            show_response(response)
+            iorio.show_response(response)
             print()
             if response.status_code == 200:
                 body = json.loads(response.text)

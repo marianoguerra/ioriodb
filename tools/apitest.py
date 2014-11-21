@@ -306,7 +306,7 @@ class Patcher(threading.Thread):
                 self.count += 1
 
                 if self.count % 500 == 0:
-                    log('%d inserts' % self.count)
+                    log('%d patches' % self.count)
 
                 if response.status_code != 200:
                     self.errors += 1
@@ -444,6 +444,7 @@ def main():
         bucket_lister.join()
         log(bucket_lister.format_summary())
 
+    log('waiting for listeners to timeout, this may take a while')
     for listener in listeners:
         listener.stop = True
         listener.join()
