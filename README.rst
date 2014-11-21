@@ -142,6 +142,7 @@ to test from he api::
     ./apitest.py -i 100 -I 4 -L 1 -R 2 --listeners 1
 
 to play with the api from the command line::
+
     $ ./tools/ioriocli.py -h
 
     usage: ioriocli.py [-h] [--verbose] [-u USERNAME] [-p PASSWORD] [-t TOKEN]
