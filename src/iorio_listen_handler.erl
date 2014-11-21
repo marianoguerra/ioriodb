@@ -61,6 +61,9 @@ terminate(_Req, #state{channels=Channels, iorio=Iorio}) ->
 
 % private
 
+reply_entries_json([], Req, State) ->
+    {ok, Req, State};
+
 reply_entries_json(Entries, Req, State) ->
     Json = entries_to_json(Entries),
     JsonBin = jsx:encode(Json),
