@@ -74,9 +74,14 @@ is_authorized(Req, State=#state{secret=Secret, bucket=Bucket, stream=Stream}) ->
                                                   Bucket, Stream, Action).
 
 content_types_accepted(Req, State) ->
-    % XXX check for PATCH/POST depending the content type?
-    {[{{<<"application">>, <<"json">>, '*'}, from_json},
-      {{<<"application">>, <<"json-patch+json">>, '*'}, from_json_patch}], Req, State}.
+    {Method, Req1} = cowboy_req:method(Req),
+
+    case Method of
+        <<"PATCH">> ->
+            {[{{<<"application">>, <<"json-patch+json">>, '*'}, from_json_patch}], Req1, State};
+        <<"POST">> ->
+            {[{{<<"application">>, <<"json">>, '*'}, from_json}], Req1, State}
+    end.
 
 content_types_provided(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, to_json}], Req, State}.
