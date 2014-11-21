@@ -35,7 +35,7 @@ API
 ---
 
 until we have some docs here is a brief description of the api, check
-tools/e2e-test/apitest.py to see how it's used
+tools/apitest.py to see how it's used
 
 ::
 
@@ -98,11 +98,12 @@ to run the unit tests::
 
 to test from he api::
 
-    ./tools/e2e-test/apitest.py -h
+    ./tools/apitest.py -h
 
     usage: apitest.py [-h] [-u USERNAME] [-p PASSWORD] [-H HOST] [-P PORT]
                       [-B BUCKETS] [-S STREAMS] [-s SEED] [-i ITERATIONS]
-                      [-I INSERTERS] [-L LISTERS] [-R REQUESTERS]
+                      [-I INSERTERS] [-L LISTERS] [-R REQUESTERS] [-Q PATCHERS]
+                      [--listeners LISTENERS]
 
     Iorio DB API tester
 
@@ -127,11 +128,143 @@ to test from he api::
                             number of threads for listers to use
       -R REQUESTERS, --requesters REQUESTERS
                             number of threads for requesters to use
+      -Q PATCHERS, --patchers PATCHERS
+                            number of threads for patchers to use
+      --listeners LISTENERS
+                            number of threads for listen to events
 
     # 100 iterations for 5 buckets with 5 streams each, use default credentials
-    # use 4 threads for inserters, 1 for listers and 2 for requesters
-    # that means 4 threads inserting, 2 querying and 1 listing buckets and steams
-    ./apitest.py -i 100 -I 4 -L 1 -R 2
+    # use 4 threads for inserters, 1 for listers, 1 for listeners and 2 for
+    # requesters
+    # that means 4 threads inserting, 2 querying and 1 listing buckets and 
+    # steams and 1 listening for new events in a stream
+
+    ./apitest.py -i 100 -I 4 -L 1 -R 2 --listeners 1
+
+to play with the api from the command line::
+    $ ./tools/ioriocli.py -h
+
+    usage: ioriocli.py [-h] [--verbose] [-u USERNAME] [-p PASSWORD] [-t TOKEN]
+                       [-H HOST] [-P PORT]
+                       {post,patch,list-buckets,list-streams,get,listen} ...
+
+    Iorio DB CLI
+
+    positional arguments:
+      {post,patch,list-buckets,list-streams,get,listen}
+        post                add an event to a stream
+        patch               patch last event from a stream
+        list-buckets        list buckets
+        list-streams        list streams
+        get                 get content from a stream
+        listen              listen to new content from streams
+
+    optional arguments:
+      -h, --help            show this help message and exit
+      --verbose, -v
+      -u USERNAME, --username USERNAME
+                            username used for authentication
+      -p PASSWORD, --password PASSWORD
+                            password used for authentication
+      -t TOKEN, --token TOKEN
+                            token from an already authenticated user
+      -H HOST, --host HOST  host where ioriodb is running
+      -P PORT, --port PORT  port where ioriodb is running
+
+examples::
+
+    # get last N events from mariano:test
+    ./tools/ioriocli.py get mariano test
+
+    # get last N events from mariano:test starting froms seqnum 4
+    ./tools/ioriocli.py get mariano test --from 4
+
+    # get event with seqnum 4 from mariano:test
+    ./tools/ioriocli.py get mariano test --from 4 --limit 1
+
+    # get last event from mariano:test
+    ./tools/ioriocli.py get mariano test --limit 1
+
+    # get last 5 event from mariano:test
+    ./tools/ioriocli.py get mariano test --limit 5
+
+    # list buckets
+    ./tools/ioriocli.py list-buckets
+
+    # list streams from user mariano
+    ./tools/ioriocli.py list-streams mariano
+
+    # listen to mariano:test starting from seqnum 4
+    # (will replay events from the past from seqnum 4 if in cache, see note below)
+    ./tools/ioriocli.py listen mariano:test:4
+
+    # listen to mariano:test starting from current and listen to
+    # mariano:testa from seqnum 10
+    # (will replay events from the past from seqnum 4 if in cache)
+    ./tools/ioriocli.py listen mariano:testa:10 mariano:test
+
+    # patch last event in mariano:test with the patch specified in the file
+    # tools/sample_patch.json (the @ indicates a path), see patch notes below
+    ./tools/ioriocli.py patch mariano test @tools/sample_patch.json
+
+    # patch last event in mariano:test with a literal (and invalid) json patch
+    ./tools/ioriocli.py patch mariano test '[{}]'
+
+    # patch last event in mariano:test with a literal (and invalid) json patch
+    ./tools/ioriocli.py patch mariano test '42'
+
+    # provide wrong password
+    ./tools/ioriocli.py -p lala post mariano test @tools/sample.json
+
+    # post a new event on mariano:test with literal json
+    ./tools/ioriocli.py post mariano test 42
+
+    # post a new event on mariano:test with literal json
+    ./tools/ioriocli.py post mariano test '{"msg": "hi!!"}'
+
+    # post a new event on mariano:test with json fmro a file
+    ./tools/ioriocli.py post mariano test @tools/sample.json
+
+    # post a new event on mariano:test with json from a file, provide wrong
+    # content type
+    ./tools/ioriocli.py post mariano test @tools/sample.json -c "text/plain"
+
+    # patch last event from mariano:test with json from a file, provide wrong
+    # content type
+    ./tools/ioriocli.py patch mariano test @tools/sample_patch.json -c "text/plain"
+
+Seqnums in listen
+.................
+
+when subscribing to events on listen you can specify a seqnum, the current
+behaviour is that if you specify a seqnum in the past it will replay from the
+closest equal or higher seqnum that the channel has in cache, it won't replay
+from disk. The idea of this behaviour is that you can catch up with events that
+happened while you weren't listening in the recent past, if you need all the
+events from a seqnum onwards you will have to query the stream to be sure you
+have all of them.
+
+if you specify a seqnum that is higher than the current one listen will send
+you events with smaller seqnums if they happen while you are listening, it's
+your choice to adapt the seqnum in the next subscription or to ignore them.
+
+the channel cache contains the last N events for that channel if the events
+happen while the channel is alive, periodically a channel will reduce it's
+cache if it's inactive to free resources, a channel won't load the last N
+events from disk on first creation.
+
+this behaviour may change in the future as we see how it works.
+
+Patch behaviour
+...............
+
+patch only works on streams that already have at least one event, it doesn't
+make sense to patch something that's not there, that's why a patch on an
+emptry stream will fail, you have to handle that case by providing an initial
+value and then applying the patch.
+
+we may provide in the feature a way to provide an optional initial state in
+case it's not there so you don't have to check and retry.
 
 Multinode
 ---------
@@ -224,7 +357,7 @@ then start one node::
 
 then send it some events so it has some buckets with data::
 
-    tools/e2e-test/apitest.py -P 8098 -B 20 -i 50
+    tools/apitest.py -P 8098 -B 20 -i 50
 
 now start a second node::
 
@@ -270,7 +403,7 @@ shortcut for the lazy, in one terminal::
 
 in another one::
 
-    tools/e2e-test/apitest.py -P 8098 -B 20 -i 50 && ./dev/dev2/bin/iorio console
+    tools/apitest.py -P 8098 -B 20 -i 50 && ./dev/dev2/bin/iorio console
 
 in another one::
 
