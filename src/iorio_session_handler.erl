@@ -43,7 +43,7 @@ is_authorized(Req, State=#state{secret=Secret}) ->
     {Method, Req0} = cowboy_req:method(Req),
     case Method of
         <<"POST">> ->
-            {true, Req0, State};
+            check_is_authorized(Req0, State);
         _ ->
             SetSession = fun (St, Sess) -> St#state{session=Sess} end,
             iorio_session:handle_is_authorized(Req, Secret, State, SetSession)
@@ -53,28 +53,35 @@ to_json(Req, State=#state{session={Username, _Session, _SecCtx}}) ->
     RespBody = [{username, Username}],
     {jsx:encode(RespBody), Req, State}.
 
-from_json(Req, State=#state{secret=Secret, algorithm=Algorithm}) ->
-    {ok, Body, Req1} = cowboy_req:body(Req),
-    AuthInfo = jsx:decode(Body),
-    Username = proplists:get_value(<<"username">>, AuthInfo),
-    Password = proplists:get_value(<<"password">>, AuthInfo),
+from_json(Req, State=#state{secret=Secret, algorithm=Algorithm,
+                            session={_Username, SessionBody, _SecCtx}}) ->
 
-    Source = [{ip, {127, 0, 0, 1}}],
-    ResultJson = case riak_core_security:authenticate(Username, Password, Source) of
-                     {ok, _Ctx} ->
-                         RespBody = [{u, Username}],
-                         {ok, Token} = jwt:encode(Algorithm, RespBody, Secret),
-                         [{ok, true}, {token, Token}];
-                     _ ->
-                         [{ok, false}]
-                 end,
-
+    {ok, Token} = jwt:encode(Algorithm, SessionBody, Secret),
+    ResultJson = [{ok, true}, {token, Token}],
     ResultJsonBin = jsx:encode(ResultJson),
-    Req2 = cowboy_req:set_resp_body(ResultJsonBin, Req1),
-    {{true, <<"/session">>}, Req2, State}.
+    Req1 = cowboy_req:set_resp_body(ResultJsonBin, Req),
+    {{true, <<"/session">>}, Req1, State}.
 
 rest_terminate(_Req, _State) ->
 	ok.
 
 terminate(_Reason, _Req, _State) ->
 	ok.
+
+%% Private API
+check_is_authorized(Req, State) ->
+    {ok, Body, Req1} = cowboy_req:body(Req),
+    AuthInfo = jsx:decode(Body),
+    Username = proplists:get_value(<<"username">>, AuthInfo),
+    Password = proplists:get_value(<<"password">>, AuthInfo),
+
+    Source = [{ip, {127, 0, 0, 1}}],
+    case riak_core_security:authenticate(Username, Password, Source) of
+        {ok, Ctx} ->
+            RespBody = [{u, Username}],
+            Session = {Username, RespBody, Ctx},
+            NewState = State#state{session=Session},
+            {true, Req1, NewState};
+        _ -> {{false, <<"jwt">>}, iorio_http:unauthorized(Req1), State}
+    end.
+
