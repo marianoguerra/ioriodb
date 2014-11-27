@@ -3,8 +3,7 @@
         error/3, unauthorized/1]).
 
 response(Body, Req) ->
-    Req1 = cowboy_req:set_resp_header(<<"Content-Type">>, <<"application/json">>, Req),
-    cowboy_req:set_resp_body(Body, Req1).
+    cowboy_req:set_resp_body(Body, Req).
 
 ok(Req) ->
     response(<<"{\"ok\": true}">>, Req).
