@@ -2,7 +2,6 @@
 '''ioriodb CLI client to interact with the api from the command line'''
 from __future__ import print_function
 import json
-import pprint
 import argparse
 
 import iorio
@@ -22,6 +21,8 @@ def get_arg_parser():
                         help='host where ioriodb is running')
     parser.add_argument('-P', '--port', default=8080, type=int,
                         help='port where ioriodb is running')
+
+    parser.add_argument('--human', action='store_true', default=False)
 
     subparsers = parser.add_subparsers()
     p_post = subparsers.add_parser('post', help='add an event to a stream')
@@ -102,11 +103,12 @@ def do_when_authenticated(args, fun, rsession=None):
     if auth_ok:
         token = auth_data
         response = fun(rsession, token)
-        iorio.show_response(response)
+        iorio.show_response(response, args.human)
     else:
         auth_response = auth_data
-        print("Auth Failed")
-        iorio.show_response(auth_response)
+        if args.human:
+            print("Auth Failed")
+        iorio.show_response(auth_response, args.human)
 
 def post_or_patch(args, name):
     '''avoid duplication'''
@@ -218,7 +220,7 @@ def handle_listen(args):
             current_subs = subs.to_list()
             print('listening', ' '.join(current_subs))
             response = iorio.listen(rsession, host, port, current_subs, token)
-            iorio.show_response(response)
+            iorio.show_response(response, args.human)
             print()
             if response.status_code == 200:
                 body = json.loads(response.text)

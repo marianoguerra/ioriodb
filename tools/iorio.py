@@ -137,18 +137,30 @@ class Subscriptions(object):
         for key, val in latest.items():
             self.subs[key] = val
 
-def show_response(resp):
+def show_response(resp, human=True):
     '''show content of request response'''
-    print("Status:", resp.status_code)
-
-    if not resp.text:
-        print("No Response Body")
-        return
-
+    code = resp.status_code
+    has_body = bool(resp.text)
+    content_type = resp.headers.get("Content-Type")
     try:
         json_body = json.loads(resp.text)
-        print("JSON Response:")
-        pprint.pprint(json_body)
     except ValueError:
-        print("Raw Response:", resp.text)
+        json_body = None
 
+    if human:
+        print("Status:", code)
+        print("Type:", content_type)
+
+        if not has_body:
+            print("No Response Body")
+            return
+
+        if json_body is None:
+            print("Raw Response:", resp.text)
+        else:
+            print("JSON Response:")
+            pprint.pprint(json_body)
+    else:
+        data = dict(code=code, has_body=has_body, content_type=content_type,
+                body=json_body)
+        print(json.dumps(data, indent=2))
