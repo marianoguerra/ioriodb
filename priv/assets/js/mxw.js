@@ -129,9 +129,9 @@ function __MakeMXW(global) {
 
 
     request.json = {
+        put: makeTypeBodyRequester('PUT', ctJSON, toJSON),
         post: makeTypeBodyRequester('POST', ctJSON, toJSON),
-        put: makeTypeBodyRequester('POST', ctJSON, toJSON),
-        patch: makeTypeBodyRequester('POST', ctJSON, toJSON),
+        patch: makeTypeBodyRequester('PATCH', ctJSON, toJSON),
 
         get: makeTypeRequester('GET', ctJSON, fromJSON),
         del: makeTypeRequester('DEL', ctJSON, fromJSON),
