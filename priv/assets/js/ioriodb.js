@@ -145,7 +145,7 @@ function __MakeIorioDB(global, console, request) {
             prefix = '&';
         }
 
-        this._getJson(url, success, error);
+        this._getJson(url, success, error, false);
     };
 
     lib.Session = Session;
