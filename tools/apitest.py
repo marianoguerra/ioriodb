@@ -363,7 +363,7 @@ class Listener(threading.Thread):
                 body = json.loads(response.text)
                 self.count += len(body)
                 self.subs.update_seqnums(body)
-            else:
+            elif response.status_code != 204:
                 log('got error listening')
                 show_response(response)
 
