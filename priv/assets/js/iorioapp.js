@@ -63,5 +63,6 @@
         window._iorioSse  = connSse;
         window._iorioWs = connWs;
         window._iorioBest = connBest;
+        window._iorioSess = session;
     }
 }(this));
