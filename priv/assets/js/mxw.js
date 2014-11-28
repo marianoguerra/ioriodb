@@ -67,7 +67,7 @@ function __MakeMXW(global) {
         }
 
         // sorry, no sync
-        xhr.open(method, finalUri, true);
+        xhr.open(method, finalUri, true, options.username, options.password);
         setReqHeaders(xhr, options);
         xhr.send(options.body);
 
