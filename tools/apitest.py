@@ -159,7 +159,7 @@ class QueryRequester(BaseRequester):
         limit = random.randint(0, 100)
 
         response = query(self.rsession, self.host, self.port, bucket, stream,
-                limit, self.token)
+                None, limit, self.token)
 
         return response, Obj(bucket=bucket, stream=stream, limit=limit)
 

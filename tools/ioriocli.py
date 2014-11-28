@@ -58,7 +58,7 @@ def get_arg_parser():
     p_get.add_argument('stream', help='stream name')
     p_get.add_argument('-l', '--limit', default=10, type=int,
                         help='amount of items to retrieve')
-    p_get.add_argument('-f', '--from', default=None, type=int,
+    p_get.add_argument('-f', '--from', default=None, type=int, dest='fromsn',
                         help='sequence number to start from')
 
     p_list_buckets.set_defaults(action='list-buckets')
@@ -147,10 +147,11 @@ def handle_get_events(args):
     stream = args.stream
 
     limit = args.limit
+    fromsn = args.fromsn
 
     def fun(rsession, token):
         '''fun that does the work'''
-        return iorio.query(rsession, host, port, bucket, stream,
+        return iorio.query(rsession, host, port, bucket, stream, fromsn,
                 limit, token)
 
     do_when_authenticated(args, fun)

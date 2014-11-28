@@ -78,8 +78,12 @@ def get_json(rsession, url, token=None):
     response = rsession.get(url, headers=headers)
     return response
 
-def query(rsession, host, port, bucket, stream, limit, token=None):
-    url = format_url(host, port, 'streams', bucket, stream, limit=limit)
+def query(rsession, host, port, bucket, stream, fromsn, limit, token=None):
+    params = {'limit': limit}
+    if fromsn is not None:
+        params['from'] = fromsn
+
+    url = format_url(host, port, 'streams', bucket, stream, **params)
     return get_json(rsession, url, token)
 
 def new_session():
