@@ -12,7 +12,7 @@ function __MakeMXW(global) {
         causes a crash to happen when the connection is closed.
         @see https://bugzilla.mozilla.org/show_bug.cgi?id=662554
     */
-    if (global.navigator.userAgent.indexOf("Firefox/6.0") === -1) {
+    if (global.navigator.userAgent.indexOf("Firefox/6.0") !== -1) {
         WS = null;
     }
 
