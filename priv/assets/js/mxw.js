@@ -49,6 +49,15 @@ function __MakeMXW(global) {
             }
         };
 
+        if ('timeout' in options) {
+            xhr.timeout = options.timeout;
+        } else {
+            xhr.timeout = 5000;
+        }
+
+        if (options.withCredentials) {
+            xhr.withCredentials = options.withCredentials;
+        }
 
         // check explicitly for false equality, it must be set
         if (options.cache === false) {
@@ -130,7 +139,8 @@ function __MakeMXW(global) {
     };
 
     function setReqHeaders(xhr, options) {
-        if (!options || !options.headers) {
+        // XDomainRequest can't set headers
+        if (!options || !options.headers || !xhr.setRequestHeader) {
             return;
         }
 
