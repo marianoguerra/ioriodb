@@ -83,7 +83,7 @@ function __MakeMXW(global) {
         };
     }
 
-    function makeTypeBodyRequester(method, contentType, encoder, accept) {
+    function makeTypeBodyRequester(method, contentType, encoder) {
         return function (uri, options) {
             options = options || {};
             options.headers = options.headers || {};
@@ -92,8 +92,9 @@ function __MakeMXW(global) {
                 options.body = encoder(options.body);
             }
 
-            options.headers['Content-Type'] = contentType;
-            options.headers.Accept = accept || contentType;
+            if (options.headers['Content-Type'] === undefined) {
+                options.headers['Content-Type'] = contentType;
+            }
 
             return request(method, uri, options);
         };
