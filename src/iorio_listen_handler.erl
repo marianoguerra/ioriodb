@@ -104,9 +104,10 @@ with_stream(Fn, Msg, Id, Req, State=#state{session={Username, _, Ctx}}) ->
                                fail(<<"missing stream">>, Id, State);
                {Bucket, Stream} ->
                                Action = ?PERM_STREAM_GET,
-                               AuthOk = iorio_session:is_authorized_for_stream(Ctx, Username, Bucket, Stream, Action),
-                               if AuthOk -> Fn(Bucket, Stream);
-                                  true -> fail(<<"unauthorized">>, Id, State)
+                               case iorio_session:is_authorized_for_stream(Ctx, Username, Bucket, Stream, Action) of
+                                   % TODO: use NewCtx
+                                   {true, _NewCtx} -> Fn(Bucket, Stream);
+                                   _Other -> fail(<<"unauthorized">>, Id, State)
                                end
            end,
 
