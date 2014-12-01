@@ -9,7 +9,7 @@
 -include("priv/include/listener.hrl").
 -include("include/iorio.hrl").
 
-init(_Transport, Req, [_, {secret, Secret}|_]=Opts, _Active) ->
+init(_Transport, Req, [_, {secret, Secret}|_]=Opts, Active) ->
     Iorio = proplists:get_value(iorio, Opts, iorio),
     {Token, Req1} = cowboy_req:qs_val(<<"jwt">>, Req, nil),
     {Params, Req2} = cowboy_req:qs_vals(Req1),
@@ -25,7 +25,11 @@ init(_Transport, Req, [_, {secret, Secret}|_]=Opts, _Active) ->
                                   secret=Secret, token=Token, session=Session},
 
                    State1 = subscribe_all(Subs, State),
-                   {ok, Req2, State1};
+                   Req3 = if Active == once ->
+                             cowboy_req:set_resp_header(<<"Content-Type">>, <<"application/json">>, Req2);
+                             true -> Req2
+                          end,
+                   {ok, Req3, State1};
                {error, Reason} ->
                    lager:warning("shutdown listen ~p", [Reason]),
                    {shutdown, Req2, #state{}}
