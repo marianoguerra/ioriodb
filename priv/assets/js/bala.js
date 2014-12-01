@@ -148,6 +148,7 @@ function __MakeBala(global, console, request) {
         this._polling = false;
         this._pollReq = null;
         this.options = options || {};
+        this.closed = false;
 
         this._nextPollMs = getNumberOr(options.nextPollMs, 100);
         this._timeoutMs = getNumberOr(options.timeoutMs, 60000);
@@ -168,6 +169,10 @@ function __MakeBala(global, console, request) {
     xhrproto._poll = function () {
         this._polling = true;
         function success(req, evt, type) {
+            if (self.closed) {
+                return;
+            }
+
             self._scheduleNextPoll();
 
             if (req.responseText !== '') {
@@ -176,6 +181,10 @@ function __MakeBala(global, console, request) {
         }
 
         function error(req, evt, type) {
+            if (self.closed) {
+                return;
+            }
+
             self._scheduleNextPoll();
             self.onError(evt, req);
         }
@@ -234,6 +243,7 @@ function __MakeBala(global, console, request) {
         if (this._pollReq) {
             this._pollReq.abort();
             this._pollReq = null;
+            this.closed = true;
             this.onClose();
         }
     };
