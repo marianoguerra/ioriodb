@@ -8,6 +8,43 @@
   <script src="js/ioriodb.js"></script>
   <script src="js/iorioapp.js"></script>
  </head>
- <body>
+ <body onload="initIorioApp()">
+  <p>
+  <label for="admin-username">Admin Username</label>
+  <input id="admin-username" value="admin">
+  </p>
+  <p>
+  <label for="admin-password">Admin Password</label>
+  <input type="password" id="admin-password" value="secret">
+  </p>
+
+  <p>
+  <label for="test-username">Test Username</label>
+  <input id="test-username" value="test-account-1">
+  </p>
+  <p>
+  <label for="test-password">Test Password</label>
+  <input type="password" id="test-password" value="secret">
+  </p>
+
+  <button id="start-test">Start Test</button>
+
+  <h2>Output</h2>
+  <textarea id="output" cols=80 rows=15></textarea>
+
+  <h2>Input</h2>
+  <p>
+  <label for="bucket">Bucket</label>
+  <input id="bucket" value="admin">
+  </p>
+  <p>
+  <label for="stream">Stream</label>
+  <input id="stream" value="mystream">
+  </p>
+
+  <textarea id="event-raw" cols=80 rows=15>{"number": 42, "bool": true, "missing": null, "list": [1,2,3], "float": 12.34, "string": "bob", "nested": {"a": "A"}}</textarea>
+
+  <button id="send-event">Send Event</button>
+
  </body>
 </html>

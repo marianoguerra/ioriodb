@@ -18,7 +18,8 @@ function __MakeMXW(global) {
 
     function request(method, uri, options) {
         options = options || {};
-        var xhr, finalUri;
+        var xhr, finalUri,
+            onLoadCalled = false;
 
         if (options.cors) {
             xhr = new XDR();
@@ -32,6 +33,13 @@ function __MakeMXW(global) {
         xhr.ontimeout = noop;
 
         xhr.onload = function (evt) {
+            // only call it once
+            if (onLoadCalled) {
+                return;
+            } else {
+                onLoadCalled = true;
+            }
+
             if (options.success) {
                 options.success(this, evt, 'load');
             }
@@ -46,6 +54,12 @@ function __MakeMXW(global) {
         xhr.onabort = function (evt) {
             if (options.error) {
                 options.error(this, evt, 'abort');
+            }
+        };
+
+        xhr.onreadystatechange = function (evt) {
+            if (xhr.readyState === 4) {
+                xhr.onload(evt);
             }
         };
 
@@ -152,8 +166,12 @@ function __MakeMXW(global) {
         }
     }
 
+    function appendQueryParam(url, param) {
+        return url + ((/\?/).test(url) ? '&' : '?') + param;
+    }
+
     function addTimestampToUrl(url) {
-        return url + ((/\?/).test(url) ? '&' : '?') + (new Date()).getTime();
+        return appendQueryParam(url, (new Date()).getTime());
     }
 
     function endsWithChar(str, chr) {
@@ -176,7 +194,27 @@ function __MakeMXW(global) {
         return items.join('');
     }
 
+    // merge N objects from left to right return a newly created object
+    // keys on later objects override same key on previous objects
+    function shallowMerge() {
+        var result = {},
+            i, len, obj, key;
+
+        for (i = 0, len = arguments.length; i < len; i += 1) {
+            obj = arguments[i];
+            for (key in obj) {
+                if (obj.hasOwnProperty(key)) {
+                    result[key] = obj[key];
+                }
+            }
+        }
+
+        return result;
+    }
+
     request.join = join;
+    request.appendQueryParam = appendQueryParam;
+    request.shallowMerge = shallowMerge;
 
     return request;
 }

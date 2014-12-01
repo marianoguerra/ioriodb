@@ -1,68 +1,171 @@
-/*globals Iorio, console, window, __MakeMXW, __MakeBala, __MakeIorioDB*/
-(function () {
+/*globals Iorio, console, window, __MakeMXW, __MakeBala, __MakeIorioDB, document*/
+function initIorioApp() {
     'use strict';
-    var request = __MakeMXW(window),
+    var session,
+        request = __MakeMXW(window),
         Bala = __MakeBala(window, console, request),
-        Iorio = __MakeIorioDB(window, console, request),
-        session = new Iorio.Session('http://localhost:8080', 'admin', 'secret');
+        Iorio = __MakeIorioDB(window, console, request, Bala),
+
+        inputAdminUsername = document.getElementById('admin-username'),
+        inputAdminPassword = document.getElementById('admin-password'),
+
+        inputTestUsername = document.getElementById('test-username'),
+        inputTestPassword = document.getElementById('test-password'),
+
+        inputBucket = document.getElementById('bucket'),
+        inputStream = document.getElementById('stream'),
+
+        txtInput = document.getElementById('event-raw'),
+        txtOutput = document.getElementById('output'),
+
+        btnStartTest = document.getElementById('start-test'),
+        btnSendEvent = document.getElementById('send-event');
+
+    function getEventData() {
+        var data = {
+            user: {
+                username: inputTestUsername.value,
+                password: inputTestPassword.value
+            },
+            event: {
+                bucket: inputBucket.value,
+                stream: inputStream.value,
+                data: txtInput.value
+            }
+        };
+
+        try {
+            data.event.data = JSON.parse(data.event.data);
+        } catch (error) {
+            window.alert("invalid json");
+            throw error;
+        }
+
+        return data;
+    }
+
+    function getTestData() {
+        var obj = getEventData();
+        obj.admin =  {
+            username: inputAdminUsername.value,
+            password: inputAdminPassword.value
+        };
+
+        return obj;
+    }
+
+    function toString(value) {
+        try {
+            return JSON.stringify(value, null, 2);
+        } catch (_) {
+            return '' + value;
+        }
+    }
+
+    function onErrorLog(txt) {
+        return function (event) {
+            log('Error', txt, event);
+        };
+    }
+
+    function onStartTextClick() {
+        var data = getTestData();
+
+        session = new Iorio.Session('localhost:8080', data.admin.username, data.admin.password);
+
+        log('start test', data);
+        session.authenticate(onAuthOk, onAuthError);
+    }
+
+    function onSendEventClick() {
+        var data = getEventData(),
+            e = data.event;
+
+        function success(response) {
+            log('Event Response', response);
+        }
+
+        log('send event', data);
+        session.sendToStream(e.bucket, e.stream, e.data,
+                             success, onErrorLog('send event'));
+    }
+
+    btnStartTest.addEventListener('click', onStartTextClick);
+    btnSendEvent.addEventListener('click', onSendEventClick);
+
+    function log() {
+        txtOutput.innerHTML += Array.prototype.slice.call(arguments).map(toString).join(' ') + '\n';
+    }
 
     function onAuthOk(token) {
-        console.log('authenticated', token);
+        log('authenticated', token);
         connect(token);
     }
 
     function onAuthError(err) {
-        console.error('Error Authenticating', err);
+        log('Error Authenticating', err);
     }
 
-    session.authenticate(onAuthOk, onAuthError);
-
     function connect(token) {
-        var encodedToken = window.encodeURIComponent(token),
-            path = '/listen?s=mariano:testa:10&s=mariano:test&jwt=' + encodedToken,
-            url = 'localhost:8080' + path,
-            connSse = Bala.connection(url, {transport: 'sse'}),
-            connWs = Bala.connection(url, {transport: 'ws'}),
-            connXhr = Bala.connection(url, {transport: 'xhr'}),
-            connBest = Bala.connection(url);
+        var subs = session.makeSubscriptions(),
+            subsSse, subsWs, subsXhr, subsBest;
 
-        console.log('Listening to', url);
+        subsSse = session.makeSubscriptions({connection: {transport: 'sse'}});
+        subsWs = session.makeSubscriptions({connection: {transport: 'ws'}});
+        subsXhr = session.makeSubscriptions({connection: {transport: 'xhr'}});
+        subsBest = session.makeSubscriptions();
 
         function logEvent(eventType) {
             return function (event) {
-                console.log("Event", eventType, event);
+                log("Event", eventType, event);
             };
         }
 
-        connXhr.onOpen = logEvent('open xhr');
-        connXhr.onClose = logEvent('close xhr');
-        connXhr.onData = logEvent('data xhr');
-        connXhr.onError = logEvent('error xhr');
+        subsXhr.onOpen = logEvent('open xhr');
+        subsXhr.onClose = logEvent('close xhr');
+        subsXhr.onData = logEvent('data xhr');
+        subsXhr.onError = logEvent('error xhr');
 
-        connBest.onOpen = logEvent('open best');
-        connBest.onClose = logEvent('close best');
-        connBest.onData = logEvent('data best');
-        connBest.onError = logEvent('error best');
+        subsBest.onOpen = logEvent('open best');
+        subsBest.onClose = logEvent('close best');
+        subsBest.onData = logEvent('data best');
+        subsBest.onError = logEvent('error best');
 
-        connSse.onOpen = logEvent('open sse');
-        connSse.onClose = logEvent('close sse');
-        connSse.onData = logEvent('data sse');
-        connSse.onError = logEvent('error sse');
+        subsSse.onOpen = logEvent('open sse');
+        subsSse.onClose = logEvent('close sse');
+        subsSse.onData = logEvent('data sse');
+        subsSse.onError = logEvent('error sse');
 
-        connWs.onOpen = logEvent('open ws');
-        connWs.onClose = logEvent('close ws');
-        connWs.onData = logEvent('data ws');
-        connWs.onError = logEvent('error ws');
+        subsWs.onOpen = logEvent('open ws');
+        subsWs.onClose = logEvent('close ws');
+        subsWs.onData = logEvent('data ws');
+        subsWs.onError = logEvent('error ws');
 
-        connXhr.connect();
-        connSse.connect();
-        connWs.connect();
-        connBest.connect();
-
-        window._iorioXhr = connXhr;
-        window._iorioSse  = connSse;
-        window._iorioWs = connWs;
-        window._iorioBest = connBest;
+        window._iorioXhr = subsXhr;
+        window._iorioSse = subsSse;
+        window._iorioWs = subsWs;
+        window._iorioBest = subsBest;
         window._iorioSess = session;
+
+        window._iorioSubscribe = function (bucket, stream, fromId) {
+            subsXhr.subscribe(bucket, stream, fromId);
+            subsSse.subscribe(bucket, stream, fromId);
+            subsWs.subscribe(bucket, stream, fromId);
+            subsBest.subscribe(bucket, stream, fromId);
+        };
+
+        window._iorioUnsubscribe = function (bucket, stream) {
+            subsXhr.unsubscribe(bucket, stream);
+            subsSse.unsubscribe(bucket, stream);
+            subsWs.unsubscribe(bucket, stream);
+            subsBest.unsubscribe(bucket, stream);
+        };
+
+        window._iorioSubscribe('mariano', 'test');
+
+        subsXhr.connect();
+        subsSse.connect();
+        subsWs.connect();
+        subsBest.connect();
     }
-}(this));
+}

@@ -17,10 +17,22 @@ function __MakeBala(global, console, request) {
     }
 
     function Transport (url, options, prefix) {
+        options = options || {};
         this.url = url;
         this.options = options;
         this.prefix = prefix;
+        this.isPolling = false;
+        this.doesHeartBeat = false;
+        this.heartBeatId = null;
+
+        if (options.heartBeatIntervalMs === 'number') {
+            this.heartBeatIntervalMs = options.heartBeatIntervalMs;
+        } else {
+            this.heartBeatIntervalMs = Transport.DEFAULT_HEART_BEAT_INTERVAL_MS;
+        }
     }
+
+    Transport.DEFAULT_HEART_BEAT_INTERVAL_MS = 5000;
 
     tproto = Transport.prototype;
 
@@ -32,15 +44,47 @@ function __MakeBala(global, console, request) {
     tproto.send = notImplemented;
     tproto.close = notImplemented;
 
+    // internal function you must call on Transport implementation, you can
+    // override it to do some extra work before/after calling onData
+    tproto._onData = function () {
+        this.onData.apply(this, arguments);
+    };
+
     tproto.onData = noop;
+    tproto.onError = noop;
     tproto.onOpen = noop;
     tproto.onClose = noop;
     tproto.onSend = noop;
 
+    tproto.onHeartBeat = noop;
+
+    tproto.stopHeartBeat = function () {
+        if (this.heartBeatId) {
+            global.clearInterval(this.heartBeatId);
+        } else {
+            console.warn('Trying to stop non started heartbeat', this);
+        }
+    };
+
+    tproto.setupHeartBeat = function () {
+        // Noop if the transport doesn't support heartbeat
+        if (!this.doesHeartBeat) {
+            return;
+        }
+
+        var self = this;
+        this.stopHeartBeat();
+        this.heartBeatId = global.setInterval(function () {
+            self.onHeartBeat();
+        }, this.heartBeatIntervalMs);
+    };
+
     function WebSocketTransport(url, options) {
         var prefix = options.secure ? 'wss' : 'ws';
         Transport.call(this, url, options, prefix);
+        this.type = 'ws';
         this._conn = null;
+        this.doesHeartBeat = true;
     }
 
     wsproto = new Transport();
@@ -70,8 +114,10 @@ function __MakeBala(global, console, request) {
         };
 
         self._conn.onmessage = function (evt) {
-            self.onData(evt.data, evt);
+            self._onData(evt.data, evt);
         };
+
+        self.setupHeartBeat();
     };
 
     wsproto.send = function (data) {
@@ -86,17 +132,25 @@ function __MakeBala(global, console, request) {
         }
     };
 
+    function getNumberOr(obj, defaultVal) {
+        if (typeof obj === 'number') {
+            return obj;
+        } else {
+            return defaultVal;
+        }
+    }
+
     function XhrTransport(url, options) {
         var prefix = options.secure ? 'https' : 'http';
         Transport.call(this, url, options, prefix);
+        this.type = 'xhr';
+        this.isPolling = true;
         this._polling = false;
         this._pollReq = null;
+        this.options = options || {};
 
-        if (typeof options.nextPollMs === 'number') {
-            this._nextPollMs = options.nextPollMs;
-        } else {
-            this._nextPollMs = 100;
-        }
+        this._nextPollMs = getNumberOr(options.nextPollMs, 100);
+        this._timeoutMs = getNumberOr(options.timeoutMs, 60000);
     }
 
     xhrproto = new Transport();
@@ -116,8 +170,8 @@ function __MakeBala(global, console, request) {
         function success(req, evt, type) {
             self._scheduleNextPoll();
 
-            if (req.status !== 204) {
-                self.onData(req.responseText, evt);
+            if (req.responseText !== '') {
+                self._onData(req.responseText, evt);
             }
         }
 
@@ -128,15 +182,16 @@ function __MakeBala(global, console, request) {
 
         var self = this,
             url = self.getUrl(),
-            headers = {
-                'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
+            baseHeaders = {
                 'X-Socket-Transport': 'xhrPolling'
             },
+            headers = request.shallowMerge(baseHeaders, this.options.headers),
             req = request.get(url, {
                 cache: false,
                 headers: headers,
                 success: success,
-                error: error
+                error: error,
+                timeout: self._timeoutMs
             });
 
         self.onOpen({_type: 'xhr'}, req);
@@ -155,10 +210,6 @@ function __MakeBala(global, console, request) {
     xhrproto.send = function (data) {
         function success(req, evt, type) {
             self.onSend(data);
-
-            if (req.status !== 204) {
-                self.onData(req.responseText);
-            }
         }
 
         function error(req, evt, type) {
@@ -183,12 +234,14 @@ function __MakeBala(global, console, request) {
         if (this._pollReq) {
             this._pollReq.abort();
             this._pollReq = null;
+            this.onClose();
         }
     };
 
     function SseTransport(url, options) {
         var prefix = options.secure ? 'https' : 'http';
         Transport.call(this, url, options, prefix);
+        this.type = 'sse';
         this._conn = null;
     }
 
@@ -216,10 +269,8 @@ function __MakeBala(global, console, request) {
         };
 
         self._conn.onmessage = function (evt) {
-            self.onData(evt.data, evt);
+            self._onData(evt.data, evt);
         };
-
-        self.onOpen({_type: 'sse'}, self._conn);
     };
 
     sseproto.send = xhrproto.send;
@@ -228,6 +279,7 @@ function __MakeBala(global, console, request) {
         if (this._conn) {
             this._conn.close();
             this._conn = null;
+            this.onClose();
         }
     };
 
