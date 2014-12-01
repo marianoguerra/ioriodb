@@ -31,6 +31,21 @@ allow the following:
 
 All through a RESTful HTTP API
 
+Setup
+-----
+
+the first time you build it you need to fix some stuff before it builds::
+
+    ./rebar get-deps && ./tools/fix_deps_warnings_as_errors.sh && make newrel
+
+after you have all the deps you can simply do::
+
+    make newrel
+
+to run a single node::
+
+    ./rel/iorio/bin/iorio consol
+
 API
 ---
 
