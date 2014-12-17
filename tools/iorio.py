@@ -7,6 +7,15 @@ import pprint
 import urllib
 import requests
 
+PERM_GET = "get"
+PERM_STREAM_GET = "get"
+PERM_STREAM_PUT = "put"
+PERM_STREAM_GRANT = "grant"
+PERM_BUCKET_GET = "get"
+PERM_BUCKET_PUT = "put"
+PERM_BUCKET_GRANT = "grant"
+PERM_BUCKET_LIST = "list"
+
 class Response(object):
 
     def __init__(self, status, raw_body, body, content_type, source):
@@ -40,6 +49,7 @@ class Connection(object):
         self.session = requests.Session()
         self.secure = secure
         self.token = None
+        self.username = None
         self.session_header_name = session_header_name
 
     def format_url(self, paths, query_params=None):
@@ -126,12 +136,35 @@ class Connection(object):
         if response.status == 201:
             ok = response.body.get("ok")
             if ok:
+                self.username = username
                 self.token = response.body.get("token")
                 return ok, response
             else:
                 return ok, response
         else:
             return False, response
+
+    def access_bucket(self, username, permission, bucket, action):
+        req_body = self.make_body(username=username, permission=permission,
+                                    action=action)
+        return self.post(req_body, ["access", bucket])
+
+    def access_stream(self, username, permission, bucket, stream, action):
+        req_body = self.make_body(username=username, permission=permission,
+                                    action=action)
+        return self.post(req_body, ["access", bucket, stream])
+
+    def grant_bucket(self, username, permission, bucket):
+        return self.access_bucket(username, permission, bucket, 'grant')
+
+    def revoke_bucket(self, username, permission, bucket):
+        return self.access_bucket(username, permission, bucket, 'revoke')
+
+    def grant_stream(self, username, permission, bucket, stream):
+        return self.access_stream(username, permission, bucket, stream, 'grant')
+
+    def revoke_stream(self, username, permission, bucket, stream):
+        return self.access_stream(username, permission, bucket, stream, 'revoke')
 
     def raw_create_user(self, body, content_type=MT_JSON):
         return self.post(body, ["users"], {}, content_type)

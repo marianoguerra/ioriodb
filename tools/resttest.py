@@ -126,14 +126,14 @@ def test_all_create_user(conn, args):
     log()
     test_create_user_invalid_username(conn, args.tempuser, args.temppass)
 
-def test_send_event(conn, bucket, stream):
+def test_send_event(conn, bucket, stream, expected_id=1):
     '''test sending a correct event'''
     log('send event', bucket, stream)
     resp = conn.send(bucket, stream, dict(name='bob', age=29, sponge=True))
     expect(resp, 'status', 201)
     expect(resp, 'content_type', MT_JSON)
     if resp.body:
-        expect(resp.body.get("meta"), 'id', 1)
+        expect(resp.body.get("meta"), 'id', expected_id)
     else:
         error('Expected body to be set')
 
@@ -145,6 +145,43 @@ def test_send_event_no_auth(conn, bucket, stream):
     expect(resp, 'content_type', MT_JSON)
     expect(resp.body, 'type', 'no-perm')
 
+def test_send_granted_bucket(aconn, uconn, bucket):
+    '''test send event to bucket with granted access'''
+    stream = uconn.username
+    test_send_event_no_auth(uconn, bucket, stream)
+    grant_r = aconn.grant_bucket(uconn.username, iorio.PERM_BUCKET_PUT, bucket)
+    expect(grant_r, 'status', 200)
+    expect(grant_r, 'content_type', MT_JSON)
+    expect(grant_r.body, 'ok', True)
+    test_send_event(uconn, bucket, stream)
+    revoke_r = aconn.revoke_bucket(uconn.username, iorio.PERM_BUCKET_PUT,
+            bucket)
+    expect(revoke_r, 'status', 200)
+    expect(revoke_r, 'content_type', MT_JSON)
+    expect(revoke_r.body, 'ok', True)
+    test_send_event_no_auth(uconn, bucket, stream)
+
+def test_send_granted_stream(aconn, uconn, bucket):
+    '''test send event to bucket with granted access'''
+    stream = uconn.username
+    stream1 = uconn.username * 2
+
+    test_send_event_no_auth(uconn, bucket, stream)
+    grant_r = aconn.grant_stream(uconn.username, iorio.PERM_BUCKET_PUT, bucket,
+            stream)
+    expect(grant_r, 'status', 200)
+    expect(grant_r, 'content_type', MT_JSON)
+    expect(grant_r.body, 'ok', True)
+    test_send_event(uconn, bucket, stream)
+    test_send_event_no_auth(uconn, bucket, stream1)
+    revoke_r = aconn.revoke_stream(uconn.username, iorio.PERM_BUCKET_PUT,
+            bucket, stream)
+    expect(revoke_r, 'status', 200)
+    expect(revoke_r, 'content_type', MT_JSON)
+    expect(revoke_r.body, 'ok', True)
+    test_send_event_no_auth(uconn, bucket, stream)
+    test_send_event_no_auth(uconn, bucket, stream1)
+
 def test_all_send_event(aconn, uconn, args):
     '''test all send event things'''
     log('Testing Send Event')
@@ -154,6 +191,8 @@ def test_all_send_event(aconn, uconn, args):
     test_send_event(uconn, args.tempuser, args.tempuser)
 
     test_send_event_no_auth(uconn, 'foo', 'bar')
+    test_send_granted_bucket(aconn, uconn, 'foo')
+    test_send_granted_stream(aconn, uconn, 'foo1')
 
 def main():
     '''main test entry point'''
