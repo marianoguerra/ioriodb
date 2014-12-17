@@ -9,7 +9,7 @@ import argparse
 import threading
 import multiprocessing
 
-from iorio import *
+import iorio
 
 import faker
 
@@ -91,11 +91,11 @@ class BaseRequester(threading.Thread):
         self.errors = 0
         self.query_count = 0
         self.max_sleep_secs = 5
-        self.token = token
-        self.rsession = new_session()
+        self.conn = iorio.Connection(host, port)
+        self.conn.token = token
 
     def on_no_json_error(self, response, ctx, time_ms):
-        log('response is not json:', response.text, response.status_code, ctx.__dict__)
+        log('response is not json:', response.raw_body, response.status, ctx.__dict__)
 
     def on_error(self, response, body, ctx, time_ms):
         log('error response')
@@ -115,11 +115,11 @@ class BaseRequester(threading.Thread):
             time_ms = t_2 - t_1
             self.query_count += 1
 
-            is_error = (response.status_code != 200)
+            is_error = (response.status != 200)
             try:
                 if is_error:
                     self.errors += 1
-                body = json.loads(response.text)
+                body = response.body
 
                 if is_error:
                     self.on_error(response, body, ctx, time_ms)
@@ -146,7 +146,7 @@ class QueryRequester(BaseRequester):
         BaseRequester.on_success(self, response, body, ctx, time_ms)
         self.item_count += ctx.limit
         log('GET %s/%s %d => %d (%f ms)' % (ctx.bucket, ctx.stream, ctx.limit,
-            len(response.text), time_ms))
+            len(response.raw_body), time_ms))
 
     def on_error(self, response, body, ctx, time_ms):
         BaseRequester.on_error(self, response, body, ctx, time_ms)
@@ -158,9 +158,7 @@ class QueryRequester(BaseRequester):
         stream = random.choice(generator.streams)
         limit = random.randint(0, 100)
 
-        response = query(self.rsession, self.host, self.port, bucket, stream,
-                None, limit, self.token)
-
+        response = self.conn.query(bucket, stream, None, limit)
         return response, Obj(bucket=bucket, stream=stream, limit=limit)
 
     def format_summary(self):
@@ -191,11 +189,10 @@ class BucketLister(BaseRequester):
             log("Error listing streams %s" % ctx.bucket)
 
     def list_buckets(self):
-        return list_buckets(self.rsession, self.host, self.port, self.token)
+        return self.conn.list_buckets()
 
     def list_bucket(self, bucket):
-        return list_streams(self.rsession, self.host, self.port, bucket,
-                self.token)
+        return self.conn.list_streams(bucket)
 
     def request(self):
         if random.randint(0, 3) == 2:
@@ -221,7 +218,8 @@ class Inserter(threading.Thread):
         self.count = 0
         self.errors = 0
         self.t_diff = 0
-        self.rsession = new_session()
+        self.conn = iorio.Connection(args.host, args.port)
+        self.conn.token = token
 
     def run(self):
         args = self.args
@@ -232,8 +230,7 @@ class Inserter(threading.Thread):
             for generator in self.generators:
                 bucket, stream, data = generator.generate()
                 try:
-                    response = send(self.rsession, args.host, args.port, bucket,
-                            stream, data, self.token)
+                    response = self.conn.send(bucket, stream, data)
                 except Exception as error:
                     self.errors += 1
                     log('error sending data', error)
@@ -244,17 +241,17 @@ class Inserter(threading.Thread):
                 if self.count % 500 == 0:
                     log('%d inserts' % self.count)
 
-                if response.status_code != 201:
+                if response.status != 201:
                     self.errors += 1
-                    log('error sending data', response.status_code)
+                    log('error sending data', response.status)
                     pprint.pprint(data)
                     try:
-                        body = json.loads(response.text)
+                        body = json.loads(response.raw_body)
                         log('error response')
                         pprint.pprint(body)
                     except ValueError:
                         log('response is not json:', bucket, stream,
-                                response.status_code, response.text)
+                                response.status, response.raw_body)
 
 
         t_2 = time.time()
@@ -275,7 +272,8 @@ class Patcher(threading.Thread):
         self.count = 0
         self.errors = 0
         self.t_diff = 0
-        self.rsession = new_session()
+        self.conn = iorio.Connection(args.host, args.port)
+        self.conn.token = token
 
     def run(self):
         args = self.args
@@ -288,14 +286,13 @@ class Patcher(threading.Thread):
                 stream = stream_base + 'patch'
                 data = [{"op": "add", "path": "/numbers/-", "value": i}]
                 try:
-                    response = patch(self.rsession, args.host, args.port, bucket,
-                            stream, data, self.token)
+                    response = self.conn.send_patch(bucket, stream, data)
 
-                    if response.status_code in (400, 404):
-                        log("patch failed", response.status_code, "trying to create it", response.text)
-                        r1 = send(self.rsession, args.host, args.port, bucket,
-                                stream, {"data": "patch", "numbers": []}, self.token)
-                        log("patch creation", r1.status_code, bucket, stream)
+                    if response.status in (400, 404):
+                        log("patch failed", response.status, "trying to create it", response.raw_body)
+                        resp1 = self.conn.send(bucket, stream,
+                                {"data": "patch", "numbers": []})
+                        log("patch creation", resp1.status, bucket, stream)
                         continue
 
                 except Exception as error:
@@ -308,17 +305,17 @@ class Patcher(threading.Thread):
                 if self.count % 500 == 0:
                     log('%d patches' % self.count)
 
-                if response.status_code != 200:
+                if response.status != 200:
                     self.errors += 1
-                    log('error sending data', response.status_code)
+                    log('error sending data', response.status)
                     pprint.pprint(data)
                     try:
-                        body = json.loads(response.text)
+                        body = json.loads(response.raw_body)
                         log('error response')
                         pprint.pprint(body)
                     except ValueError:
                         log('response is not json:', bucket, stream,
-                                response.status_code, response.text)
+                                response.status, response.raw_body)
 
 
         t_2 = time.time()
@@ -338,7 +335,7 @@ class Listener(threading.Thread):
         self.port = port
         self.token = token
         self.generators = generators
-        self.subs = Subscriptions()
+        self.subs = iorio.Subscriptions()
 
         for i in range(listener_count):
             generator_i = (i - 1) % len(generators)
@@ -349,23 +346,22 @@ class Listener(threading.Thread):
         self.count = 0
         self.errors = 0
         self.t_diff = 0
-        self.rsession = new_session()
+        self.conn = iorio.Connection(host, port)
+        self.conn.token = token
 
     def run(self):
         t_1 = time.time()
 
         while not self.stop:
             current_subs = self.subs.to_list()
-            response = listen(self.rsession, self.host, self.port,
-                    current_subs, self.token)
+            response = self.conn.listen(current_subs)
 
-            if response.status_code == 200:
-                body = json.loads(response.text)
+            if response.status == 200:
+                body = json.loads(response.raw_body)
                 self.count += len(body)
                 self.subs.update_seqnums(body)
-            elif response.status_code != 204:
+            elif response.status != 204:
                 log('got error listening')
-                show_response(response)
 
         t_2 = time.time()
         self.t_diff = t_2 - t_1
@@ -380,15 +376,15 @@ def main():
     log('using seed', args.seed)
     random.seed(args.seed)
 
-    rsession = new_session()
-    ok, token = authenticate(rsession, args.host, args.port, args.username,
-            args.password)
+    conn = iorio.Connection(args.host, args.port)
+    ok, _response = conn.authenticate(args.username, args.password)
 
     if not ok:
         log('authentication failed')
         return
     else:
-        log("token", token)
+        token = conn.token
+        log("token", conn.token)
 
     generators = [Generator(i, randint(), args.streams) \
             for i in range(args.buckets)]
