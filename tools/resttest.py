@@ -194,6 +194,18 @@ def test_all_send_event(aconn, uconn, args):
     test_send_granted_bucket(aconn, uconn, 'foo')
     test_send_granted_stream(aconn, uconn, 'foo1')
 
+def test_patch_event(conn, bucket, stream):
+    '''test that patch works'''
+    resp = conn.send_patch(bucket, stream,
+            [{"op": "add", "path": "/baz", "value": "qux"}])
+    expect(resp, 'status', 200)
+    expect(resp, 'content_type', MT_JSON)
+
+def test_all_patch(conn, _args):
+    '''all patch tests'''
+    log('Testing Patch')
+    test_patch_event(conn, conn.username, conn.username)
+
 def main():
     '''main test entry point'''
     args = parse_args()
@@ -209,6 +221,8 @@ def main():
 
     assert auth_ok
     test_all_send_event(aconn, uconn, args)
+
+    test_all_patch(uconn, args)
 
 
 if __name__ == '__main__':
