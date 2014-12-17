@@ -135,7 +135,7 @@ subscribe_all(Subs, State) ->
 
 subscribe(Bucket, Stream, FromSeqNum, State=#state{channels=Channels, iorio=Iorio}) ->
     Key = {Bucket, Stream},
-    lager:info("subscribing: ~s/~s~n", [Bucket, Stream]),
+    lager:debug("subscribing: ~s/~s~n", [Bucket, Stream]),
     Iorio:subscribe(Bucket, Stream, FromSeqNum, self()),
     NewChannels = [Key|Channels],
     State#state{channels=NewChannels}.
@@ -162,7 +162,7 @@ handle_unsubscribe(Msg, Id, Req, State=#state{channels=Channels, iorio=Iorio}) -
                         IsSubscribed = contains(Key, Channels),
                         if
                             IsSubscribed ->
-                                lager:info("unsubscribing ~s/~s~n", [Bucket, Stream]),
+                                lager:debug("unsubscribing ~s/~s~n", [Bucket, Stream]),
                                 Iorio:unsubscribe(Bucket, Stream, self()),
                                 NewChannels = remove(Key, Channels),
                                 State1 = State#state{channels=NewChannels},
