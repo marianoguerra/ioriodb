@@ -60,31 +60,37 @@ def expect(obj, field_name, value):
     if actual != value:
         error('Expected', field_name, 'to be', value, 'but got', actual)
 
+def expect_json_error(resp, status, error_type):
+    '''helper to check many things in one call'''
+    expect(resp, 'status', status)
+    expect(resp, 'content_type', MT_JSON)
+    expect(resp.body, 'type', error_type)
+
 def test_create_user_bad_body(conn, username, password):
     '''test creating a user with incorrect body'''
     log('creating user with incorrect content type', username)
     body = conn.make_body(username=username, password=password)
-    resp = conn._create_user(body, MT_XML)
+    resp = conn.raw_create_user(body, MT_XML)
     expect(resp, 'status', 415)
     expect(resp, 'body', None)
 
     log('creating user with invalid json body', username)
     body = conn.make_body(username=username, password=password)[:-1]
-    resp = conn._create_user(body, MT_JSON)
+    resp = conn.raw_create_user(body, MT_JSON)
     expect_json_error(resp, 400, 'invalid-body')
 
 def test_create_user_missing_field(conn, username, password):
     '''test creating a user without a required field'''
     log('creating user with missing password', username)
-    resp = conn._create_user(conn.make_body(username=username))
+    resp = conn.raw_create_user(conn.make_body(username=username))
     expect_json_error(resp, 400, 'no-pass')
 
     log('creating user with missing username', username)
-    resp = conn._create_user(conn.make_body(password=password))
+    resp = conn.raw_create_user(conn.make_body(password=password))
     expect_json_error(resp, 400, 'no-user')
 
     log('creating user with empty object body', username)
-    resp = conn._create_user(conn.make_body())
+    resp = conn.raw_create_user(conn.make_body())
     expect_json_error(resp, 400, 'no-user-and-pass')
 
 def test_create_user(conn, username, password):
@@ -107,20 +113,9 @@ def test_create_user_invalid_username(conn, username, password):
     resp = conn.create_user(username + ' %$&/(', password)
     expect_json_error(resp, 400, 'illegal-username')
 
-def expect_json_error(resp, status, error_type):
-    expect(resp, 'status', status)
-    expect(resp, 'content_type', MT_JSON)
-    expect(resp.body, 'type', error_type)
-
-def main():
-    '''main test entry point'''
-    args = parse_args()
-    conn = iorio.Connection(args.host, args.port)
-    log("authenticating", args.username)
-    auth_ok, _result = conn.authenticate(args.username, args.password)
-
-    assert auth_ok
-    log()
+def test_all_create_user(conn, args):
+    '''test all create user things'''
+    log('Testing Create User')
     test_create_user_missing_field(conn, args.tempuser, args.temppass)
     log()
     test_create_user_bad_body(conn, args.tempuser, args.temppass)
@@ -130,6 +125,23 @@ def main():
     test_create_user_again(conn, args.tempuser, args.temppass)
     log()
     test_create_user_invalid_username(conn, args.tempuser, args.temppass)
+
+def test_all_send_event(conn, args):
+    '''test all send event things'''
+    log('Testing Send Event')
+    pass
+
+def main():
+    '''main test entry point'''
+    args = parse_args()
+    conn = iorio.Connection(args.host, args.port)
+    log("authenticating", args.username)
+    auth_ok, _result = conn.authenticate(args.username, args.password)
+
+    assert auth_ok
+
+    test_all_create_user(conn, args)
+    test_all_send_event(conn, args)
 
 
 if __name__ == '__main__':

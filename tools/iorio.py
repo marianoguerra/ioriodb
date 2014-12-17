@@ -133,12 +133,12 @@ class Connection(object):
         else:
             return False, response
 
-    def _create_user(self, body, content_type=MT_JSON):
+    def raw_create_user(self, body, content_type=MT_JSON):
         return self.post(body, ["users"], {}, content_type)
 
     def create_user(self, username, password):
         req_body = self.make_body(username=username, password=password)
-        return self._create_user(req_body)
+        return self.raw_create_user(req_body)
 
 
 class Subscriptions(object):
