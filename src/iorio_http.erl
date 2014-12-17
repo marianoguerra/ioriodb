@@ -18,8 +18,12 @@ unauthorized(Req) ->
     response(<<"{\"type\": \"unauthorized\"}">>, Req).
 
 invalid_body(Req) ->
-    response(<<"{\"type\": \"invalid-body\"}">>, Req).
+    error(Req, <<"invalid-body">>, <<"Invalid Request Body">>).
 
 json_response(Req, Body) ->
     JsonBody = jsx:encode(Body),
-    response(JsonBody, Req).
+    Header = <<"Content-Type">>,
+    ContentType = <<"application/json">>,
+    Req1 = cowboy_req:delete_resp_header(<<"content-type">>, Req),
+    Req2 = cowboy_req:set_resp_header(Header, ContentType, Req1),
+    response(JsonBody, Req2).

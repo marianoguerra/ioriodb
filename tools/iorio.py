@@ -2,93 +2,144 @@
 from __future__ import print_function
 
 import json
+import time
 import pprint
 import urllib
 import requests
 
-def body_json(rsession, url, data, method, token=None, content_type='application/json'):
-    headers = {'content-type': content_type}
+class Response(object):
 
-    if token:
-        headers['x-session'] = token
+    def __init__(self, status, raw_body, body, content_type, source):
+        self.status = status
+        self.raw_body = raw_body
+        self.body = body
+        self.source = source
+        self.content_type = content_type
 
-    return getattr(rsession, method)(url, headers=headers, data=data)
+    @classmethod
+    def from_response(cls, response):
+        status = response.status_code
+        raw_body = response.text
+        body = None
+        content_type = response.headers.get("Content-Type")
 
-def body_data_json(rsession, url, data, method, token=None, content_type='application/json'):
-    return body_json(rsession, url, json.dumps(data), method, token, content_type)
+        try:
+            body = json.loads(raw_body)
+        except ValueError:
+            pass
 
-def post_data_json(rsession, url, data, token=None, content_type='application/json'):
-    return body_data_json(rsession, url, data, 'post', token, content_type)
+        return cls(status, raw_body, body, content_type, response)
 
-def patch_data_json(rsession, url, data, token=None, content_type='application/json-patch+json'):
-    return body_data_json(rsession, url, data, 'patch', token, content_type)
+class Connection(object):
+    MT_JSON = 'application/json'
+    MT_JSON_PATCH = 'application/json-patch+json'
 
-def format_url(host, port, *paths, **query_params):
-    if query_params:
-        params = "?" + "&".join(("%s=%s" % (key, str(val))) for key, val in query_params.items())
-    else:
-        params = ""
+    def __init__(self, host, port, secure=False, session_header_name='x-session'):
+        self.host = host
+        self.port = port
+        self.session = requests.Session()
+        self.secure = secure
+        self.token = None
+        self.session_header_name = session_header_name
 
-    path = "/".join(str(item) for item in paths)
-    return 'http://%s:%d/%s%s' % (host, port, path, params)
-
-def authenticate(rsession, host, port, username, password):
-    url = format_url(host, port, "sessions")
-    req_body = dict(username=username, password=password)
-    response = post_data_json(rsession, url, req_body)
-    body = json.loads(response.text)
-    if response.status_code == 201:
-        ok = body.get("ok")
-        if ok:
-            return ok, body.get("token")
+    def format_url(self, paths, query_params=None):
+        if query_params:
+            params = "?" + "&".join(("%s=%s" % (key, str(val))) for key, val in query_params.items())
         else:
-            return ok, response
-    else:
-        return False, response
+            params = ""
 
-def send(rsession, host, port, bucket, stream, data, token=None,
-        content_type='application/json'):
-    url = format_url(host, port, "streams", bucket, stream)
-    return post_data_json(rsession, url, data, token, content_type)
+        path = "/".join(str(item) for item in paths)
+        protocol = 'https' if self.secure else 'http'
+        return '%s://%s:%d/%s%s' % (protocol, self.host, self.port, path, params)
 
-def patch(rsession, host, port, bucket, stream, data, token=None,
-          content_type='application/json-patch+json'):
-    url = format_url(host, port, "streams", bucket, stream)
-    return patch_data_json(rsession, url, data, token, content_type)
+    def make_headers(self, content_type=MT_JSON):
+        headers = {'content-type': content_type}
 
-def list_buckets(rsession, host, port, token=None):
-    url = format_url(host, port, "buckets")
-    return get_json(rsession, url, token)
+        if self.token:
+            headers[self.session_header_name] = self.token
 
-def list_streams(rsession, host, port, bucket, token=None):
-    url = format_url(host, port, "streams", bucket)
-    return get_json(rsession, url, token)
+        return headers
 
-def listen(rsession, host, port, subs, token=None):
-    url_base = format_url(host, port, "listen", jwt=urllib.parse.quote(token))
-    url = url_base + '&' + '&'.join(['s=%s' % sub for sub in subs])
-    return get_json(rsession, url, token)
+    def query_req(self, method, paths, query_params, content_type):
+        headers = self.make_headers(content_type)
+        url = self.format_url(paths, query_params)
+        req_method = getattr(self.session, method)
+        response = req_method(url, headers=headers)
+        return Response.from_response(response)
 
-def get_json(rsession, url, token=None):
-    headers = {'content-type': 'application/json'}
+    def data_req(self, method, data, paths, query_params, content_type):
+        headers = self.make_headers(content_type)
+        url = self.format_url(paths, query_params)
+        req_method = getattr(self.session, method)
+        response = req_method(url, headers=headers, data=data)
+        return Response.from_response(response)
 
-    if token:
-        headers['x-session'] = token
+    def post(self, data, paths, query_params=None, content_type=MT_JSON):
+        return self.data_req('post', data, paths, query_params, content_type)
 
-    response = rsession.get(url, headers=headers)
-    return response
+    def put(self, data, paths, query_params=None, content_type=MT_JSON):
+        return self.data_req('put', data, paths, query_params, content_type)
 
-def query(rsession, host, port, bucket, stream, fromsn, limit, token=None):
-    params = {'limit': limit}
-    if fromsn is not None:
-        params['from'] = fromsn
+    def patch(self, data, paths, query_params=None, content_type=MT_JSON_PATCH):
+        return self.data_req('patch', data, paths, query_params, content_type)
 
-    url = format_url(host, port, 'streams', bucket, stream, **params)
-    return get_json(rsession, url, token)
+    def get(self, paths, query_params=None, content_type=MT_JSON):
+        return self.query_req('get', paths, query_params, content_type)
 
-def new_session():
-    '''return a new http session'''
-    return requests.Session()
+    def delete(self, paths, query_params=None, content_type=MT_JSON):
+        return self.query_req('delete', paths, query_params, content_type)
+
+    def make_body(self, **fields):
+        return json.dumps(fields)
+
+    def send(self, bucket, stream, data):
+        return self.post(json.dumps(data), ['streams', bucket, stream])
+
+    def send_patch(self, bucket, stream, data):
+        return self.patch(json.dumps(data), ['streams', bucket, stream])
+
+    def list_buckets(self):
+        return self.get(['buckets'])
+
+    def list_streams(self, bucket):
+        return self.get(['streams', bucket])
+
+    def listen(self, subs, content_type=MT_JSON):
+        headers = self.make_headers(content_type)
+        token = urllib.parse.quote(self.token)
+        url_base = self.format_url(["listen"], {'jwt': token})
+        url = url_base + '&' + '&'.join(['s=%s' % sub for sub in subs]) + '&' + str(time.time())
+
+        response = self.session.get(url, headers=headers)
+        return Response.from_response(response)
+
+    def query(self, bucket, stream, fromsn, limit):
+        params = {'limit': limit}
+        if fromsn is not None:
+            params['from'] = fromsn
+
+        return self.get(['streams', bucket, stream], params)
+
+    def authenticate(self, username, password):
+        req_body = self.make_body(username=username, password=password)
+        response = self.post(req_body, ["sessions"])
+        if response.status == 201:
+            ok = response.body.get("ok")
+            if ok:
+                self.token = response.body.get("token")
+                return ok, response
+            else:
+                return ok, response
+        else:
+            return False, response
+
+    def _create_user(self, body, content_type=MT_JSON):
+        return self.post(body, ["users"], {}, content_type)
+
+    def create_user(self, username, password):
+        req_body = self.make_body(username=username, password=password)
+        return self._create_user(req_body)
+
 
 class Subscriptions(object):
     '''class to handle subscriptions state'''
