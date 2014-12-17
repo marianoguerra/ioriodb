@@ -5,20 +5,15 @@
 response(Body, Req) ->
     cowboy_req:set_resp_body(Body, Req).
 
-ok(Req) ->
-    response(<<"{\"ok\": true}">>, Req).
+ok(Req) -> json_response(Req, [{ok, true}]).
 
-error(Req, Type, Reason) ->
-    json_response(Req, [{type, Type}, {reason, Reason}]).
+error(Req, Type, Reason) -> json_response(Req, [{type, Type}, {reason, Reason}]).
 
-no_permission(Req) ->
-    response(<<"{\"type\": \"no-perm\"}">>, Req).
+no_permission(Req) -> error(Req, <<"no-perm">>, <<"No Permission">>).
 
-unauthorized(Req) ->
-    response(<<"{\"type\": \"unauthorized\"}">>, Req).
+unauthorized(Req) -> error(Req, <<"unauthorized">>, <<"Unauthorized">>).
 
-invalid_body(Req) ->
-    error(Req, <<"invalid-body">>, <<"Invalid Request Body">>).
+invalid_body(Req) -> error(Req, <<"invalid-body">>, <<"Invalid Request Body">>).
 
 json_response(Req, Body) ->
     JsonBody = jsx:encode(Body),

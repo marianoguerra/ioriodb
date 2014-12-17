@@ -126,22 +126,50 @@ def test_all_create_user(conn, args):
     log()
     test_create_user_invalid_username(conn, args.tempuser, args.temppass)
 
-def test_all_send_event(conn, args):
+def test_send_event(conn, bucket, stream):
+    '''test sending a correct event'''
+    log('send event', bucket, stream)
+    resp = conn.send(bucket, stream, dict(name='bob', age=29, sponge=True))
+    expect(resp, 'status', 201)
+    expect(resp, 'content_type', MT_JSON)
+    if resp.body:
+        expect(resp.body.get("meta"), 'id', 1)
+    else:
+        error('Expected body to be set')
+
+def test_send_event_no_auth(conn, bucket, stream):
+    '''test sending a correct event'''
+    log('send event', bucket, stream)
+    resp = conn.send(bucket, stream, dict(name='bob', age=29, sponge=True))
+    expect(resp, 'status', 401)
+    expect(resp, 'content_type', MT_JSON)
+    expect(resp.body, 'type', 'no-perm')
+
+def test_all_send_event(aconn, uconn, args):
     '''test all send event things'''
     log('Testing Send Event')
-    pass
+    test_send_event(aconn, args.username, args.tempuser)
+    # admin can post into user bucket
+    test_send_event(aconn, args.tempuser, args.username)
+    test_send_event(uconn, args.tempuser, args.tempuser)
+
+    test_send_event_no_auth(uconn, 'foo', 'bar')
 
 def main():
     '''main test entry point'''
     args = parse_args()
-    conn = iorio.Connection(args.host, args.port)
+    aconn = iorio.Connection(args.host, args.port)
+    uconn = iorio.Connection(args.host, args.port)
     log("authenticating", args.username)
-    auth_ok, _result = conn.authenticate(args.username, args.password)
+    auth_ok, _result = aconn.authenticate(args.username, args.password)
 
     assert auth_ok
 
-    test_all_create_user(conn, args)
-    test_all_send_event(conn, args)
+    test_all_create_user(aconn, args)
+    auth_ok, _result = uconn.authenticate(args.tempuser, args.temppass)
+
+    assert auth_ok
+    test_all_send_event(aconn, uconn, args)
 
 
 if __name__ == '__main__':
