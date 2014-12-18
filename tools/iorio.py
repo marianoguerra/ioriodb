@@ -39,6 +39,23 @@ class Response(object):
 
         return cls(status, raw_body, body, content_type, response)
 
+    def __str__(self):
+        lines = ["Status: " + str(self.status),
+                 "Type: " + self.content_type]
+
+
+        if not self.raw_body:
+            lines.append("No Response Body")
+        elif self.body is None:
+            lines.append("Raw Response: " + self.raw_body)
+        else:
+            lines.append("JSON Response: " + pprint.pformat(self.body))
+
+        return "\n".join(lines)
+
+    def to_json(self):
+        return self.__dict__
+
 class Connection(object):
     MT_JSON = 'application/json'
     MT_JSON_PATCH = 'application/json-patch+json'
@@ -102,11 +119,13 @@ class Connection(object):
     def make_body(self, **fields):
         return json.dumps(fields)
 
-    def send(self, bucket, stream, data):
-        return self.post(json.dumps(data), ['streams', bucket, stream])
+    def send(self, bucket, stream, data, content_type=MT_JSON):
+        return self.post(json.dumps(data), ['streams', bucket, stream], None,
+                content_type)
 
-    def send_patch(self, bucket, stream, data):
-        return self.patch(json.dumps(data), ['streams', bucket, stream])
+    def send_patch(self, bucket, stream, data, content_type=MT_JSON_PATCH):
+        return self.patch(json.dumps(data), ['streams', bucket, stream],
+                None, content_type)
 
     def list_buckets(self):
         return self.get(['buckets'])

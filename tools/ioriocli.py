@@ -85,36 +85,22 @@ def parse_data_from_raw(data_raw):
     else:
         return json.loads(data_raw)
 
-def get_auth_token(rsession, args):
-    '''if token is set return it otherwise try to authenticate'''
-    if args.token:
-        return True, args.token
-    else:
-        return iorio.authenticate(rsession, args.host, args.port,
-                args.username, args.password)
-
-def do_when_authenticated(args, fun, rsession=None):
+def do_when_authenticated(args, fun, conn=None):
     '''if auth works run fun'''
-    if rsession is None:
-        rsession = iorio.new_session()
+    if conn is None:
+        conn = iorio.Connection(args.host, args.port)
 
-    auth_ok, auth_data = get_auth_token(rsession, args)
+    auth_ok, auth_resp = conn.authenticate(args.username, args.password)
 
     if auth_ok:
-        token = auth_data
-        response = fun(rsession, token)
-        iorio.show_response(response, args.human)
+        response = fun(conn)
+        print(response)
     else:
-        auth_response = auth_data
-        if args.human:
-            print("Auth Failed")
-        iorio.show_response(auth_response, args.human)
+        print("Auth Failed")
+        print(auth_resp)
 
 def post_or_patch(args, name):
     '''avoid duplication'''
-    host = args.host
-    port = args.port
-
     bucket = args.bucket
     stream = args.stream
 
@@ -122,11 +108,10 @@ def post_or_patch(args, name):
     data_raw = args.data
     data = parse_data_from_raw(data_raw)
 
-    def fun(rsession, token):
+    def fun(conn):
         '''fun that does the work'''
-        function = getattr(iorio, name)
-        return function(rsession, host, port, bucket, stream, data,
-                token, content_type)
+        function = getattr(conn, name)
+        return function(bucket, stream, data, content_type)
 
     do_when_authenticated(args, fun)
 
@@ -136,46 +121,37 @@ def handle_post_event(args):
 
 def handle_patch_event(args):
     '''patch a new event'''
-    post_or_patch(args, 'patch')
+    post_or_patch(args, 'send_patch')
 
 def handle_get_events(args):
     '''get events'''
-    host = args.host
-    port = args.port
-
     bucket = args.bucket
     stream = args.stream
 
     limit = args.limit
     fromsn = args.fromsn
 
-    def fun(rsession, token):
+    def fun(conn):
         '''fun that does the work'''
-        return iorio.query(rsession, host, port, bucket, stream, fromsn,
-                limit, token)
+        return conn.query(bucket, stream, fromsn, limit)
 
     do_when_authenticated(args, fun)
 
 def handle_list_streams(args):
     '''get events'''
-    host = args.host
-    port = args.port
     bucket = args.bucket
 
-    def fun(rsession, token):
+    def fun(conn):
         '''fun that does the work'''
-        return iorio.list_streams(rsession, host, port, bucket, token)
+        return conn.list_streams(bucket)
 
     do_when_authenticated(args, fun)
 
 def handle_list_buckets(args):
     '''get events'''
-    host = args.host
-    port = args.port
-
-    def fun(rsession, token):
+    def fun(conn):
         '''fun that does the work'''
-        return iorio.list_buckets(rsession, host, port, token)
+        return conn.list_buckets()
 
     do_when_authenticated(args, fun)
 
@@ -200,9 +176,6 @@ def parse_subscription(sub):
 
 def handle_listen(args):
     '''listen to events in subscriptions'''
-    host = args.host
-    port = args.port
-
     raw_subs = args.subscriptions
     subs = iorio.Subscriptions()
 
@@ -215,17 +188,16 @@ def handle_listen(args):
         bucket, stream, count = result
         subs.add(bucket, stream, count)
 
-    def fun(rsession, token):
+    def fun(conn):
         '''fun that does the work'''
         while True:
             current_subs = subs.to_list()
             print('listening', ' '.join(current_subs))
-            response = iorio.listen(rsession, host, port, current_subs, token)
-            iorio.show_response(response, args.human)
+            response = conn.listen(current_subs)
+            print(response)
             print()
-            if response.status_code == 200:
-                body = json.loads(response.text)
-                subs.update_seqnums(body)
+            if response.status == 200:
+                subs.update_seqnums(response.body)
 
     do_when_authenticated(args, fun)
 
