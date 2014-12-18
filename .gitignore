@@ -1,4 +1,5 @@
 *.beam
+*.pyc
 .eunit
 deps/*
 ebin/*
