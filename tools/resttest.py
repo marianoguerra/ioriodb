@@ -48,6 +48,11 @@ def parse_args():
 
     return args
 
+def expect_val(field_name, actual, expected):
+    '''check that value is as expected'''
+    if actual != expected:
+        error('Expected', field_name, 'to be', expected, 'but got', actual)
+
 def expect(obj, field_name, value):
     '''check that field has expected value, print error otherwise'''
     if isinstance(obj, dict):
@@ -57,8 +62,8 @@ def expect(obj, field_name, value):
     else:
         actual = None
 
-    if actual != value:
-        error('Expected', field_name, 'to be', value, 'but got', actual)
+    expect_val(field_name, actual, value)
+
 
 def expect_json_error(resp, status, error_type):
     '''helper to check many things in one call'''
@@ -107,7 +112,7 @@ def test_create_user_again(conn, username, password):
     resp = conn.create_user(username, password)
     expect_json_error(resp, 400, 'user-exists')
 
-def test_create_user_invalid_username(conn, username, password):
+def test_create_user_invalid_u(conn, username, password):
     '''test creating a user with invalid username'''
     log('creating user invalid username', username)
     resp = conn.create_user(username + ' %$&/(', password)
@@ -124,7 +129,7 @@ def test_all_create_user(conn, args):
     log()
     test_create_user_again(conn, args.tempuser, args.temppass)
     log()
-    test_create_user_invalid_username(conn, args.tempuser, args.temppass)
+    test_create_user_invalid_u(conn, args.tempuser, args.temppass)
 
 def test_send_event(conn, bucket, stream, expected_id=1):
     '''test sending a correct event'''
@@ -206,6 +211,19 @@ def test_all_patch(conn, _args):
     log('Testing Patch')
     test_patch_event(conn, conn.username, conn.username)
 
+def test_all_authenticate(args):
+    '''all auth tests'''
+    log('Testing Auth')
+    conn = iorio.Connection(args.host, args.port)
+
+    auth_ok, resp = conn.authenticate('someuser', 'some password')
+    expect_val('auth_ok', auth_ok, False)
+    expect_json_error(resp, 401, 'unauthorized')
+
+    auth_ok, resp = conn.authenticate(args.username, 'some password')
+    expect_json_error(resp, 401, 'unauthorized')
+
+
 def main():
     '''main test entry point'''
     args = parse_args()
@@ -216,6 +234,7 @@ def main():
 
     assert auth_ok
 
+    test_all_authenticate(args)
     test_all_create_user(aconn, args)
     auth_ok, _result = uconn.authenticate(args.tempuser, args.temppass)
 
