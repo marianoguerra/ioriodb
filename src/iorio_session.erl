@@ -55,9 +55,9 @@ session_from_parsed_token(BodyRaw) ->
 
 session_from_token(JWTToken, Secret) ->
     case jwt:decode(JWTToken, Secret) of
-        {ok, #jwt{body=BodyRaw}} -> session_from_parsed_token(BodyRaw);
-        {error, Reason}          -> {error, Reason};
-        {error, Reason, _Jwt2}   -> {error, Reason}
+        {ok, #jwt{body=BodyRaw}}    -> session_from_parsed_token(BodyRaw);
+        {error, {Reason, _Details}} -> {error, Reason};
+        {error, Reason}             -> {error, Reason}
     end.
 
 from_request(Req, Secret) ->
@@ -116,24 +116,23 @@ is_authorized_for_stream(Ctx, Username, Bucket, Stream, Action) ->
 
 % Bucket is the atom any when operating on all buckets
 handle_is_authorized_for(Req, Secret, State, GetSession, SetSession, CheckAuth) ->
-    Res = handle_is_authorized(Req, Secret, State, SetSession),
-    {AuthOk, Req1, State1} = Res,
-    Session = GetSession(State1),
-    {Username, SessionBody, Ctx} = Session,
-    if AuthOk ->
-           case CheckAuth(Ctx, Username) of
-               {true, NewCtx} ->
-                   NewSession = {Username, SessionBody, NewCtx},
-                   State2 = SetSession(State1, NewSession),
-                   {true, Req1, State2};
-               {false, Reason, NewCtx} ->
-                  lager:info("unauthorized ~p", [Reason]),
-                  NewSession = {Username, SessionBody, NewCtx},
-                  State2 = SetSession(State1, NewSession),
-                  Req2 = iorio_http:no_permission(Req1),
-                  {{false, <<"jwt">>}, Req2, State2}
-           end;
-       true -> Res
+    case handle_is_authorized(Req, Secret, State, SetSession) of
+        {true, Req1, State1} ->
+            Session = GetSession(State1),
+            {Username, SessionBody, Ctx} = Session,
+            case CheckAuth(Ctx, Username) of
+                {true, NewCtx} ->
+                    NewSession = {Username, SessionBody, NewCtx},
+                    State2 = SetSession(State1, NewSession),
+                    {true, Req1, State2};
+                {false, Reason, NewCtx} ->
+                    lager:info("unauthorized ~p", [Reason]),
+                    NewSession = {Username, SessionBody, NewCtx},
+                    State2 = SetSession(State1, NewSession),
+                    Req2 = iorio_http:no_permission(Req1),
+                    {{false, <<"jwt">>}, Req2, State2}
+            end;
+        Res -> Res
     end.
 
 handle_is_authorized_for_bucket(Req, Secret, State, GetSession, SetSession, Bucket, Action) ->

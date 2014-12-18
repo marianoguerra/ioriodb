@@ -15,12 +15,13 @@
 
 -include_lib("jwt/include/jwt.hrl").
 
--record(state, {secret, algorithm, session}).
+-record(state, {secret, algorithm, session, session_duration_secs}).
 
 init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
-rest_init(Req, [{secret, Secret}, {algorithm, Algorithm}]) ->
-	{ok, Req, #state{secret=Secret, algorithm=Algorithm}}.
+rest_init(Req, [{secret, Secret}, {algorithm, Algorithm}, {session_duration_secs, SessionDurationSecs}]) ->
+	{ok, Req, #state{secret=Secret, algorithm=Algorithm,
+                     session_duration_secs=SessionDurationSecs}}.
 
 allowed_methods(Req, State) ->
     {[<<"GET">>, <<"POST">>], Req, State}.
@@ -54,9 +55,12 @@ to_json(Req, State=#state{session={Username, _Session, _SecCtx}}) ->
     {jsx:encode(RespBody), Req, State}.
 
 from_json(Req, State=#state{secret=Secret, algorithm=Algorithm,
+                            session_duration_secs=SessionDurationSecs,
                             session={_Username, SessionBody, _SecCtx}}) ->
 
-    {ok, Token} = jwt:encode(Algorithm, SessionBody, Secret),
+    Expiration = jwt:now_secs() + SessionDurationSecs,
+    {ok, Token} = jwt:encode(Algorithm, SessionBody, Secret,
+                             [{exp, Expiration}]),
     ResultJson = [{ok, true}, {token, Token}],
     ResultJsonBin = jsx:encode(ResultJson),
     Req1 = cowboy_req:set_resp_body(ResultJsonBin, Req),

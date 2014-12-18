@@ -16,6 +16,7 @@ start(_StartType, _StartArgs) ->
     {ok, ApiSecret} = application:get_env(iorio, secret),
     {ok, ApiAlgorithm} = application:get_env(iorio, algorithm),
     {ok, AdminPassword} = application:get_env(iorio, admin_password),
+    SessionDurationSecs = application:get_env(iorio, session_duration_secs, 3600),
 
     case iorio_user:create("admin", AdminPassword) of
         ok ->
@@ -35,7 +36,9 @@ start(_StartType, _StartArgs) ->
                {"/access/:bucket/", iorio_access_handler, [{secret, ApiSecret}]},
                {"/access/:bucket/:stream", iorio_access_handler, [{secret, ApiSecret}]},
 
-               {"/sessions", iorio_session_handler, [{secret, ApiSecret}, {algorithm, ApiAlgorithm}]},
+               {"/sessions", iorio_session_handler,
+                [{secret, ApiSecret}, {algorithm, ApiAlgorithm},
+                 {session_duration_secs, SessionDurationSecs}]},
                {"/users/", iorio_user_handler, [{secret, ApiSecret}]},
                {"/ping", iorio_ping_handler, []},
 
