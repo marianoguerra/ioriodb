@@ -6,7 +6,9 @@
          rest_terminate/2,
          allowed_methods/2,
          content_types_accepted/2,
+         content_types_provided/2,
          is_authorized/2,
+         to_json/2,
          from_json/2
         ]).
 
@@ -24,10 +26,13 @@ rest_init(Req, [{secret, Secret}]) ->
     {Stream, Req2} = cowboy_req:binding(stream, Req1, any),
 	{ok, Req2, #state{secret=Secret, bucket=Bucket, stream=Stream}}.
 
-allowed_methods(Req, State) -> {[<<"POST">>], Req, State}.
+allowed_methods(Req, State) -> {[<<"POST">>, <<"GET">>], Req, State}.
 
 content_types_accepted(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, from_json}], Req, State}.
+
+content_types_provided(Req, State) ->
+    {[{{<<"application">>, <<"json">>, '*'}, to_json}], Req, State}.
 
 is_authorized(Req, State=#state{secret=Secret, bucket=Bucket, stream=Stream}) ->
     GetSession = fun get_session/1,
@@ -44,6 +49,15 @@ from_json(Req, State=#state{bucket=Bucket, stream=Stream}) ->
                                                           Permission),
     handle_access_action(Action, Username, Bucket, Stream, RealPermission,
                          Req1, State, Permission).
+
+to_json(Req, State=#state{bucket=Bucket, stream=Stream}) ->
+    Access = iorio_user:grants_for(Bucket, Stream),
+    AccessJson = lists:map(fun ({Username, _, _, Grants}) ->
+                                   [{username, Username},
+                                    {grants, lists:map(fun list_to_binary/1,  Grants)}]
+                           end, Access),
+    AccessJsonStr = jsx:encode(AccessJson),
+    {AccessJsonStr, Req, State}.
 
 rest_terminate(_Req, _State) ->
 	ok.
