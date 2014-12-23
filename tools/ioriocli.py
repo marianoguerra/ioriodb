@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 '''ioriodb CLI client to interact with the api from the command line'''
 from __future__ import print_function
+import time
 import json
 import argparse
 

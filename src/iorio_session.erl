@@ -60,8 +60,14 @@ session_from_token(JWTToken, Secret) ->
         {error, Reason}             -> {error, Reason}
     end.
 
-from_request(Req, Secret) ->
+jwt_from_request(Req) ->
     case cowboy_req:header(<<"x-session">>, Req) of
+        {undefined, Req1} -> cowboy_req:qs_val(<<"jwt">>, Req1, undefined);
+        Other -> Other
+    end.
+
+from_request(Req, Secret) ->
+    case jwt_from_request(Req) of
         {undefined, R1} -> {error, nosession, R1};
         {JWTToken, R2}  ->
             case session_from_token(JWTToken, Secret) of

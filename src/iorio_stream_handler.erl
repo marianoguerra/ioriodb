@@ -14,7 +14,7 @@
          to_json/2
         ]).
 
--record(state, {bucket, stream, from_sn, limit, secret, session=nil}).
+-record(state, {bucket, stream, from_sn, limit, secret, filename, session=nil}).
 
 -include_lib("sblob/include/sblob.hrl").
 -include("include/iorio.hrl").
@@ -33,12 +33,13 @@ rest_init(Req, [{secret, Secret}]) ->
     {Stream, Req2} = cowboy_req:binding(stream, Req1),
     {FromSNStr, Req3} = cowboy_req:qs_val(<<"from">>, Req2, <<"">>),
     {LimitStr, Req4} = cowboy_req:qs_val(<<"limit">>, Req3, <<"1">>),
+    {Filename, Req5} = cowboy_req:qs_val(<<"download">>, Req4, nil),
 
     FromSN = to_int_or(FromSNStr, nil),
     Limit = to_int_or(LimitStr, 1),
 
-	{ok, Req4, #state{bucket=Bucket, stream=Stream, from_sn=FromSN,
-                      limit=Limit, secret=Secret}}.
+	{ok, Req5, #state{bucket=Bucket, stream=Stream, from_sn=FromSN,
+                      limit=Limit, secret=Secret, filename=Filename}}.
 
 allowed_methods(Req, State) -> {[<<"GET">>, <<"POST">>, <<"PATCH">>], Req, State}.
 
@@ -96,13 +97,20 @@ sblob_to_json_full(#sblob_entry{seqnum=SeqNum, timestamp=Timestamp, data=Data}) 
     ["{\"meta\":{\"id\":", integer_to_list(SeqNum), ",\"t\":",
      integer_to_list(Timestamp), "}, \"data\":", Data, "}"].
 
-to_json(Req, State=#state{bucket=Bucket, stream=Stream, from_sn=From, limit=Limit}) ->
+to_json(Req, State=#state{bucket=Bucket, stream=Stream, from_sn=From,
+                          limit=Limit, filename=Filename}) ->
     Blobs = iorio:get(Bucket, Stream, From, Limit),
     ItemList = lists:map(fun sblob_to_json_full/1, Blobs),
     ItemsJoined = string:join(ItemList, ","),
     Items = ["[", ItemsJoined, "]"],
 
-    {Items, Req, State}.
+    Req1 = if Filename == nil -> Req;
+              true ->
+                  HeaderVal = io_lib:format("attachment; filename=\"~s\"", [Filename]),
+                  cowboy_req:set_resp_header(<<"Content-Disposition">>, HeaderVal, Req)
+           end,
+
+    {Items, Req1, State}.
 
 store_blob_and_reply(Req, State, Bucket, Stream, Body, WithUriStr) ->
     case iorio:put(Bucket, Stream, Body) of
