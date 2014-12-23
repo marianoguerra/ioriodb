@@ -8,6 +8,8 @@
          is_authorized/2,
          resource_exists/2,
          content_types_accepted/2,
+         content_types_provided/2,
+         to_json/2,
          from_json/2]).
 
 -record(state, {session, secret}).
@@ -17,7 +19,7 @@ init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 rest_init(Req, [{secret, Secret}]) ->
 	{ok, Req, #state{secret=Secret}}.
 
-allowed_methods(Req, State) -> {[<<"POST">>], Req, State}.
+allowed_methods(Req, State) -> {[<<"POST">>, <<"GET">>], Req, State}.
 
 resource_exists(Req, State) ->
     {Method, Req1} = cowboy_req:method(Req),
@@ -29,6 +31,9 @@ resource_exists(Req, State) ->
 
 content_types_accepted(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, from_json}], Req, State}.
+
+content_types_provided(Req, State) ->
+    {[{{<<"application">>, <<"json">>, '*'}, to_json}], Req, State}.
 
 is_authorized(Req, State=#state{secret=Secret}) ->
     SetSession = fun (St, Sess) -> St#state{session=Sess} end,
@@ -58,6 +63,13 @@ from_json(Req, State) ->
     catch
         error:badarg -> {false, iorio_http:invalid_body(Req1), State}
     end.
+
+to_json(Req, State) ->
+    Users = iorio_user:users(),
+    UsersJson = lists:map(fun ({Username, _}) -> [{username, Username}] end,
+                          Users),
+    UsersJsonStr = jsx:encode(UsersJson),
+    {UsersJsonStr, Req, State}.
 
 rest_terminate(_Req, _State) ->
 	ok.
