@@ -91,10 +91,21 @@ def do_when_authenticated(args, fun, conn=None):
     if conn is None:
         conn = iorio.Connection(args.host, args.port)
 
+    auth_t1 = time.time()
     auth_ok, auth_resp = conn.authenticate(args.username, args.password)
+    auth_t2 = time.time()
+
+    if args.verbose > 1:
+        print("Auth request time", (auth_t2 - auth_t1) * 1000, "ms")
 
     if auth_ok:
+        req_t1 = time.time()
         response = fun(conn)
+        req_t2 = time.time()
+
+        if args.verbose > 1:
+            print("Request time", (req_t2 - req_t1) * 1000, "ms")
+
         print(response)
     else:
         print("Auth Failed")
