@@ -34,14 +34,26 @@ permission_to_internal(_Bucket, _Stream, <<"get">>) -> ?PERM_STREAM_GET;
 permission_to_internal(_Bucket, _Stream, <<"put">>) -> ?PERM_STREAM_PUT;
 permission_to_internal(_Bucket, _Stream, <<"grant">>) -> ?PERM_STREAM_GRANT.
 
+grant(<<"*">>, Bucket, any, Permission) ->
+    riak_core_security:add_grant(all, Bucket, [Permission]);
+
 grant(Username, Bucket, any, Permission) ->
     riak_core_security:add_grant([Username], Bucket, [Permission]);
+
+grant(<<"*">>, Bucket, Stream, Permission) ->
+    riak_core_security:add_grant(all, {Bucket, Stream}, [Permission]);
 
 grant(Username, Bucket, Stream, Permission) ->
     riak_core_security:add_grant([Username], {Bucket, Stream}, [Permission]).
 
+revoke(<<"*">>, Bucket, any, Permission) ->
+    riak_core_security:add_revoke(all, Bucket, [Permission]);
+
 revoke(Username, Bucket, any, Permission) ->
     riak_core_security:add_revoke([Username], Bucket, [Permission]);
+
+revoke(<<"*">>, Bucket, Stream, Permission) ->
+    riak_core_security:add_revoke(all, {Bucket, Stream}, [Permission]);
 
 revoke(Username, Bucket, Stream, Permission) ->
     riak_core_security:add_revoke([Username], {Bucket, Stream}, [Permission]).
