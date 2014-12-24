@@ -1,6 +1,10 @@
 -module(iorio_user).
 -export([create/2, users/0, user_grants/0, grants_for/2]).
 
+% NOTE '$deleted' is copied here since the other is a constant on
+% riak_core_security ?TOMBSTONE
+-define(TOMBSTONE, '$deleted').
+
 create(Username, Password) when is_binary(Username) ->
     create(binary_to_list(Username), Password);
 
@@ -17,9 +21,7 @@ create(Username, Password) ->
 
 
 users() ->
-    % NOTE '$deleted' is copied here since the other is a constant on
-    % riak_core_security ?TOMBSTONE
-    riak_core_metadata:fold(fun({_Username, ['$deleted']}, Acc) ->
+    riak_core_metadata:fold(fun({_Username, [?TOMBSTONE]}, Acc) ->
                                     Acc;
                                ({Username, Options}, Acc) ->
                                     [{Username, Options}|Acc]
@@ -33,13 +35,15 @@ user_grants() ->
                             end, [], {<<"security">>, <<"usergrants">>}).
 
 grants_for(QBucket, any) ->
-    riak_core_metadata:fold(fun({{Username, Bucket}, [Perms]}, Acc) when QBucket =:= Bucket ->
+    riak_core_metadata:fold(fun({_, [?TOMBSTONE]}, Acc) -> Acc;
+                                ({{Username, Bucket}, [Perms]}, Acc) when QBucket =:= Bucket ->
                                     [{Username, Bucket, any, Perms}|Acc];
                                (_, Acc) -> Acc
                             end, [], {<<"security">>, <<"usergrants">>});
 grants_for(QBucket, QStream) ->
-    riak_core_metadata:fold(fun({{Username, {Bucket, Stream}}, [Perms]}, Acc) 
-                                  when QBucket =:= Bucket andalso QStream =:= Stream ->
+    riak_core_metadata:fold(fun({_, [?TOMBSTONE]}, Acc) -> Acc;
+                               ({{Username, {Bucket, Stream}}, [Perms]}, Acc) 
+                                 when QBucket =:= Bucket andalso QStream =:= Stream ->
                                     [{Username, Bucket, Stream, Perms}|Acc];
                                (_, Acc) -> Acc
                             end, [], {<<"security">>, <<"usergrants">>}).
