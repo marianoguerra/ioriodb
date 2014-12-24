@@ -2,6 +2,7 @@
 -export([from_request/2,
          session_from_token/2,
          permission_to_internal/3,
+         internal_to_permission/3,
          grant/4,
          revoke/4,
          is_authorized_for_bucket/4,
@@ -14,6 +15,16 @@
 -include_lib("jwt/include/jwt.hrl").
 -include("include/iorio.hrl").
 
+internal_to_permission(_Bucket, any, ?PERM_BUCKET_GET) -> <<"get">>;
+internal_to_permission(_Bucket, any, ?PERM_BUCKET_PUT) -> <<"put">>;
+internal_to_permission(_Bucket, any, ?PERM_BUCKET_LIST) -> <<"list">>;
+internal_to_permission(_Bucket, any, ?PERM_BUCKET_GRANT) -> <<"grant">>;
+
+internal_to_permission(_Bucket, _Stream, ?PERM_STREAM_GET) -> <<"get">>;
+internal_to_permission(_Bucket, _Stream, ?PERM_STREAM_PUT) -> <<"put">>;
+internal_to_permission(_Bucket, _Stream, ?PERM_STREAM_GRANT) -> <<"grant">>.
+
+
 permission_to_internal(_Bucket, any, <<"get">>) -> ?PERM_BUCKET_GET;
 permission_to_internal(_Bucket, any, <<"put">>) -> ?PERM_BUCKET_PUT;
 permission_to_internal(_Bucket, any, <<"list">>) -> ?PERM_BUCKET_LIST;
@@ -21,8 +32,7 @@ permission_to_internal(_Bucket, any, <<"grant">>) -> ?PERM_BUCKET_GRANT;
 
 permission_to_internal(_Bucket, _Stream, <<"get">>) -> ?PERM_STREAM_GET;
 permission_to_internal(_Bucket, _Stream, <<"put">>) -> ?PERM_STREAM_PUT;
-permission_to_internal(_Bucket, _Stream, <<"grant">>) -> ?PERM_STREAM_GRANT;
-permission_to_internal(_Bucket, _Stream, _Perm) -> notfound.
+permission_to_internal(_Bucket, _Stream, <<"grant">>) -> ?PERM_STREAM_GRANT.
 
 grant(Username, Bucket, any, Permission) ->
     riak_core_security:add_grant([Username], Bucket, [Permission]);
