@@ -1,5 +1,5 @@
 -module(iorio_user).
--export([create/2, users/0, user_grants/0, grants_for/2]).
+-export([create/2, users/0, user_grants/0, user_grants_for/2, group_grants_for/2]).
 
 % NOTE '$deleted' is copied here since the other is a constant on
 % riak_core_security ?TOMBSTONE
@@ -34,16 +34,23 @@ user_grants() ->
                                     [{Username, Bucket, any, Perms}|Acc]
                             end, [], {<<"security">>, <<"usergrants">>}).
 
-grants_for(QBucket, any) ->
+grants_for(QBucket, any, Type) ->
     riak_core_metadata:fold(fun({_, [?TOMBSTONE]}, Acc) -> Acc;
-                                ({{Username, Bucket}, [Perms]}, Acc) when QBucket =:= Bucket ->
-                                    [{Username, Bucket, any, Perms}|Acc];
+                                ({{Name, Bucket}, [Perms]}, Acc) when QBucket =:= Bucket ->
+                                    [{Name, Bucket, any, Perms}|Acc];
                                (_, Acc) -> Acc
-                            end, [], {<<"security">>, <<"usergrants">>});
-grants_for(QBucket, QStream) ->
+                            end, [], {<<"security">>, Type});
+
+grants_for(QBucket, QStream, Type) ->
     riak_core_metadata:fold(fun({_, [?TOMBSTONE]}, Acc) -> Acc;
-                               ({{Username, {Bucket, Stream}}, [Perms]}, Acc) 
+                               ({{Name, {Bucket, Stream}}, [Perms]}, Acc) 
                                  when QBucket =:= Bucket andalso QStream =:= Stream ->
-                                    [{Username, Bucket, Stream, Perms}|Acc];
+                                    [{Name, Bucket, Stream, Perms}|Acc];
                                (_, Acc) -> Acc
-                            end, [], {<<"security">>, <<"usergrants">>}).
+                            end, [], {<<"security">>, Type}).
+
+group_grants_for(QBucket, QStream) ->
+    grants_for(QBucket, QStream, <<"groupgrants">>).
+
+user_grants_for(QBucket, QStream) ->
+    grants_for(QBucket, QStream, <<"usergrants">>).

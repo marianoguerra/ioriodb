@@ -51,16 +51,18 @@ from_json(Req, State=#state{bucket=Bucket, stream=Stream}) ->
                          Req1, State, Permission).
 
 to_json(Req, State=#state{bucket=Bucket, stream=Stream}) ->
-    Access = iorio_user:grants_for(Bucket, Stream),
+    UserAccess = iorio_user:user_grants_for(Bucket, Stream),
+    GroupAccess = iorio_user:group_grants_for(Bucket, Stream),
     FormatGrant = fun (Grant) ->
                           iorio_session:internal_to_permission(Bucket, Stream, Grant)
                   end,
-    FormatGrants = fun ({Username, _, _, Grants}) ->
+    FormatGrants = fun ({Name, _, _, Grants}) ->
                            FormattedGrants = lists:map(FormatGrant, Grants),
-                           [{username, Username}, {grants, FormattedGrants}]
+                           [{name, Name}, {grants, FormattedGrants}]
                    end,
-    AccessJson = lists:map(FormatGrants, Access),
-    AccessJsonStr = jsx:encode(AccessJson),
+    AccessUsersJson = lists:map(FormatGrants, UserAccess),
+    AccessGroupsJson = lists:map(FormatGrants, GroupAccess),
+    AccessJsonStr = jsx:encode([{users, AccessUsersJson}, {groups, AccessGroupsJson}]),
     {AccessJsonStr, Req, State}.
 
 rest_terminate(_Req, _State) ->
