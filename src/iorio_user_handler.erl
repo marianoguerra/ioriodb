@@ -19,7 +19,7 @@ init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 rest_init(Req, [{secret, Secret}]) ->
 	{ok, Req, #state{secret=Secret}}.
 
-allowed_methods(Req, State) -> {[<<"POST">>, <<"GET">>], Req, State}.
+allowed_methods(Req, State) -> {[<<"POST">>, <<"PUT">>, <<"GET">>], Req, State}.
 
 resource_exists(Req, State) ->
     {Method, Req1} = cowboy_req:method(Req),
@@ -52,14 +52,22 @@ is_authorized(Req, State=#state{secret=Secret}) ->
             Res
     end.
 
+action_from_req(Req) ->
+    {Method, Req1} = cowboy_req:method(Req),
+    case Method of
+        <<"POST">> -> {create, Req1};
+        <<"PUT">> -> {update, Req1}
+    end.
+
 from_json(Req, State) ->
     {ok, BodyRaw, Req1} = cowboy_req:body(Req),
     try
         Body = jsx:decode(BodyRaw),
         Username = proplists:get_value(<<"username">>, Body),
         Password = proplists:get_value(<<"password">>, Body),
-        {Ok, Req2} = create_user(Username, Password, Req1),
-        {Ok, Req2, State}
+        {Action, Req2} = action_from_req(Req),
+        {Ok, Req3} = create_user(Username, Password, Req2, Action),
+        {Ok, Req3, State}
     catch
         error:badarg -> {false, iorio_http:invalid_body(Req1), State}
     end.
@@ -79,29 +87,31 @@ terminate(_Reason, _Req, _State) ->
 
 %% private
 
-create_user(undefined, undefined, Req) ->
+create_user(undefined, undefined, Req, _Action) ->
     {false, iorio_http:error(Req, <<"no-user-and-pass">>, <<"No username and password fields">>)};
 
-create_user(undefined, _, Req) ->
+create_user(undefined, _, Req, _Action) ->
     {false, iorio_http:error(Req, <<"no-user">>, <<"No username field">>)};
 
-create_user(_, undefined, Req) ->
+create_user(_, undefined, Req, _Action) ->
     {false, iorio_http:error(Req, <<"no-pass">>, <<"No password field">>)};
 
-create_user(Username, Password, Req) ->
-    lager:info("creating user '~s'", [Username]),
-    case iorio_user:create(Username, Password) of
-        ok ->
+create_user(Username, Password, Req, Action) ->
+    lager:info("~p'ing user '~s'", [Action, Username]),
+    case {Action, iorio_user:Action(Username, Password)} of
+        {create, ok} ->
             UriStr = io_lib:format("/users/~s", [Username]),
-            {{true, UriStr}, iorio_http:json_response(Req, [{ok, true}])};
-        {error, role_exists} ->
+            {{true, UriStr}, iorio_http:ok(Req)};
+        {update, ok} ->
+            {true, iorio_http:ok(Req)};
+        {create, {error, role_exists}} ->
             lager:error("creating existing user '~s'", [Username]),
             {false, iorio_http:error(Req, <<"user-exists">>, <<"User already exists">>)};
-        {error, illegal_name_char} ->
+        {_, {error, illegal_name_char}} ->
             lager:error("creating user '~s'", [Username]),
             {false, iorio_http:error(Req, <<"illegal-username">>, <<"Illegal Username">>)};
-        Error ->
-            lager:error("creating user '~s' ~p", [Username, Error]),
+        {Action, Error} ->
+            lager:error("~p'inguser '~s' ~p", [Action, Username, Error]),
             {false, iorio_http:error(Req, <<"unknown-error">>, <<"Unknown Error">>)}
     end.
 

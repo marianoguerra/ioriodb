@@ -1,5 +1,6 @@
 -module(iorio_user).
--export([create/2, users/0, user_grants/0, user_grants_for/2, group_grants_for/2]).
+-export([create/2, update/2, users/0,
+         user_grants/0, user_grants_for/2, group_grants_for/2]).
 
 % NOTE '$deleted' is copied here since the other is a constant on
 % riak_core_security ?TOMBSTONE
@@ -19,6 +20,14 @@ create(Username, Password) ->
             Error
     end.
 
+update(Username, Password) when is_binary(Username) ->
+    update(binary_to_list(Username), Password);
+
+update(Username, Password) when is_binary(Password) ->
+    update(Username, binary_to_list(Password));
+
+update(Username, Password) ->
+    riak_core_security:alter_user(Username, [{"password", Password}]).
 
 users() ->
     riak_core_metadata:fold(fun({_Username, [?TOMBSTONE]}, Acc) ->
