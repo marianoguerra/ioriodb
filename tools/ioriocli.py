@@ -95,7 +95,7 @@ def do_when_authenticated(args, fun, conn=None):
     auth_ok, auth_resp = conn.authenticate(args.username, args.password)
     auth_t2 = time.time()
 
-    if args.verbose > 1:
+    if args.verbose and args.verbose > 1:
         print("Auth request time", (auth_t2 - auth_t1) * 1000, "ms")
 
     if auth_ok:
@@ -103,7 +103,7 @@ def do_when_authenticated(args, fun, conn=None):
         response = fun(conn)
         req_t2 = time.time()
 
-        if args.verbose > 1:
+        if args.verbose and args.verbose > 1:
             print("Request time", (req_t2 - req_t1) * 1000, "ms")
 
         print(response)
