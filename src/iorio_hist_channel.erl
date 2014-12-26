@@ -7,7 +7,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
 
--record(state, {buffer, channel, check_interval_ms=30000}).
+-record(state, {buffer, channel, check_interval_ms=30000, sub_count=0}).
 -include_lib("sblob/include/sblob.hrl").
 
 %% API
@@ -42,18 +42,27 @@ init([BufferSize]) ->
     State = #state{channel=Channel, buffer=Buffer},
     {ok, State, State#state.check_interval_ms}.
 
-handle_call({subscribe, Pid, nil}, _From, State=#state{channel=Channel}) ->
+handle_call({subscribe, Pid, nil}, _From,
+            State=#state{channel=Channel, sub_count=SubCount}) ->
     iorio_channel:subscribe(Channel, Pid),
-    {reply, ok, State, State#state.check_interval_ms};
+    NewSubCount = SubCount + 1,
+    NewState = State#state{sub_count=NewSubCount},
+    {reply, ok, NewState, NewState#state.check_interval_ms};
 
-handle_call({subscribe, Pid, FromSeqNum}, _From, State=#state{channel=Channel, buffer=Buffer}) ->
+handle_call({subscribe, Pid, FromSeqNum}, _From,
+            State=#state{channel=Channel, buffer=Buffer, sub_count=SubCount}) ->
     do_replay(Pid, FromSeqNum, Buffer),
     iorio_channel:subscribe(Channel, Pid),
-    {reply, ok, State, State#state.check_interval_ms};
+    NewSubCount = SubCount + 1,
+    NewState = State#state{sub_count=NewSubCount},
+    {reply, ok, NewState, NewState#state.check_interval_ms};
 
-handle_call({unsubscribe, Pid}, _From, State=#state{channel=Channel}) ->
+handle_call({unsubscribe, Pid}, _From,
+            State=#state{channel=Channel, sub_count=SubCount}) ->
     iorio_channel:unsubscribe(Channel, Pid),
-    {reply, ok, State, State#state.check_interval_ms};
+    NewSubCount = SubCount - 1,
+    NewState = State#state{sub_count=NewSubCount},
+    {reply, ok, NewState, NewState#state.check_interval_ms};
 
 handle_call({send, Event}, _From, State=#state{channel=Channel, buffer=Buffer}) ->
     NewBuffer = iorio_cbuf:add(Buffer, Event),
@@ -69,14 +78,14 @@ handle_cast(Msg, State) ->
     io:format("Unexpected handle cast message: ~p~n", [Msg]),
     {noreply, State}.
 
-handle_info(timeout, State=#state{buffer=Buffer}) ->
+handle_info(timeout, State=#state{buffer=Buffer, sub_count=SubCount}) ->
     NewBuffer = iorio_cbuf:remove_percentage(Buffer, 0.5),
     NewBufferSize = iorio_cbuf:size(NewBuffer),
     NewState = State#state{buffer=NewBuffer},
 
     if
-        NewBufferSize == 0 ->
-            lager:debug("channel buffer empty, stopping channel"),
+        NewBufferSize == 0 andalso SubCount == 0 ->
+            lager:info("channel buffer empty and no subscribers, stopping channel"),
             {stop, normal, NewState};
         true ->
             lager:debug("reduced channel buffer because of inactivity to ~p items",
