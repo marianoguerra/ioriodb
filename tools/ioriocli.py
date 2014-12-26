@@ -23,6 +23,9 @@ def get_arg_parser():
     parser.add_argument('-P', '--port', default=8080, type=int,
                         help='port where ioriodb is running')
 
+    parser.add_argument('-c', '--count', default=1, type=int,
+                        help='how many times to do the action')
+
     parser.add_argument('--human', action='store_true', default=False)
 
     subparsers = parser.add_subparsers()
@@ -123,7 +126,11 @@ def post_or_patch(args, name):
     def fun(conn):
         '''fun that does the work'''
         function = getattr(conn, name)
-        return function(bucket, stream, data, content_type)
+
+        for _ in range(args.count):
+            result = function(bucket, stream, data, content_type)
+
+        return result
 
     do_when_authenticated(args, fun)
 
