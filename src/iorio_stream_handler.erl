@@ -112,6 +112,15 @@ to_json(Req, State=#state{bucket=Bucket, stream=Stream, from_sn=From,
 
     {Items, Req1, State}.
 
+publish_patch(Bucket, Stream, Data) ->
+    PatchStream = list_to_binary(io_lib:format("~s-$patch", [Stream])),
+    case iorio:put(Bucket, PatchStream, Data) of
+        {error, Reason}=Error ->
+            lager:warn("Error publishing patch ~s:~s ~p", [Bucket, PatchStream, Reason]),
+            Error;
+        Other -> Other
+    end.
+
 store_blob_and_reply(Req, State, Bucket, Stream, Body, WithUriStr) ->
     case iorio:put(Bucket, Stream, Body) of
         {ok, SblobEntry} ->
@@ -153,7 +162,12 @@ from_json_patch(Req, State=#state{bucket=Bucket, stream=Stream}) ->
                             case jsonpatch:patch(ParsedPatch, ParsedBlob) of
                                 {ok, PatchResult} ->
                                     EncodedPatchResult = jsxn:encode(PatchResult),
-                                    store_blob_and_reply(Req1, State, Bucket, Stream, EncodedPatchResult, false);
+                                    Resp = store_blob_and_reply(Req1, State,
+                                                                Bucket, Stream,
+                                                                EncodedPatchResult,
+                                                                false),
+                                    publish_patch(Bucket, Stream, Body),
+                                    Resp;
                                 _Other ->
                                     % lager doesn't know how to handle maps yet
                                     lager:warning("Error applying patch ~s", [Body]),
