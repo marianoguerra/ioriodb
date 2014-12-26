@@ -38,6 +38,8 @@ start(_StartType, _StartArgs) ->
     create_user(AdminUsername, AdminPassword, GrantAdminUsers),
     create_user(AnonUsername, AnonPassword, fun (_) -> ok end),
 
+    setup_initial_permissions(AdminUsername),
+
     Dispatch = cowboy_router:compile([
         {'_', [
                {"/listen", bullet_handler, [{handler, iorio_listen_handler}, {secret, ApiSecret}]},
@@ -91,3 +93,13 @@ create_user(Username, Password, OnUserCreated) ->
         OtherError ->
             lager:error("creating ~p user ~p", [Username, OtherError])
     end.
+
+setup_initial_permissions(AdminUsername) ->
+    PublicReadBucket = <<"public">>,
+    R1 = iorio_session:grant(<<"*">>, PublicReadBucket, any, "iorio.get"),
+    lager:info("set read permissions to ~s to all: ~p",
+               [PublicReadBucket, R1]),
+    R2 = iorio_session:grant(list_to_binary(AdminUsername), PublicReadBucket,
+                             any, "iorio.put"),
+    lager:info("set write permissions to ~s to ~p: ~p",
+               [PublicReadBucket, AdminUsername, R2]).
