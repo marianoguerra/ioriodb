@@ -10,3 +10,6 @@
 
 -define(PERM_BUCKET_LIST, "iorio.list").
 
+-define(PERM_ADMIN_USERS, "iorio.adminusers").
+-define(PERM_MAGIC_BUCKET, <<"$$iorio.permissions$$">>).
+

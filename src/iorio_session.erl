@@ -22,7 +22,9 @@ internal_to_permission(_Bucket, any, ?PERM_BUCKET_GRANT) -> <<"grant">>;
 
 internal_to_permission(_Bucket, _Stream, ?PERM_STREAM_GET) -> <<"get">>;
 internal_to_permission(_Bucket, _Stream, ?PERM_STREAM_PUT) -> <<"put">>;
-internal_to_permission(_Bucket, _Stream, ?PERM_STREAM_GRANT) -> <<"grant">>.
+internal_to_permission(_Bucket, _Stream, ?PERM_STREAM_GRANT) -> <<"grant">>;
+
+internal_to_permission(_Bucket, _Stream, ?PERM_ADMIN_USERS) -> <<"adminusers">>.
 
 
 permission_to_internal(_Bucket, any, <<"get">>) -> ?PERM_BUCKET_GET;
@@ -32,7 +34,9 @@ permission_to_internal(_Bucket, any, <<"grant">>) -> ?PERM_BUCKET_GRANT;
 
 permission_to_internal(_Bucket, _Stream, <<"get">>) -> ?PERM_STREAM_GET;
 permission_to_internal(_Bucket, _Stream, <<"put">>) -> ?PERM_STREAM_PUT;
-permission_to_internal(_Bucket, _Stream, <<"grant">>) -> ?PERM_STREAM_GRANT.
+permission_to_internal(_Bucket, _Stream, <<"grant">>) -> ?PERM_STREAM_GRANT;
+
+permission_to_internal(_Bucket, _Stream, <<"adminusers">>) -> ?PERM_ADMIN_USERS.
 
 grant(<<"*">>, Bucket, any, Permission) ->
     riak_core_security:add_grant(all, Bucket, [Permission]);
@@ -67,13 +71,19 @@ get_security_context(Username) ->
         {error, notfound}
     end.
 
-session_from_parsed_token(BodyRaw) ->
-    Body = jsx:decode(BodyRaw),
+session_from_parsed_body(Body) ->
     Username = proplists:get_value(<<"u">>, Body),
     case get_security_context(Username) of
         {ok, SecurityCtx} -> {ok, {Username, Body, SecurityCtx}};
         Error -> Error
     end.
+
+session_from_parsed_token(BodyRaw) ->
+    Body = jsx:decode(BodyRaw),
+    session_from_parsed_body(Body).
+
+make_anon_session() ->
+    session_from_parsed_body([{<<"u">>, <<"anonymous">>}]).
 
 session_from_token(JWTToken, Secret) ->
     case jwt:decode(JWTToken, Secret) of
@@ -84,13 +94,17 @@ session_from_token(JWTToken, Secret) ->
 
 jwt_from_request(Req) ->
     case cowboy_req:header(<<"x-session">>, Req) of
-        {undefined, Req1} -> cowboy_req:qs_val(<<"jwt">>, Req1, undefined);
+        % TODO: why undefined is returned as a binary?
+        {<<"undefined">>, Req1} ->
+            cowboy_req:qs_val(<<"jwt">>, Req1, undefined);
         Other -> Other
     end.
 
 from_request(Req, Secret) ->
     case jwt_from_request(Req) of
-        {undefined, R1} -> {error, nosession, R1};
+        {undefined, R1} ->
+            {ok, AnonSession} = make_anon_session(),
+            {ok, AnonSession, R1};
         {JWTToken, R2}  ->
             case session_from_token(JWTToken, Secret) of
                 {ok, Session}   -> {ok, Session, R2};
@@ -127,14 +141,13 @@ can_do_on_stream(Ctx, Bucket, Stream, Action) ->
 
 is_authorized_for_bucket(Ctx, nil, _Bucket, _Action) ->
     {false, "No user", Ctx};
-is_authorized_for_bucket(Ctx, <<"admin">>, _Bucket, _Action) -> {true, Ctx};
+% TODO: check if we should remove this default behavior
 is_authorized_for_bucket(Ctx, Username, Username, _Action)   -> {true, Ctx};
 is_authorized_for_bucket(Ctx, _Username, Bucket, Action)   ->
     can_do_on_bucket(Ctx, Bucket, Action).
 
 is_authorized_for_stream(Ctx, nil, _Bucket, _Stream, _Action) ->
     {false, "No user", Ctx};
-is_authorized_for_stream(Ctx, <<"admin">>, _Bucket, _Stream, _Action) -> {true, Ctx};
 is_authorized_for_stream(Ctx, Username, Username, _Stream, _Action)   -> {true, Ctx};
 is_authorized_for_stream(Ctx, Username, Bucket, Stream, Action) ->
     case is_authorized_for_bucket(Ctx, Username, Bucket, Action) of

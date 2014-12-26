@@ -5,6 +5,8 @@
 %% Application callbacks
 -export([start/2, stop/1]).
 
+-include("include/iorio.hrl").
+
 %% ===================================================================
 %% Application callbacks
 %% ===================================================================
@@ -15,17 +17,26 @@ start(_StartType, _StartArgs) ->
     % TODO: check here that secret is binary and algorigthm is a valid one
     {ok, ApiSecret} = application:get_env(iorio, secret),
     {ok, ApiAlgorithm} = application:get_env(iorio, algorithm),
+
+    AdminUsername = application:get_env(iorio, admin_username, "admin"),
     {ok, AdminPassword} = application:get_env(iorio, admin_password),
+
+    AnonUsername = application:get_env(iorio, anon_username, "anonymous"),
+    % default password since login in as anonymous is not that useful
+    AnonPassword = application:get_env(iorio, anon_password, <<"secret">>),
+
     SessionDurationSecs = application:get_env(iorio, session_duration_secs, 3600),
 
-    case iorio_user:create("admin", AdminPassword) of
-        ok ->
-            lager:info("admin user created");
-        {error, role_exists}  ->
-            lager:info("admin user exists");
-        OtherError ->
-            lager:error("creating admin user ~p", [OtherError])
-    end,
+    GrantAdminUsers = fun (Username) ->
+                              Res = iorio_session:grant(AdminUsername,
+                                                        ?PERM_MAGIC_BUCKET, any,
+                                                        ?PERM_ADMIN_USERS),
+                              lager:info("assign admin users to ~p: ~p",
+                                         [Username, Res])
+
+                      end,
+    create_user(AdminUsername, AdminPassword, GrantAdminUsers),
+    create_user(AnonUsername, AnonPassword, fun (_) -> ok end),
 
     Dispatch = cowboy_router:compile([
         {'_', [
@@ -67,3 +78,16 @@ start(_StartType, _StartArgs) ->
 
 stop(_State) ->
     ok.
+
+%% private api
+
+create_user(Username, Password, OnUserCreated) ->
+    case iorio_user:create(Username, Password) of
+        ok ->
+            lager:info("~p user created", [Username]),
+            OnUserCreated(Username);
+        {error, role_exists}  ->
+            lager:info("~p user exists", [Username]);
+        OtherError ->
+            lager:error("creating ~p user ~p", [Username, OtherError])
+    end.

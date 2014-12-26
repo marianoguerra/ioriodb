@@ -12,6 +12,8 @@
          to_json/2,
          from_json/2]).
 
+-include("include/iorio.hrl").
+
 -record(state, {session, secret}).
 
 init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
@@ -36,20 +38,18 @@ content_types_provided(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, to_json}], Req, State}.
 
 is_authorized(Req, State=#state{secret=Secret}) ->
+    GetSession = fun (#state{session=Session}) -> Session end,
     SetSession = fun (St, Sess) -> St#state{session=Sess} end,
-    Res = iorio_session:handle_is_authorized(Req, Secret, State, SetSession),
+    Res = iorio_session:handle_is_authorized_for_bucket(Req, Secret, State,
+                                                        GetSession, SetSession,
+                                                        ?PERM_MAGIC_BUCKET,
+                                                        ?PERM_ADMIN_USERS),
     {AuthOk, Req1, State1} = Res,
-    {Username, _, _} = State1#state.session,
 
-    case {AuthOk, Username} of
-        % NOTE: for now only admin is authorized to create users
-        {true, <<"admin">>} ->
-            Res;
-        {true, _} ->
+    if AuthOk -> Res;
+        true ->
             Req2 = iorio_http:no_permission(Req1),
-            {{false, <<"jwt">>}, Req2, State};
-        _ ->
-            Res
+            {{false, <<"jwt">>}, Req2, State1}
     end.
 
 action_from_req(Req) ->
