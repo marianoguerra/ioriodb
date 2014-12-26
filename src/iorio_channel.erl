@@ -10,7 +10,7 @@
 new() -> gen_event:start_link().
 
 subscribe(Channel, Pid) ->
-    gen_event:add_handler(Channel, {iorio_channel, Pid}, [Pid]).
+    gen_event:add_sup_handler(Channel, {iorio_channel, Pid}, [Pid]).
 
 unsubscribe(Channel, Pid) ->
     gen_event:delete_handler(Channel, {iorio_channel, Pid}, [Pid]).
@@ -33,4 +33,6 @@ handle_info(_, State) -> {ok, State}.
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
-terminate(_Reason, _State) -> ok.
+terminate(Reason, _State) ->
+    lager:debug("terminating channel ~p", [Reason]),
+    ok.
