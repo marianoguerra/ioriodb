@@ -53,8 +53,9 @@ init([Partition]) ->
     {ok, BucketsSup} = gblob_buckets_sup:start_link(),
     {ok, ChannelsSup} = iorio_channels_sup:start_link(),
 
-    % TODO: configure and calculate based on number of buckets
-    BucketEvictTimeInterval = 60000,
+    % TODO: calculate based on number of buckets
+    BucketEvictTimeInterval = application:get_env(iorio, bucket_evict_time_ms, 60000),
+    MaxBucketSizeBytes = application:get_env(iorio, max_bucket_size_bytes, 52428800),
 
     Pid = self(),
     spawn(fun () ->
@@ -71,7 +72,8 @@ init([Partition]) ->
 
     {ok, #state{partition=Partition, path=Path, buckets=Buckets,
                 channels=Channels, buckets_sup=BucketsSup,
-                channels_sup=ChannelsSup}}.
+                channels_sup=ChannelsSup,
+                max_bucket_size_bytes=MaxBucketSizeBytes}}.
 
 %% Sample command: respond to a ping
 handle_command(ping, _Sender, State) ->
