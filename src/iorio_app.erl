@@ -44,8 +44,7 @@ start(_StartType, _StartArgs) ->
 
     setup_initial_permissions(AdminUsername),
 
-    Dispatch = cowboy_router:compile([
-        {'_', [
+    BaseDispatchRoutes = [
                {"/listen", bullet_handler, [{handler, iorio_listen_handler}, {secret, ApiSecret}]},
                {"/streams/:bucket", iorio_list_handler, [{secret, ApiSecret}]},
                {"/streams/:bucket/:stream", iorio_stream_handler,
@@ -58,12 +57,16 @@ start(_StartType, _StartArgs) ->
                 [{secret, ApiSecret}, {algorithm, ApiAlgorithm},
                  {session_duration_secs, SessionDurationSecs}]},
                {"/users/", iorio_user_handler, [{secret, ApiSecret}]},
-               {"/ping", iorio_ping_handler, []},
+               {"/ping", iorio_ping_handler, []}
+    ],
 
-               {"/ui/[...]", cowboy_static, {priv_dir, iorio, "assets",
-                                             [{mimetypes, cow_mimetypes, all}]}}
-        ]}
-    ]),
+    UserDispatchRoutes = application:get_env(iorio, api_handlers, []),
+    lager:info("configuring routes with following user provided routes: ~p",
+               [UserDispatchRoutes]),
+    DispatchRoutes = BaseDispatchRoutes ++ UserDispatchRoutes,
+
+    Dispatch = cowboy_router:compile([{'_', DispatchRoutes}]),
+
     ApiPort = application:get_env(iorio, port, 8080),
     ApiAcceptors = application:get_env(iorio, nb_acceptors, 100),
     {ok, _} = cowboy:start_http(http, ApiAcceptors, [{port, ApiPort}], [
