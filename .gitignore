@@ -4,6 +4,7 @@
 deps/*
 ebin/*
 rel/iorio
+rel/iorio_data
 dev
 apps/iorio/src/*
 rel/vars/dev[0-9]_vars.config
