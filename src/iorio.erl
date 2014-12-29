@@ -2,7 +2,7 @@
 -include("iorio.hrl").
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 
--export([ping/0, put/3, get/3, get/4, get_last/2, subscribe/4, unsubscribe/3,
+-export([ping/0, put/3, put/6, get/3, get/4, get_last/2, subscribe/4, unsubscribe/3,
          list/0, list/1, list/2, bucket_size/1, bucket_size/2, truncate/2,
          truncate_percentage/2]).
 
@@ -15,6 +15,8 @@ get_index_node(Bucket, Stream) ->
     IndexNode.
 
 -define(DEFAULT_TIMEOUT_MS, 5000).
+-define(DEFAULT_N, 3).
+-define(DEFAULT_W, 3).
 
 %% Public API
 
@@ -26,11 +28,9 @@ ping() ->
     riak_core_vnode_master:sync_spawn_command(IndexNode, ping, iorio_vnode_master).
 
 put(Bucket, Stream, Data) ->
-    % TODO: make them configurable
-    N = 3,
-    W = 3,
-    Timeout = 5000,
+    put(Bucket, Stream, Data, ?DEFAULT_N, ?DEFAULT_W, ?DEFAULT_TIMEOUT_MS).
 
+put(Bucket, Stream, Data, N, W, Timeout) ->
     {ok, ReqID} = iorio_write_fsm:write(N, W, Bucket, Stream, Data),
     wait_for_reqid(ReqID, Timeout).
 

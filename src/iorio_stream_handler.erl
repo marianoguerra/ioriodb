@@ -14,7 +14,8 @@
          to_json/2
         ]).
 
--record(state, {bucket, stream, from_sn, limit, secret, filename, session=nil}).
+-record(state, {bucket, stream, from_sn, limit, secret, filename,
+                session=nil, n=3, w=3, timeout=5000}).
 
 -include_lib("sblob/include/sblob.hrl").
 -include("include/iorio.hrl").
@@ -28,7 +29,7 @@ to_int_or(Bin, Default) ->
 
 init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
-rest_init(Req, [{secret, Secret}]) ->
+rest_init(Req, [{secret, Secret}, {n, N}, {w, W}, {timeout, Timeout}]) ->
     {Bucket, Req1} = cowboy_req:binding(bucket, Req),
     {Stream, Req2} = cowboy_req:binding(stream, Req1),
     {FromSNStr, Req3} = cowboy_req:qs_val(<<"from">>, Req2, <<"">>),
@@ -39,7 +40,8 @@ rest_init(Req, [{secret, Secret}]) ->
     Limit = to_int_or(LimitStr, 1),
 
 	{ok, Req5, #state{bucket=Bucket, stream=Stream, from_sn=FromSN,
-                      limit=Limit, secret=Secret, filename=Filename}}.
+                      limit=Limit, secret=Secret, filename=Filename,
+                     n=N, w=W, timeout=Timeout}}.
 
 allowed_methods(Req, State) -> {[<<"GET">>, <<"POST">>, <<"PATCH">>], Req, State}.
 
@@ -112,9 +114,13 @@ to_json(Req, State=#state{bucket=Bucket, stream=Stream, from_sn=From,
 
     {Items, Req1, State}.
 
-publish_patch(Bucket, Stream, Data) ->
+put(Bucket, PatchStream, Data, #state{n=N, w=W, timeout=Timeout}) ->
+    iorio:put(Bucket, PatchStream, Data, N, W, Timeout).
+
+
+publish_patch(Bucket, Stream, Data, State) ->
     PatchStream = list_to_binary(io_lib:format("~s-$patch", [Stream])),
-    case iorio:put(Bucket, PatchStream, Data) of
+    case put(Bucket, PatchStream, Data, State) of
         {error, Reason}=Error ->
             lager:warn("Error publishing patch ~s:~s ~p", [Bucket, PatchStream, Reason]),
             Error;
@@ -122,7 +128,7 @@ publish_patch(Bucket, Stream, Data) ->
     end.
 
 store_blob_and_reply(Req, State, Bucket, Stream, Body, WithUriStr) ->
-    case iorio:put(Bucket, Stream, Body) of
+    case put(Bucket, Stream, Body, State) of
         {ok, SblobEntry} ->
             #sblob_entry{seqnum=SeqNum, timestamp=Timestamp} = SblobEntry,
             Result = ["{\"meta\":{\"id\":", integer_to_list(SeqNum), ",\"t\":",
@@ -166,7 +172,7 @@ from_json_patch(Req, State=#state{bucket=Bucket, stream=Stream}) ->
                                                                 Bucket, Stream,
                                                                 EncodedPatchResult,
                                                                 false),
-                                    publish_patch(Bucket, Stream, Body),
+                                    publish_patch(Bucket, Stream, Body, State),
                                     Resp;
                                 _Other ->
                                     % lager doesn't know how to handle maps yet

@@ -27,6 +27,10 @@ start(_StartType, _StartArgs) ->
 
     SessionDurationSecs = application:get_env(iorio, session_duration_secs, 3600),
 
+    N = application:get_env(iorio, req_n, 3),
+    W = application:get_env(iorio, req_w, 3),
+    Timeout = application:get_env(iorio, req_timeout, 5000),
+
     GrantAdminUsers = fun (Username) ->
                               Res = iorio_session:grant(AdminUsername,
                                                         ?PERM_MAGIC_BUCKET, any,
@@ -44,7 +48,8 @@ start(_StartType, _StartArgs) ->
         {'_', [
                {"/listen", bullet_handler, [{handler, iorio_listen_handler}, {secret, ApiSecret}]},
                {"/streams/:bucket", iorio_list_handler, [{secret, ApiSecret}]},
-               {"/streams/:bucket/:stream", iorio_stream_handler, [{secret, ApiSecret}]},
+               {"/streams/:bucket/:stream", iorio_stream_handler,
+                [{secret, ApiSecret}, {n, N}, {w, W}, {timeout, Timeout}]},
                {"/buckets/", iorio_list_handler, [{secret, ApiSecret}]},
                {"/access/:bucket/", iorio_access_handler, [{secret, ApiSecret}]},
                {"/access/:bucket/:stream", iorio_access_handler, [{secret, ApiSecret}]},
