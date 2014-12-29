@@ -94,8 +94,7 @@ session_from_token(JWTToken, Secret) ->
 
 jwt_from_request(Req) ->
     case cowboy_req:header(<<"x-session">>, Req) of
-        % TODO: why undefined is returned as a binary?
-        {<<"undefined">>, Req1} ->
+        {undefined, Req1} ->
             cowboy_req:qs_val(<<"jwt">>, Req1, undefined);
         Other -> Other
     end.
