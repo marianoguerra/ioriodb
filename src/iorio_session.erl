@@ -5,6 +5,9 @@
          internal_to_permission/3,
          grant/4,
          revoke/4,
+         maybe_grant_bucket_ownership/1,
+         maybe_grant_bucket_ownership/3,
+         grant_bucket_ownership/2,
          is_authorized_for_bucket/4,
          is_authorized_for_stream/5,
          handle_is_authorized/3,
@@ -61,6 +64,23 @@ revoke(<<"*">>, Bucket, Stream, Permission) ->
 
 revoke(Username, Bucket, Stream, Permission) ->
     riak_core_security:add_revoke([Username], {Bucket, Stream}, [Permission]).
+
+grant_bucket_ownership(Username, Bucket) ->
+    Permissions = [?PERM_BUCKET_GET, ?PERM_BUCKET_PUT, ?PERM_BUCKET_GRANT,
+                   ?PERM_BUCKET_LIST],
+    riak_core_security:add_grant([Username], Bucket, Permissions).
+
+maybe_grant_bucket_ownership(Username) ->
+    HasStream = application:get_env(iorio, user_has_stream, false),
+    StreamPrefix = application:get_env(iorio, user_stream_prefix, ""),
+    maybe_grant_bucket_ownership(Username, HasStream, StreamPrefix).
+
+maybe_grant_bucket_ownership(_Username, false, _StreamPrefix) ->
+    ok;
+maybe_grant_bucket_ownership(Username, true, StreamPrefix) ->
+    Stream = list_to_binary(io_lib:format("~s~s", [StreamPrefix, Username])),
+    lager:info("granting ~s bucket ownership to ~s", [Stream, Username]),
+    iorio_session:grant_bucket_ownership(Username, Stream).
 
 get_security_context(Username) ->
     % TODO: don't try catch
@@ -140,14 +160,11 @@ can_do_on_stream(Ctx, Bucket, Stream, Action) ->
 
 is_authorized_for_bucket(Ctx, nil, _Bucket, _Action) ->
     {false, "No user", Ctx};
-% TODO: check if we should remove this default behavior
-is_authorized_for_bucket(Ctx, Username, Username, _Action)   -> {true, Ctx};
 is_authorized_for_bucket(Ctx, _Username, Bucket, Action)   ->
     can_do_on_bucket(Ctx, Bucket, Action).
 
 is_authorized_for_stream(Ctx, nil, _Bucket, _Stream, _Action) ->
     {false, "No user", Ctx};
-is_authorized_for_stream(Ctx, Username, Username, _Stream, _Action)   -> {true, Ctx};
 is_authorized_for_stream(Ctx, Username, Bucket, Stream, Action) ->
     case is_authorized_for_bucket(Ctx, Username, Bucket, Action) of
         {true, _NewCtx}=Result -> Result;

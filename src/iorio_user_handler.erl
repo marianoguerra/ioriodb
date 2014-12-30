@@ -65,8 +65,9 @@ from_json(Req, State) ->
         Body = jsx:decode(BodyRaw),
         Username = proplists:get_value(<<"username">>, Body),
         Password = proplists:get_value(<<"password">>, Body),
+
         {Action, Req2} = action_from_req(Req),
-        {Ok, Req3} = create_user(Username, Password, Req2, Action),
+        {Ok, Req3} = do_action(Username, Password, Req2, Action),
         {Ok, Req3, State}
     catch
         error:badarg -> {false, iorio_http:invalid_body(Req1), State}
@@ -87,19 +88,20 @@ terminate(_Reason, _Req, _State) ->
 
 %% private
 
-create_user(undefined, undefined, Req, _Action) ->
+do_action(undefined, undefined, Req, _Action) ->
     {false, iorio_http:error(Req, <<"no-user-and-pass">>, <<"No username and password fields">>)};
 
-create_user(undefined, _, Req, _Action) ->
+do_action(undefined, _, Req, _Action) ->
     {false, iorio_http:error(Req, <<"no-user">>, <<"No username field">>)};
 
-create_user(_, undefined, Req, _Action) ->
+do_action(_, undefined, Req, _Action) ->
     {false, iorio_http:error(Req, <<"no-pass">>, <<"No password field">>)};
 
-create_user(Username, Password, Req, Action) ->
+do_action(Username, Password, Req, Action) ->
     lager:info("~p'ing user '~s'", [Action, Username]),
     case {Action, iorio_user:Action(Username, Password)} of
         {create, ok} ->
+            iorio_session:maybe_grant_bucket_ownership(Username),
             UriStr = io_lib:format("/users/~s", [Username]),
             {{true, UriStr}, iorio_http:ok(Req)};
         {update, ok} ->

@@ -36,8 +36,8 @@ start(_StartType, _StartArgs) ->
                                                         ?PERM_MAGIC_BUCKET, any,
                                                         ?PERM_ADMIN_USERS),
                               lager:info("assign admin users to ~p: ~p",
-                                         [Username, Res])
-
+                                         [Username, Res]),
+                              iorio_session:maybe_grant_bucket_ownership(AdminUsername)
                       end,
     create_user(AdminUsername, AdminPassword, GrantAdminUsers),
     create_user(AnonUsername, AnonPassword, fun (_) -> ok end),
