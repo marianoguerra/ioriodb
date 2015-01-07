@@ -93,7 +93,7 @@ content_types_provided(Req, State) ->
 %    [{meta, [{id, SeqNum}, {t, Timestamp}]}].
 
 %sblob_to_json_full(#sblob_entry{seqnum=SeqNum, timestamp=Timestamp, data=Data}) ->
-%    [{meta, [{id, SeqNum}, {t, Timestamp}]}, {data, jsx:decode(Data)}].
+%    [{meta, [{id, SeqNum}, {t, Timestamp}]}, {data, iorio_json:decode(Data)}].
 
 sblob_to_json_full(#sblob_entry{seqnum=SeqNum, timestamp=Timestamp, data=Data}) ->
     ["{\"meta\":{\"id\":", integer_to_list(SeqNum), ",\"t\":",
@@ -147,7 +147,7 @@ store_blob_and_reply(Req, State, Bucket, Stream, Body, WithUriStr) ->
 
 from_json(Req, State=#state{bucket=Bucket, stream=Stream}) ->
     {ok, Body, Req1} = cowboy_req:body(Req),
-    case jsx:is_json(Body) of
+    case iorio_json:is_json(Body) of
         true ->
             store_blob_and_reply(Req1, State, Bucket, Stream, Body, true);
         false ->
@@ -158,16 +158,16 @@ from_json(Req, State=#state{bucket=Bucket, stream=Stream}) ->
 % not the last one then return conflict
 from_json_patch(Req, State=#state{bucket=Bucket, stream=Stream}) ->
     {ok, Body, Req1} = cowboy_req:body(Req),
-    case jsx:is_json(Body) of
+    case iorio_json:is_json(Body) of
         true ->
             case jsonpatch:parse(Body) of
                 {ok, ParsedPatch} ->
                     case iorio:get_last(Bucket, Stream) of
                         {ok, #sblob_entry{data=Data}} ->
-                            ParsedBlob = jsxn:decode(Data),
+                            ParsedBlob = iorio_json:decode(Data),
                             case jsonpatch:patch(ParsedPatch, ParsedBlob) of
                                 {ok, PatchResult} ->
-                                    EncodedPatchResult = jsxn:encode(PatchResult),
+                                    EncodedPatchResult = iorio_json:encode(PatchResult),
                                     Resp = store_blob_and_reply(Req1, State,
                                                                 Bucket, Stream,
                                                                 EncodedPatchResult,

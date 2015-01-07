@@ -16,7 +16,7 @@ unauthorized(Req) -> error(Req, <<"unauthorized">>, <<"Unauthorized">>).
 invalid_body(Req) -> error(Req, <<"invalid-body">>, <<"Invalid Request Body">>).
 
 json_response(Req, Body) ->
-    JsonBody = jsx:encode(Body),
+    JsonBody = iorio_json:encode(Body),
     Header = <<"Content-Type">>,
     ContentType = <<"application/json">>,
     Req1 = cowboy_req:delete_resp_header(<<"content-type">>, Req),

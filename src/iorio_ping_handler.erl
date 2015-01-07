@@ -23,7 +23,7 @@ content_types_provided(Req, State) ->
 to_json(Req, State=#state{}) ->
     lager:info("handling ping"),
     {pong, Partition} = iorio:ping(),
-    {jsx:encode([{pong, integer_to_binary(Partition)}]), Req, State}.
+    {iorio_json:encode([{pong, integer_to_binary(Partition)}]), Req, State}.
 
 rest_terminate(_Req, _State) ->
 	ok.

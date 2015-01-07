@@ -52,7 +52,7 @@ is_authorized(Req, State=#state{secret=Secret}) ->
 
 to_json(Req, State=#state{session={Username, _Session, _SecCtx}}) ->
     RespBody = [{username, Username}],
-    {jsx:encode(RespBody), Req, State}.
+    {iorio_json:encode(RespBody), Req, State}.
 
 from_json(Req, State=#state{secret=Secret, algorithm=Algorithm,
                             session_duration_secs=SessionDurationSecs,
@@ -62,7 +62,7 @@ from_json(Req, State=#state{secret=Secret, algorithm=Algorithm,
     {ok, Token} = jwt:encode(Algorithm, SessionBody, Secret,
                              [{exp, Expiration}]),
     ResultJson = [{ok, true}, {token, Token}],
-    ResultJsonBin = jsx:encode(ResultJson),
+    ResultJsonBin = iorio_json:encode(ResultJson),
     Req1 = cowboy_req:set_resp_body(ResultJsonBin, Req),
     {{true, <<"/session">>}, Req1, State}.
 
@@ -75,7 +75,7 @@ terminate(_Reason, _Req, _State) ->
 %% Private API
 check_is_authorized(Req, State) ->
     {ok, Body, Req1} = cowboy_req:body(Req),
-    AuthInfo = jsx:decode(Body),
+    AuthInfo = iorio_json:decode_plist(Body),
     Username = proplists:get_value(<<"username">>, AuthInfo),
     Password = proplists:get_value(<<"password">>, AuthInfo),
 

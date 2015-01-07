@@ -99,7 +99,7 @@ session_from_parsed_body(Body) ->
     end.
 
 session_from_parsed_token(BodyRaw) ->
-    Body = jsx:decode(BodyRaw),
+    Body = iorio_json:decode_plist(BodyRaw),
     session_from_parsed_body(Body).
 
 make_anon_session() ->

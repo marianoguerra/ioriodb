@@ -62,7 +62,7 @@ action_from_req(Req) ->
 from_json(Req, State) ->
     {ok, BodyRaw, Req1} = cowboy_req:body(Req),
     try
-        Body = jsx:decode(BodyRaw),
+        Body = iorio_json:decode_plist(BodyRaw),
         Username = proplists:get_value(<<"username">>, Body),
         Password = proplists:get_value(<<"password">>, Body),
 
@@ -77,7 +77,7 @@ to_json(Req, State) ->
     Users = iorio_user:users(),
     UsersJson = lists:map(fun ({Username, _}) -> [{username, Username}] end,
                           Users),
-    UsersJsonStr = jsx:encode(UsersJson),
+    UsersJsonStr = iorio_json:encode(UsersJson),
     {UsersJsonStr, Req, State}.
 
 rest_terminate(_Req, _State) ->

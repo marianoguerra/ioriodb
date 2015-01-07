@@ -41,7 +41,7 @@ is_authorized(Req, State=#state{secret=Secret, bucket=Bucket, stream=Stream}) ->
 
 from_json(Req, State=#state{bucket=Bucket, stream=Stream}) ->
     {ok, Body, Req1} = cowboy_req:body(Req),
-    Info = jsx:decode(Body),
+    Info = iorio_json:decode_plist(Body),
     Action = proplists:get_value(?FIELD_ACTION, Info, notfound),
     Permission = proplists:get_value(?FIELD_PERMISSION, Info),
     Username = proplists:get_value(?FIELD_USERNAME, Info, notfound),
@@ -62,7 +62,7 @@ to_json(Req, State=#state{bucket=Bucket, stream=Stream}) ->
                    end,
     AccessUsersJson = lists:map(FormatGrants, UserAccess),
     AccessGroupsJson = lists:map(FormatGrants, GroupAccess),
-    AccessJsonStr = jsx:encode([{users, AccessUsersJson}, {groups, AccessGroupsJson}]),
+    AccessJsonStr = iorio_json:encode([{users, AccessUsersJson}, {groups, AccessGroupsJson}]),
     {AccessJsonStr, Req, State}.
 
 rest_terminate(_Req, _State) ->

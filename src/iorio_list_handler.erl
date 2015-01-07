@@ -49,7 +49,7 @@ response_to_json(Req, State, Response) ->
     Items = lists:flatten(ItemsNested),
     UniqueItems = unique(Items),
 
-    {jsx:encode([{status, Status}, {data, UniqueItems}]), Req, State}.
+    {iorio_json:encode([{status, Status}, {data, UniqueItems}]), Req, State}.
 
 to_json(Req, State=#state{bucket=any}) ->
     response_to_json(Req, State, iorio:list());

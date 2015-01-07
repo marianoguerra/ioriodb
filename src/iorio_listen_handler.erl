@@ -39,7 +39,7 @@ init(_Transport, Req, [_, {secret, Secret}|_]=Opts, Active) ->
 
 stream(Data, Req, State) ->
     lager:debug("msg received ~p~n", [Data]),
-    Msg = jsx:decode(Data),
+    Msg = iorio_json:decode_plist(Data),
     Id = proplists:get_value(<<"id">>, Msg, 0),
     case proplists:get_value(<<"cmd">>, Msg) of
         <<"subscribe">> -> handle_subscribe(Msg, Id, Req, State);
@@ -70,7 +70,7 @@ reply_entries_json([], Req, State) ->
 
 reply_entries_json(Entries, Req, State) ->
     Json = entries_to_json(Entries),
-    JsonBin = jsx:encode(Json),
+    JsonBin = iorio_json:encode(Json),
     {reply, JsonBin, Req, State}.
 
 entries_to_json(Entries) ->
@@ -78,7 +78,7 @@ entries_to_json(Entries) ->
 
 entry_to_json({entry, Bucket, Stream, #sblob_entry{seqnum=SeqNum, timestamp=Timestamp, data=Data}}) ->
     [{meta, [{id, SeqNum}, {t, Timestamp}, {bucket, Bucket}, {stream, Stream}]},
-     {data, jsx:decode(Data)}].
+     {data, iorio_json:decode_plist(Data)}].
 
 get_channel_args(Msg) ->
     {proplists:get_value(<<"bucket">>, Msg),
