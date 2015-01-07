@@ -1,11 +1,17 @@
 '''iorio python api'''
-from __future__ import print_function
+try:
+    import json
+except ImportError:
+    import simplejson as json
 
-import json
 import time
 import pprint
 import urllib
-import requests
+
+try:
+    import requests
+except ImportError:
+    import oldreq as requests
 
 PERM_GET = "get"
 PERM_STREAM_GET = "get"
@@ -76,7 +82,12 @@ class Connection(object):
             params = ""
 
         path = "/".join(str(item) for item in paths)
-        protocol = 'https' if self.secure else 'http'
+
+        if self.secure:
+            protocol = 'https'
+        else:
+            protocol = 'http'
+
         return '%s://%s:%d/%s%s' % (protocol, self.host, self.port, path, params)
 
     def make_headers(self, content_type=MT_JSON):
@@ -244,30 +255,3 @@ class Subscriptions(object):
         for key, val in latest.items():
             self.subs[key] = val
 
-def show_response(resp, human=True):
-    '''show content of request response'''
-    code = resp.status_code
-    has_body = bool(resp.text)
-    content_type = resp.headers.get("Content-Type")
-    try:
-        json_body = json.loads(resp.text)
-    except ValueError:
-        json_body = None
-
-    if human:
-        print("Status:", code)
-        print("Type:", content_type)
-
-        if not has_body:
-            print("No Response Body")
-            return
-
-        if json_body is None:
-            print("Raw Response:", resp.text)
-        else:
-            print("JSON Response:")
-            pprint.pprint(json_body)
-    else:
-        data = dict(code=code, has_body=has_body, content_type=content_type,
-                body=json_body)
-        print(json.dumps(data, indent=2))
