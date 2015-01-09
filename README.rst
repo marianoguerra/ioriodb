@@ -4,6 +4,7 @@ Iorio DB
 a stream database.
 
 like a pubsub with history or "apache kafka if it was made by couchdb devs"
+(Iorio DB is not made by couchdb devs)
 
 Iorio DB is a data store that stores streams of events, it's objective is to
 allow the following:
@@ -34,9 +35,11 @@ All through a RESTful HTTP API
 Setup
 -----
 
-the first time you build it you need to fix some stuff before it builds::
-
-    ./rebar get-deps && ./tools/fix_deps_warnings_as_errors.sh && make newrel
+start by fetching the dependencies, you can run this anytime you want to remove
+the dependencies and fetch the latest versions and apply some fixes we do to
+the deps::
+    
+    make refetchdeps
 
 after you have all the deps you can simply do::
 
@@ -44,7 +47,7 @@ after you have all the deps you can simply do::
 
 to run a single node::
 
-    ./rel/iorio/bin/iorio consol
+    ./rel/iorio/bin/iorio console
 
 API
 ---
@@ -99,17 +102,8 @@ WARNING
     this is alpha software, it will break your hearth (and your data)
     use it only for evaluation and testing
 
-Roadmap
--------
-
-See issues and milestones for details
-
 Test
 ----
-
-to run the unit tests::
-
-    ./rebar eunit skip_deps=true
 
 to test from he api::
 
@@ -276,11 +270,8 @@ Patch behaviour
 
 patch only works on streams that already have at least one event, it doesn't
 make sense to patch something that's not there, that's why a patch on an
-emptry stream will fail, you have to handle that case by providing an initial
+empty stream will fail, you have to handle that case by providing an initial
 value and then applying the patch.
-
-we may provide in the feature a way to provide an optional initial state in
-case it's not there so you don't have to check and retry.
 
 Multinode
 ---------
