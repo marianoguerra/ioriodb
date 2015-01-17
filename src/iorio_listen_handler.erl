@@ -94,7 +94,7 @@ handle_ping(_Msg, Id, Req, State) ->
 fail(Msg, Id, State) ->
     {encode_error(Msg, Id), State}.
 
-with_stream(Fn, Msg, Id, Req, State=#state{session={Username, _, Ctx}}) ->
+with_stream(Fn, Msg, Id, Req, State=#state{session={Username, SBody, Ctx}}) ->
     {Body, NewState} = case get_channel_args(Msg) of
                {undefined, undefined} ->
                                fail(<<"missing bucket and stream">>, Id, State);
@@ -105,8 +105,11 @@ with_stream(Fn, Msg, Id, Req, State=#state{session={Username, _, Ctx}}) ->
                {Bucket, Stream} ->
                                Action = ?PERM_STREAM_GET,
                                case iorio_session:is_authorized_for_stream(Ctx, Username, Bucket, Stream, Action) of
-                                   % TODO: use NewCtx
-                                   {true, _NewCtx} -> Fn(Bucket, Stream);
+                                   {true, NewCtx} ->
+                                       {FBody, State1} = Fn(Bucket, Stream),
+                                       NewSession = {Username, SBody, NewCtx},
+                                       State2 = State1#state{session=NewSession},
+                                       {FBody, State2};
                                    _Other -> fail(<<"unauthorized">>, Id, State)
                                end
            end,
