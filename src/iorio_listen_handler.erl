@@ -14,26 +14,21 @@ init(_Transport, Req, [_, {secret, Secret}|_]=Opts, Active) ->
     {Token, Req1} = cowboy_req:qs_val(<<"jwt">>, Req, nil),
     {Params, Req2} = cowboy_req:qs_vals(Req1),
     RawSubs = proplists:get_all_values(<<"s">>, Params),
-    if Token == nil ->
-           lager:warning("shutdown listen no token"),
-           {shutdown, Req2, #state{}};
-       true ->
-           Subs = iorio_parse:subscriptions(RawSubs),
-           case iorio_session:session_from_token(Token, Secret) of
-               {ok, Session} ->
-                   State = #state{channels=[], iorio=Iorio,
-                                  secret=Secret, token=Token, session=Session},
+    Subs = iorio_parse:subscriptions(RawSubs),
+    case iorio_session:session_from_token(Token, Secret) of
+        {ok, Session} ->
+            State = #state{channels=[], iorio=Iorio,
+                           secret=Secret, token=Token, session=Session},
 
-                   State1 = subscribe_all(Subs, State),
-                   Req3 = if Active == once ->
-                             cowboy_req:set_resp_header(<<"Content-Type">>, <<"application/json">>, Req2);
-                             true -> Req2
-                          end,
-                   {ok, Req3, State1};
-               {error, Reason} ->
-                   lager:warning("shutdown listen ~p", [Reason]),
-                   {shutdown, Req2, #state{}}
-           end
+            State1 = subscribe_all(Subs, State),
+            Req3 = if Active == once ->
+                          cowboy_req:set_resp_header(<<"Content-Type">>, <<"application/json">>, Req2);
+                      true -> Req2
+                   end,
+            {ok, Req3, State1};
+        {error, Reason} ->
+            lager:warning("shutdown listen ~p", [Reason]),
+            {shutdown, Req2, #state{}}
     end.
 
 

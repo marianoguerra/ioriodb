@@ -105,6 +105,8 @@ session_from_parsed_token(BodyRaw) ->
 make_anon_session() ->
     session_from_parsed_body([{<<"u">>, <<"anonymous">>}]).
 
+session_from_token(nil, _Secret) ->
+    {ok, make_anon_session()};
 session_from_token(JWTToken, Secret) ->
     case jwt:decode(JWTToken, Secret) of
         {ok, #jwt{body=BodyRaw}}    -> session_from_parsed_token(BodyRaw);
