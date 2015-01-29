@@ -27,7 +27,8 @@ to_int_or(Bin, Default) ->
         _ -> Default
     end.
 
-init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
+init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest};
+init({ssl, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
 rest_init(Req, [{secret, Secret}, {n, N}, {w, W}, {timeout, Timeout}]) ->
     {Bucket, Req1} = cowboy_req:binding(bucket, Req),

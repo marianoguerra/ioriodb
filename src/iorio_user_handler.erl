@@ -16,7 +16,8 @@
 
 -record(state, {session, secret}).
 
-init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
+init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest};
+init({ssl, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
 rest_init(Req, [{secret, Secret}]) ->
 	{ok, Req, #state{secret=Secret}}.

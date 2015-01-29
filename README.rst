@@ -418,6 +418,33 @@ in another one::
     ./dev/dev2/bin/iorio-admin cluster plan; \
     ./dev/dev2/bin/iorio-admin cluster commit
 
+Enabling HTTPS (and wss)
+------------------------
+
+first you need to have ssl certificates, let's generate some self signed certificates::
+
+    cd rel
+    mkdir ssl
+    cd ssl
+    openssl genrsa -out key.pem 1024
+    openssl req -new -key key.pem -out request.pem
+
+answer the questions it asks and then::
+
+    openssl x509 -req -days 30 -in request.pem -signkey key.pem -out cert.pem
+
+now edit iorio/etc/app.config, change secure_enabled from false to true and
+change the path to the ssl files if needed, if you followed the commands above
+you shouldn't need to change the paths.
+
+now start ioriodb, on the logs you should see a line like::
+
+    [info] secure api enabled, starting
+
+if you have the cacert file you can provide it also by uncommenting the line
+in app.config and setting the correct path, after that you can use ioriodb
+by accessing with https://<yourhost>:<secure_port>
+
 Tunning
 -------
 

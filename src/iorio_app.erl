@@ -69,9 +69,32 @@ start(_StartType, _StartArgs) ->
 
     ApiPort = application:get_env(iorio, port, 8080),
     ApiAcceptors = application:get_env(iorio, nb_acceptors, 100),
-    {ok, _} = cowboy:start_http(http, ApiAcceptors, [{port, ApiPort}], [
-        {env, [{dispatch, Dispatch}]}
-    ]),
+    {ok, _} = cowboy:start_http(http, ApiAcceptors, [{port, ApiPort}],
+                                [{env, [{dispatch, Dispatch}]}]),
+
+    SecureEnabled = application:get_env(iorio, secure_enabled, false),
+    SecureApiPort = application:get_env(iorio, secure_port, 8443),
+
+    if
+        SecureEnabled ->
+            lager:info("secure api enabled, starting"),
+            SSLCACertPath = application:get_env(iorio, secure_cacert, notset),
+            {ok, SSLCertPath} = application:get_env(iorio, secure_cert),
+            {ok, SSLKeyPath} = application:get_env(iorio, secure_key),
+
+            BaseSSLOpts = [{port, SecureApiPort}, {certfile, SSLCertPath},
+                           {keyfile, SSLKeyPath}],
+
+            SSLOpts = if SSLCACertPath == notset -> BaseSSLOpts;
+                         true -> [{cacertfile, SSLCACertPath}|BaseSSLOpts]
+                      end,
+
+            {ok, _} = cowboy:start_https(https, ApiAcceptors, SSLOpts,
+                                         [{env, [{dispatch, Dispatch}]}]);
+        true ->
+            lager:info("secure api disabled"),
+            ok
+    end,
 
     case iorio_sup:start_link() of
         {ok, Pid} ->

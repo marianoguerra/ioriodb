@@ -19,7 +19,8 @@
 -define(FIELD_USERNAME, <<"username">>).
 -define(FIELD_ACTION, <<"action">>).
 
-init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
+init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest};
+init({ssl, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
 rest_init(Req, [{secret, Secret}]) ->
     {Bucket, Req1} = cowboy_req:binding(bucket, Req),

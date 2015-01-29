@@ -18,6 +18,7 @@ APIALGORITHM=hs256
 NUMBER=${NAME##dev}
 APIBASEPORT=$((8080 + 10 * $NUMBER))
 APIPORT=$(($APIBASEPORT + 8))
+APISECPORT=$(($APIBASEPORT + 448))
 BASE=$((10000 + 10 * $NUMBER))
 WEBPORT=$(($BASE + 8))
 HANDOFFPORT=$(($BASE + 9))
@@ -27,6 +28,7 @@ echo "Generating $NAME - node='$NODENAME' http=$WEBPORT handoff=$HANDOFFPORT api
 sed -e "s/@NODE@/$NODENAME/" \
     -e "s/@WEBPORT@/$WEBPORT/" \
     -e "s/@APIPORT@/$APIPORT/" \
+    -e "s/@APISECPORT@/$APISECPORT/" \
     -e "s/@APISECRET@/$APISECRET/" \
     -e "s/@APIALGORITHM@/$APIALGORITHM/" \
     -e "s/@ADMINPASSWORD@/$ADMINPASSWORD/" \

@@ -5,6 +5,7 @@
 %% etc/app.config
 %%
 {iorio_port, @APIPORT@}.
+{iorio_secure_port, @APISECPORT@}.
 {iorio_secret, @APISECRET@}.
 {iorio_algorithm, @APIALGORITHM@}.
 {iorio_admin_password, "@ADMINPASSWORD@"}.

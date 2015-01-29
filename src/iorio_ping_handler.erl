@@ -11,7 +11,8 @@
 
 -record(state, {}).
 
-init({tcp, http}, _Req, []) -> {upgrade, protocol, cowboy_rest}.
+init({tcp, http}, _Req, []) -> {upgrade, protocol, cowboy_rest};
+init({ssl, http}, _Req, []) -> {upgrade, protocol, cowboy_rest}.
 
 rest_init(Req, []) -> {ok, Req, #state{}}.
 
