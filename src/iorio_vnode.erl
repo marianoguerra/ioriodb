@@ -81,11 +81,17 @@ handle_command(ping, _Sender, State) ->
 
 handle_command({put, ReqId, BucketName, Stream, Data}, Sender, State) ->
     lager:debug("put ~p", [{ReqId, BucketName, Stream}]),
-    Timestamp = sblob_util:now(),
-    {State1, Bucket} = get_bucket(State, BucketName),
-    {NewState, Channel} = get_channel(State1, BucketName, Stream),
+    {Timestamp, Bucket, Channel, NewState} = get_put_info(State, BucketName, Stream),
     do_put_cb(Bucket, BucketName, Stream, Timestamp, Data, ReqId, Sender,
-              Channel),
+              Channel, nil),
+    {noreply, NewState};
+
+handle_command({put_conditionally, ReqId, BucketName, Stream, Data,
+                LastSeqNum}, Sender, State) ->
+    lager:debug("put conditionally ~p", [{ReqId, BucketName, Stream, LastSeqNum}]),
+    {Timestamp, Bucket, Channel, NewState} = get_put_info(State, BucketName, Stream),
+    do_put_cb(Bucket, BucketName, Stream, Timestamp, Data, ReqId, Sender,
+              Channel, LastSeqNum),
     {noreply, NewState};
 
 handle_command({get, BucketName, Stream, From, Count}, Sender,
@@ -388,12 +394,26 @@ do_put(State, BucketName, Stream, Timestamp, Data) ->
     {NewState, Entry}.
 
 
-do_put_cb(Bucket, BucketName, Stream, Timestamp, Data, ReqId, Sender, Channel) ->
-    Callback = fun (Entry) ->
+do_put_cb(Bucket, BucketName, Stream, Timestamp, Data, ReqId, Sender, Channel, LastSeqNum) ->
+    Callback = fun
+                   ({error, _Reason}=Error) ->
+                       riak_core_vnode:reply(Sender, {ReqId, Error});
+                   (Entry) ->
                        riak_core_vnode:reply(Sender, {ReqId, Entry}),
                        iorio_hist_channel:send(Channel, {entry, BucketName, Stream, Entry}),
                        ok
                end,
-    gblob_bucket:put_cb(Bucket, Stream, Timestamp, Data, Callback),
+
+    if
+        LastSeqNum == nil ->
+            gblob_bucket:put_cb(Bucket, Stream, Timestamp, Data, Callback);
+        true ->
+            gblob_bucket:put_cb(Bucket, Stream, Timestamp, Data, LastSeqNum, Callback)
+    end,
     ok.
 
+get_put_info(State, BucketName, Stream) ->
+    Timestamp = sblob_util:now(),
+    {State1, Bucket} = get_bucket(State, BucketName),
+    {NewState, Channel} = get_channel(State1, BucketName, Stream),
+    {Timestamp, Bucket, Channel, NewState}.

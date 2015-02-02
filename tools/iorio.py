@@ -153,7 +153,7 @@ class Connection(object):
         response = self.session.get(url, headers=headers)
         return Response.from_response(response)
 
-    def query(self, bucket, stream, fromsn, limit):
+    def query(self, bucket, stream, fromsn=None, limit=1):
         params = {'limit': limit}
         if fromsn is not None:
             params['from'] = fromsn

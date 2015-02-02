@@ -118,6 +118,8 @@ to_json(Req, State=#state{bucket=Bucket, stream=Stream, from_sn=From,
 put(Bucket, PatchStream, Data, #state{n=N, w=W, timeout=Timeout}) ->
     iorio:put(Bucket, PatchStream, Data, N, W, Timeout).
 
+put_conditionally(Bucket, PatchStream, Data, #state{n=N, w=W, timeout=Timeout}, LastSeqNum) ->
+    iorio:put_conditionally(Bucket, PatchStream, Data, LastSeqNum, N, W, Timeout).
 
 publish_patch(Bucket, Stream, Data, State) ->
     PatchStream = list_to_binary(io_lib:format("~s-$patch", [Stream])),
@@ -129,7 +131,15 @@ publish_patch(Bucket, Stream, Data, State) ->
     end.
 
 store_blob_and_reply(Req, State, Bucket, Stream, Body, WithUriStr) ->
-    case put(Bucket, Stream, Body, State) of
+    Result = put(Bucket, Stream, Body, State),
+    store_blob_and_reply_1(Req, State, Bucket, Stream, WithUriStr, Result).
+
+store_blob_and_reply(Req, State, Bucket, Stream, Body, WithUriStr, LastSeqNum) ->
+    Result = put_conditionally(Bucket, Stream, Body, State, LastSeqNum),
+    store_blob_and_reply_1(Req, State, Bucket, Stream, WithUriStr, Result).
+
+store_blob_and_reply_1(Req, State, Bucket, Stream, WithUriStr, PutResult) ->
+    case PutResult of
         {ok, SblobEntry} ->
             #sblob_entry{seqnum=SeqNum, timestamp=Timestamp} = SblobEntry,
             Result = ["{\"meta\":{\"id\":", integer_to_list(SeqNum), ",\"t\":",
@@ -141,6 +151,14 @@ store_blob_and_reply(Req, State, Bucket, Stream, Body, WithUriStr) ->
             if WithUriStr -> {{true, UriStr}, Req1, State};
                true -> {true, Req1, State}
             end;
+        {error, {conflict, {seqnum, ActualSeqNum, expected, ExpectedSeqNum}}} ->
+            Req1 = iorio_http:error(Req, <<"error">>,
+                                    [{reason, <<"confict">>},
+                                     {field, <<"seqnum">>},
+                                     {expected, ExpectedSeqNum},
+                                     {got, ActualSeqNum}]),
+            {ok, Req2} = cowboy_req:reply(409, Req1),
+            {halt, Req2, State};
         {error, Reason} ->
             Req1 = iorio_http:error(Req, <<"error">>, Reason),
             {false, Req1, State}
@@ -155,8 +173,6 @@ from_json(Req, State=#state{bucket=Bucket, stream=Stream}) ->
             {false, iorio_http:invalid_body(Req1), State}
     end.
 
-% TODO: send the revision of the currently updated blob to sblob if it's
-% not the last one then return conflict
 from_json_patch(Req, State=#state{bucket=Bucket, stream=Stream}) ->
     {ok, Body, Req1} = cowboy_req:body(Req),
     case iorio_json:is_json(Body) of
@@ -164,7 +180,7 @@ from_json_patch(Req, State=#state{bucket=Bucket, stream=Stream}) ->
             case jsonpatch:parse(Body) of
                 {ok, ParsedPatch} ->
                     case iorio:get_last(Bucket, Stream) of
-                        {ok, #sblob_entry{data=Data}} ->
+                        {ok, #sblob_entry{data=Data, seqnum=LastSeqNum}} ->
                             ParsedBlob = iorio_json:decode(Data),
                             case jsonpatch:patch(ParsedPatch, ParsedBlob) of
                                 {ok, PatchResult} ->
@@ -172,8 +188,12 @@ from_json_patch(Req, State=#state{bucket=Bucket, stream=Stream}) ->
                                     Resp = store_blob_and_reply(Req1, State,
                                                                 Bucket, Stream,
                                                                 EncodedPatchResult,
-                                                                false),
-                                    publish_patch(Bucket, Stream, Body, State),
+                                                                false, LastSeqNum),
+                                    % XXX ugly!
+                                    if element(1, Resp) ->
+                                        publish_patch(Bucket, Stream, Body, State);
+                                       true -> ok
+                                    end,
                                     Resp;
                                 _Other ->
                                     % lager doesn't know how to handle maps yet

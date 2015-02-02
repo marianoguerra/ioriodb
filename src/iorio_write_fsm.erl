@@ -3,7 +3,7 @@
 -include("iorio.hrl").
 
 %% API
--export([start_link/7, write/5]).
+-export([start_link/8, write/5, write_conditionally/6]).
 
 %% Callbacks
 -export([init/1, code_change/4, handle_event/3, handle_info/3,
@@ -25,6 +25,7 @@
                 w :: pos_integer(),
                 bucket :: string(),
                 stream :: string(),
+                last_seqnum :: pos_integer() | nil,
                 data = undefined :: term() | undefined,
                 preflist :: riak_core_apl:preflist2(),
                 num_w = 0 :: non_neg_integer()}).
@@ -33,12 +34,17 @@
 %%% API
 %%%===================================================================
 
-start_link(ReqID, From, Bucket, Stream, Data, N, W) ->
-    gen_fsm:start_link(?MODULE, [ReqID, From, Bucket, Stream, Data, N, W], []).
+start_link(ReqID, From, Bucket, Stream, Data, N, W, LastSeqNum) ->
+    gen_fsm:start_link(?MODULE, [ReqID, From, Bucket, Stream, Data, N, W, LastSeqNum], []).
 
 write(N, W, Bucket, Stream, Data) ->
     ReqID = iorio_util:reqid(),
-    iorio_write_fsm_sup:start_write_fsm([ReqID, self(), Bucket, Stream, Data, N, W]),
+    iorio_write_fsm_sup:start_write_fsm([ReqID, self(), Bucket, Stream, Data, N, W, nil]),
+    {ok, ReqID}.
+
+write_conditionally(N, W, Bucket, Stream, Data, LastSeqNum) ->
+    ReqID = iorio_util:reqid(),
+    iorio_write_fsm_sup:start_write_fsm([ReqID, self(), Bucket, Stream, Data, N, W, LastSeqNum]),
     {ok, ReqID}.
 
 %%%===================================================================
@@ -46,9 +52,9 @@ write(N, W, Bucket, Stream, Data) ->
 %%%===================================================================
 
 %% @doc Initialize the state data.
-init([ReqID, From, Bucket, Stream, Data, N, W]) ->
-    SD = #state{req_id=ReqID, from=From, n=N, w=W,
-                bucket=Bucket, stream=Stream, data=Data},
+init([ReqID, From, Bucket, Stream, Data, N, W, LastSeqNum]) ->
+    SD = #state{req_id=ReqID, from=From, n=N, w=W, bucket=Bucket,
+                stream=Stream, data=Data, last_seqnum=LastSeqNum},
     {ok, prepare, SD, 0}.
 
 %% @doc Prepare the write by calculating the _preference list_.
@@ -64,8 +70,12 @@ execute(timeout, SD0=#state{req_id=ReqID,
                             bucket=Bucket,
                             stream=Stream,
                             data=Data,
-                            preflist=Preflist}) ->
-    Command = {put, ReqID, Bucket, Stream, Data},
+                            preflist=Preflist,
+                            last_seqnum=LastSeqNum}) ->
+
+    Command = if LastSeqNum == nil -> {put, ReqID, Bucket, Stream, Data};
+                 true -> {put_conditionally, ReqID, Bucket, Stream, Data, LastSeqNum}
+              end,
     riak_core_vnode_master:command(Preflist, Command, {fsm, undefined, self()},
                                    iorio_vnode_master),
     {next_state, waiting, SD0}.
