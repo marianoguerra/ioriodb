@@ -14,7 +14,7 @@ start_link(ReqId, From, Request, Timeout) ->
                                       [ReqId, From, Request, Timeout]).
 
 start(Request, Timeout) ->
-    ReqId = iorio_util:reqid(),
+    ReqId = erlang:phash2(erlang:now()),
     {ok, _} = iorio_coverage_fsm_sup:start_fsm([ReqId, self(), Request, Timeout]),
     receive
         {ReqId, Val} -> Val

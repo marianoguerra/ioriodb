@@ -191,8 +191,9 @@ from_json_patch(Req, State=#state{bucket=Bucket, stream=Stream}) ->
                                                                 false, LastSeqNum),
                                     % XXX ugly!
                                     if element(1, Resp) ->
-                                        publish_patch(Bucket, Stream, Body, State);
-                                       true -> ok
+                                           publish_patch(Bucket, Stream, Body, State);
+                                       true ->
+                                           ok
                                     end,
                                     Resp;
                                 _Other ->

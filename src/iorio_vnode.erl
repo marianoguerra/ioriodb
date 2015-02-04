@@ -28,6 +28,7 @@
 
 -record(state, {partition,
                 path,
+                writer,
                 next_bucket_index=1,
                 max_bucket_time_no_evict_ms=60000,
                 max_bucket_size_bytes=52428800,
@@ -53,6 +54,9 @@ init([Partition]) ->
     {ok, BucketsSup} = gblob_buckets_sup:start_link(),
     {ok, ChannelsSup} = iorio_channels_sup:start_link(),
 
+    % TODO: use a real process here and have a supervisor
+    WriterPid = spawn(fun task_queue_runner/0),
+
     % TODO: calculate based on number of buckets
     BucketEvictTimeInterval = application:get_env(iorio, bucket_evict_time_ms, 60000),
     MaxBucketSizeBytes = application:get_env(iorio, max_bucket_size_bytes, 52428800),
@@ -73,26 +77,49 @@ init([Partition]) ->
     {ok, #state{partition=Partition, path=Path, buckets=Buckets,
                 channels=Channels, buckets_sup=BucketsSup,
                 channels_sup=ChannelsSup,
+                writer=WriterPid,
                 max_bucket_size_bytes=MaxBucketSizeBytes}}.
 
 %% Sample command: respond to a ping
 handle_command(ping, _Sender, State) ->
     {reply, {pong, State#state.partition}, State};
 
-handle_command({put, ReqId, BucketName, Stream, Data}, Sender, State) ->
+handle_command({put, ReqId, BucketName, Stream, Data}, _Sender, State) ->
     lager:debug("put ~p", [{ReqId, BucketName, Stream}]),
     {Timestamp, Bucket, Channel, NewState} = get_put_info(State, BucketName, Stream),
-    do_put_cb(Bucket, BucketName, Stream, Timestamp, Data, ReqId, Sender,
-              Channel, nil),
-    {noreply, NewState};
+    Reply = do_put(Bucket, BucketName, Stream, Timestamp, Data, ReqId, Channel, nil),
+    {reply, Reply, NewState};
 
-handle_command({put_conditionally, ReqId, BucketName, Stream, Data,
-                LastSeqNum}, Sender, State) ->
-    lager:debug("put conditionally ~p", [{ReqId, BucketName, Stream, LastSeqNum}]),
+handle_command({coord_put_conditionally, N, W, Bucket, Stream, Data, LastSeqNum, Pid},
+               _Sender, State=#state{writer=Writer}) ->
+    ReqID = iorio_util:reqid(),
+    Task = fun () ->
+                   iorio_write_fsm:write_conditionally(N, W, Bucket, Stream,
+                                                       Data, LastSeqNum,
+                                                       Writer, ReqID),
+
+                   receive {ReqID, _Val}=Result -> Pid ! Result end
+           end,
+    Writer ! Task,
+    {reply, ReqID, State};
+
+
+handle_command({coord_put, N, W, Bucket, Stream, Data, Pid}, _Sender,
+               State=#state{writer=Writer}) ->
+    ReqID = iorio_util:reqid(),
+    Task = fun () ->
+                   iorio_write_fsm:write(N, W, Bucket, Stream, Data, Writer, ReqID),
+                   receive {ReqID, _Val}=Result -> Pid ! Result end
+           end,
+    Writer ! Task,
+    {reply, ReqID, State};
+
+handle_command({put_conditionally, ReqId, BucketName, Stream, Data, LastSeqNum},
+               _Sender, State) ->
     {Timestamp, Bucket, Channel, NewState} = get_put_info(State, BucketName, Stream),
-    do_put_cb(Bucket, BucketName, Stream, Timestamp, Data, ReqId, Sender,
-              Channel, LastSeqNum),
-    {noreply, NewState};
+    Result = do_put(Bucket, BucketName, Stream, Timestamp, Data, ReqId,
+                    Channel, LastSeqNum),
+    {reply, Result, NewState};
 
 handle_command({get, BucketName, Stream, From, Count}, Sender,
                State=#state{partition=Partition}) ->
@@ -394,26 +421,34 @@ do_put(State, BucketName, Stream, Timestamp, Data) ->
     {NewState, Entry}.
 
 
-do_put_cb(Bucket, BucketName, Stream, Timestamp, Data, ReqId, Sender, Channel, LastSeqNum) ->
-    Callback = fun
-                   ({error, _Reason}=Error) ->
-                       riak_core_vnode:reply(Sender, {ReqId, Error});
-                   (Entry) ->
-                       riak_core_vnode:reply(Sender, {ReqId, Entry}),
-                       iorio_hist_channel:send(Channel, {entry, BucketName, Stream, Entry}),
-                       ok
-               end,
+do_put(Bucket, BucketName, Stream, Timestamp, Data, ReqId, Channel, LastSeqNum) ->
 
-    if
+    Result = if
         LastSeqNum == nil ->
-            gblob_bucket:put_cb(Bucket, Stream, Timestamp, Data, Callback);
+            gblob_bucket:put(Bucket, Stream, Timestamp, Data);
         true ->
-            gblob_bucket:put_cb(Bucket, Stream, Timestamp, Data, LastSeqNum, Callback)
+            gblob_bucket:put(Bucket, Stream, Timestamp, Data, LastSeqNum)
     end,
-    ok.
+
+    case Result of
+        {error, _Reason}=Error ->
+            {ReqId, Error};
+        Entry ->
+            iorio_hist_channel:send(Channel, {entry, BucketName, Stream, Entry}),
+            {ReqId, Entry}
+    end.
 
 get_put_info(State, BucketName, Stream) ->
     Timestamp = sblob_util:now(),
     {State1, Bucket} = get_bucket(State, BucketName),
     {NewState, Channel} = get_channel(State1, BucketName, Stream),
     {Timestamp, Bucket, Channel, NewState}.
+
+task_queue_runner() ->
+    receive F ->
+                try F()
+                catch T:E -> lager:warn("error running task ~p ~p", [T, E])
+                after
+                    task_queue_runner()
+                end
+    end.

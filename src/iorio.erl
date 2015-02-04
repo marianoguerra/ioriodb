@@ -31,11 +31,17 @@ put(Bucket, Stream, Data) ->
     put(Bucket, Stream, Data, ?DEFAULT_N, ?DEFAULT_W, ?DEFAULT_TIMEOUT_MS).
 
 put(Bucket, Stream, Data, N, W, Timeout) ->
-    {ok, ReqID} = iorio_write_fsm:write(N, W, Bucket, Stream, Data),
+    IndexNode = get_index_node(Bucket, Stream),
+    Pid = self(),
+    Args = {coord_put, N, W, Bucket, Stream, Data, Pid},
+    ReqID = riak_core_vnode_master:sync_spawn_command(IndexNode, Args, iorio_vnode_master),
     wait_for_reqid(ReqID, Timeout).
 
 put_conditionally(Bucket, Stream, Data, LastSeqNum, N, W, Timeout) ->
-    {ok, ReqID} = iorio_write_fsm:write_conditionally(N, W, Bucket, Stream, Data, LastSeqNum),
+    IndexNode = get_index_node(Bucket, Stream),
+    Pid = self(),
+    Args = {coord_put_conditionally, N, W, Bucket, Stream, Data, LastSeqNum, Pid},
+    ReqID = riak_core_vnode_master:sync_spawn_command(IndexNode, Args, iorio_vnode_master),
     wait_for_reqid(ReqID, Timeout).
 
 get_last(Bucket, Stream) ->

@@ -3,7 +3,7 @@
 -include("iorio.hrl").
 
 %% API
--export([start_link/8, write/5, write_conditionally/6]).
+-export([start_link/8, write/7, write_conditionally/8]).
 
 %% Callbacks
 -export([init/1, code_change/4, handle_event/3, handle_info/3,
@@ -37,14 +37,12 @@
 start_link(ReqID, From, Bucket, Stream, Data, N, W, LastSeqNum) ->
     gen_fsm:start_link(?MODULE, [ReqID, From, Bucket, Stream, Data, N, W, LastSeqNum], []).
 
-write(N, W, Bucket, Stream, Data) ->
-    ReqID = iorio_util:reqid(),
-    iorio_write_fsm_sup:start_write_fsm([ReqID, self(), Bucket, Stream, Data, N, W, nil]),
+write(N, W, Bucket, Stream, Data, Pid, ReqID) ->
+    iorio_write_fsm_sup:start_write_fsm([ReqID, Pid, Bucket, Stream, Data, N, W, nil]),
     {ok, ReqID}.
 
-write_conditionally(N, W, Bucket, Stream, Data, LastSeqNum) ->
-    ReqID = iorio_util:reqid(),
-    iorio_write_fsm_sup:start_write_fsm([ReqID, self(), Bucket, Stream, Data, N, W, LastSeqNum]),
+write_conditionally(N, W, Bucket, Stream, Data, LastSeqNum, Pid, ReqID) ->
+    iorio_write_fsm_sup:start_write_fsm([ReqID, Pid, Bucket, Stream, Data, N, W, LastSeqNum]),
     {ok, ReqID}.
 
 %%%===================================================================
