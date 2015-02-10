@@ -1,19 +1,24 @@
 -module(iorio_user).
--export([create/2, update/2, users/0,
+-export([create/2, create/3, update/2, users/0,
          user_grants/0, user_grants_for/2, group_grants_for/2]).
 
 % NOTE '$deleted' is copied here since the other is a constant on
 % riak_core_security ?TOMBSTONE
 -define(TOMBSTONE, '$deleted').
 
-create(Username, Password) when is_binary(Username) ->
-    create(binary_to_list(Username), Password);
-
-create(Username, Password) when is_binary(Password) ->
-    create(Username, binary_to_list(Password));
+-include("include/iorio.hrl").
 
 create(Username, Password) ->
-    case riak_core_security:add_user(Username, [{"password", Password}]) of
+    create(Username, Password, ?DEFAULT_USER_GROUPS).
+
+create(Username, Password, Groups) when is_binary(Username) ->
+    create(binary_to_list(Username), Password, Groups);
+
+create(Username, Password, Groups) when is_binary(Password) ->
+    create(Username, binary_to_list(Password), Groups);
+
+create(Username, Password, Groups) ->
+    case riak_core_security:add_user(Username, [{"password", Password}, {groups, Groups}]) of
         ok ->
             riak_core_security:add_source([Username], {{127, 0, 0, 1}, 32}, password, []);
         Error ->

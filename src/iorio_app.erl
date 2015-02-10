@@ -31,6 +31,8 @@ start(_StartType, _StartArgs) ->
     W = application:get_env(iorio, req_w, 3),
     Timeout = application:get_env(iorio, req_timeout, 5000),
 
+    create_groups(),
+
     GrantAdminUsers = fun (Username) ->
                               Res = iorio_session:grant(AdminUsername,
                                                         ?PERM_MAGIC_BUCKET, any,
@@ -39,8 +41,8 @@ start(_StartType, _StartArgs) ->
                                          [Username, Res]),
                               iorio_session:maybe_grant_bucket_ownership(AdminUsername)
                       end,
-    create_user(AdminUsername, AdminPassword, GrantAdminUsers),
-    create_user(AnonUsername, AnonPassword, fun (_) -> ok end),
+    create_user(AdminUsername, AdminPassword, ?DEFAULT_ADMIN_GROUPS, GrantAdminUsers),
+    create_user(AnonUsername, AnonPassword, ?DEFAULT_ANONYMOUS_GROUPS, fun (_) -> ok end),
 
     setup_initial_permissions(AdminUsername),
 
@@ -114,8 +116,8 @@ stop(_State) ->
 
 %% private api
 
-create_user(Username, Password, OnUserCreated) ->
-    case iorio_user:create(Username, Password) of
+create_user(Username, Password, Groups, OnUserCreated) ->
+    case iorio_user:create(Username, Password, Groups) of
         ok ->
             lager:info("~p user created", [Username]),
             OnUserCreated(Username);
@@ -134,3 +136,19 @@ setup_initial_permissions(AdminUsername) ->
                              any, "iorio.put"),
     lager:info("set write permissions to ~s to ~p: ~p",
                [PublicReadBucket, AdminUsername, R2]).
+
+create_group(Name) ->
+    lager:info("creating group ~p", [Name]),
+    case riak_core_security:add_group(Name, []) of
+        ok ->
+            lager:info("~p group created", [Name]);
+        {error, role_exists} ->
+            lager:info("~p group exists", [Name]);
+        Other ->
+            lager:warning("unknown response in group ~p creation '~p'",
+                       [Name, Other])
+    end.
+
+create_groups() ->
+    lists:foreach(fun (Group) -> create_group(Group) end,
+                  ?DEFAULT_USER_GROUPS).
