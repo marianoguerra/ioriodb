@@ -16,7 +16,7 @@
 -record(state, {secret, session, bucket, stream}).
 
 -define(FIELD_PERMISSION, <<"permission">>).
--define(FIELD_USERNAME, <<"username">>).
+-define(FIELD_ROLE, <<"role">>).
 -define(FIELD_ACTION, <<"action">>).
 
 init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest};
@@ -45,10 +45,10 @@ from_json(Req, State=#state{bucket=Bucket, stream=Stream}) ->
     Info = iorio_json:decode_plist(Body),
     Action = proplists:get_value(?FIELD_ACTION, Info, notfound),
     Permission = proplists:get_value(?FIELD_PERMISSION, Info),
-    Username = proplists:get_value(?FIELD_USERNAME, Info, notfound),
+    Role = proplists:get_value(?FIELD_ROLE, Info, notfound),
     RealPermission = iorio_session:permission_to_internal(Bucket, Stream,
                                                           Permission),
-    handle_access_action(Action, Username, Bucket, Stream, RealPermission,
+    handle_access_action(Action, Role, Bucket, Stream, RealPermission,
                          Req1, State, Permission).
 
 to_json(Req, State=#state{bucket=Bucket, stream=Stream}) ->
@@ -95,42 +95,42 @@ invalid_field_response(Req, FieldName, FieldValue) ->
     iorio_http:json_response(Req, Body).
 
 
-handle_access_action(notfound, _Username, _Bucket, _Stream, _RealPermission,
+handle_access_action(notfound, _Role, _Bucket, _Stream, _RealPermission,
                      Req, State, _Permission) ->
     Req1 = invalid_field_response(Req, ?FIELD_ACTION, nil),
     {false, Req1, State};
 
 handle_access_action(_Action, notfound, _Bucket, _Stream, _RealPemission, Req,
                      State, _Permission) ->
-    Req1 = invalid_field_response(Req, ?FIELD_USERNAME, nil),
+    Req1 = invalid_field_response(Req, ?FIELD_ROLE, nil),
     {false, Req1, State};
 
-handle_access_action(_Action, _Username, _Bucket, _Stream, notfound, Req,
+handle_access_action(_Action, _Role, _Bucket, _Stream, notfound, Req,
                      State, Permission) ->
     Req1 = invalid_field_response(Req, ?FIELD_PERMISSION, Permission),
     {false, Req1, State};
 
-handle_access_action(<<"grant">>, Username, Bucket, Stream, RealPermission,
+handle_access_action(<<"grant">>, Role, Bucket, Stream, RealPermission,
                      Req1, State, Permission) ->
-    grant_access(Username, Bucket, Stream, RealPermission, Req1, State, Permission);
+    grant_access(Role, Bucket, Stream, RealPermission, Req1, State, Permission);
 
-handle_access_action(<<"revoke">>, Username, Bucket, Stream, RealPermission,
+handle_access_action(<<"revoke">>, Role, Bucket, Stream, RealPermission,
                      Req1, State, Permission) ->
-    revoke_access(Username, Bucket, Stream, RealPermission, Req1, State, Permission);
+    revoke_access(Role, Bucket, Stream, RealPermission, Req1, State, Permission);
 
-handle_access_action(Other, _Username, _Bucket, _Stream, _RealPermission,
+handle_access_action(Other, _Role, _Bucket, _Stream, _RealPermission,
                      Req, State, _Permission) ->
     Req1 = invalid_field_response(Req, ?FIELD_ACTION, Other),
     {false, Req1, State}.
 
 
-revoke_access(Username, Bucket, Stream, RealPermission, Req, State, _Permission) ->
-    Result = iorio_session:revoke(Username, Bucket, Stream, RealPermission),
+revoke_access(Role, Bucket, Stream, RealPermission, Req, State, _Permission) ->
+    Result = iorio_session:revoke(Role, Bucket, Stream, RealPermission),
     grant_result_to_response(Result, Req, State).
 
 
-grant_access(Username, Bucket, Stream, RealPermission, Req, State, _Permission) ->
-    Result = iorio_session:grant(Username, Bucket, Stream, RealPermission),
+grant_access(Role, Bucket, Stream, RealPermission, Req, State, _Permission) ->
+    Result = iorio_session:grant(Role, Bucket, Stream, RealPermission),
     grant_result_to_response(Result, Req, State).
 
 
