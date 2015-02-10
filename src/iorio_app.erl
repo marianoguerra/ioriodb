@@ -151,4 +151,4 @@ create_group(Name) ->
 
 create_groups() ->
     lists:foreach(fun (Group) -> create_group(Group) end,
-                  ?DEFAULT_USER_GROUPS).
+                  ?ALL_GROUPS).
