@@ -6,7 +6,7 @@
          grant/4,
          revoke/4,
          maybe_grant_bucket_ownership/1,
-         maybe_grant_bucket_ownership/3,
+         prefix_user_bucket/1,
          grant_bucket_ownership/2,
          is_authorized_for_bucket/4,
          is_authorized_for_stream/5,
@@ -70,15 +70,18 @@ grant_bucket_ownership(Username, Bucket) ->
                    ?PERM_BUCKET_LIST],
     riak_core_security:add_grant([Username], Bucket, Permissions).
 
-maybe_grant_bucket_ownership(Username) ->
-    HasStream = application:get_env(iorio, user_has_stream, false),
-    StreamPrefix = application:get_env(iorio, user_stream_prefix, ""),
-    maybe_grant_bucket_ownership(Username, HasStream, StreamPrefix).
+prefix_user_bucket(Bucket) ->
+    Prefix = application:get_env(iorio, user_bucket_prefix, ""),
+    list_to_binary(io_lib:format("~s~s", [Prefix, Bucket])).
 
-maybe_grant_bucket_ownership(_Username, false, _StreamPrefix) ->
+maybe_grant_bucket_ownership(Username) ->
+    HasStream = application:get_env(iorio, user_has_bucket, false),
+    maybe_grant_bucket_ownership(Username, HasStream).
+
+maybe_grant_bucket_ownership(_Username, false) ->
     ok;
-maybe_grant_bucket_ownership(Username, true, StreamPrefix) ->
-    Stream = list_to_binary(io_lib:format("~s~s", [StreamPrefix, Username])),
+maybe_grant_bucket_ownership(Username, true) ->
+    Stream = prefix_user_bucket(Username),
     lager:info("granting ~s bucket ownership to ~s", [Stream, Username]),
     iorio_session:grant_bucket_ownership(Username, Stream).
 
