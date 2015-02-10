@@ -18,9 +18,12 @@ create(Username, Password, Groups) when is_binary(Password) ->
     create(Username, binary_to_list(Password), Groups);
 
 create(Username, Password, Groups) ->
-    case riak_core_security:add_user(Username, [{"password", Password}, {groups, Groups}]) of
+    RcsGroups = lists:map(fun (Group) -> {"groups", [Group]} end, Groups),
+    case riak_core_security:add_user(Username, [{"password", Password}]) of
         ok ->
-            riak_core_security:add_source([Username], {{127, 0, 0, 1}, 32}, password, []);
+            ok = riak_core_security:add_source([Username], {{127, 0, 0, 1}, 32}, password, []),
+            ok = riak_core_security:alter_user(Username, RcsGroups),
+            ok;
         Error ->
             Error
     end.
