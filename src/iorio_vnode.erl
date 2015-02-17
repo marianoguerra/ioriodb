@@ -320,8 +320,13 @@ evict_bucket(BucketName, Partition, MaxSizeBytes, MaxTimeMsNoEviction) ->
                       TruncateResult = iorio:truncate(BucketName, MaxSizeBytes),
                       T2 = sblob_util:now_fast(),
                       TDiff = T2 - T1,
-                      lager:info("bucket eviction ~s in ~pms ~p: ~p",
-                                 [BucketName, TDiff, Partition, TruncateResult]),
+                      LogMsg = "bucket eviction ~s in ~pms ~p: ~p",
+                      LogArgs = [BucketName, TDiff, Partition, TruncateResult],
+                      if TDiff > 100 ->
+                             lager:info(LogMsg, LogArgs);
+                         true ->
+                             lager:debug(LogMsg, LogArgs)
+                      end,
                       set_last_eviction(BucketName)
               end,
 
