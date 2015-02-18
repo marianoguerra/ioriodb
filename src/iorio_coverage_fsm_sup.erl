@@ -4,6 +4,8 @@
 -export([start_link/0, start_fsm/1]).
 -export([init/1]).
 
+-ignore_xref([start_link/0, init/1]).
+
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 

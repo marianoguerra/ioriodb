@@ -2,6 +2,8 @@
 
 -export([init/3, terminate/3]).
 
+-ignore_xref([init/3, terminate/3]).
+
 -export([rest_init/2,
          rest_terminate/2,
          allowed_methods/2,
@@ -9,11 +11,18 @@
          content_types_provided/2,
          is_authorized/2,
          to_json/2,
-         from_json/2
-        ]).
+         from_json/2]).
 
--include("include/iorio.hrl").
--record(state, {secret, session, bucket, stream}).
+-ignore_xref([rest_init/2,
+         rest_terminate/2,
+         allowed_methods/2,
+         content_types_accepted/2,
+         content_types_provided/2,
+         is_authorized/2,
+         to_json/2,
+         from_json/2]).
+
+-record(state, {access, info}).
 
 -define(FIELD_PERMISSION, <<"permission">>).
 -define(FIELD_ROLE, <<"role">>).
@@ -22,10 +31,11 @@
 init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest};
 init({ssl, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
-rest_init(Req, [{secret, Secret}]) ->
+rest_init(Req, [{access, Access}]) ->
     {Bucket, Req1} = cowboy_req:binding(bucket, Req),
     {Stream, Req2} = cowboy_req:binding(stream, Req1, any),
-	{ok, Req2, #state{secret=Secret, bucket=Bucket, stream=Stream}}.
+    {ok, Info} = ioriol_access:new_req([{bucket, Bucket}, {stream, Stream}]),
+	{ok, Req2, #state{access=Access, info=Info}}.
 
 allowed_methods(Req, State) -> {[<<"POST">>, <<"GET">>], Req, State}.
 
@@ -35,35 +45,31 @@ content_types_accepted(Req, State) ->
 content_types_provided(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, to_json}], Req, State}.
 
-is_authorized(Req, State=#state{secret=Secret, bucket=Bucket, stream=Stream}) ->
-    GetSession = fun get_session/1,
-    SetSession = fun set_session/2,
-    check_auth(Req, Secret, State, GetSession, SetSession, Bucket, Stream).
+is_authorized(Req, State=#state{access=Access}) ->
+    {ok, Req1, State1=#state{info=Info1}} = fill_session(Req, State),
+    case ioriol_access:is_authorized(Access, Info1) of
+        {ok, Info2} ->
+            {true, Req1, State1#state{info=Info2}};
+        {error, Reason} ->
+            Username = ioriol_access:username(Info1),
+            lager:warning("unauthorized access operation user ~p reason ~p",
+                          [Username, Reason]),
+            Req2 = iorio_http:no_permission(Req1),
+            {{false, <<"jwt">>}, Req2, State1}
+    end.
 
-from_json(Req, State=#state{bucket=Bucket, stream=Stream}) ->
+from_json(Req, State=#state{info=Info}) ->
     {ok, Body, Req1} = cowboy_req:body(Req),
     Info = iorio_json:decode_plist(Body),
-    Action = proplists:get_value(?FIELD_ACTION, Info, notfound),
+    Action = proplists:get_value(?FIELD_ACTION, Info),
     Permission = proplists:get_value(?FIELD_PERMISSION, Info),
-    Role = proplists:get_value(?FIELD_ROLE, Info, notfound),
-    RealPermission = iorio_session:permission_to_internal(Bucket, Stream,
-                                                          Permission),
-    handle_access_action(Action, Role, Bucket, Stream, RealPermission,
-                         Req1, State, Permission).
+    Role = proplists:get_value(?FIELD_ROLE, Info),
 
-to_json(Req, State=#state{bucket=Bucket, stream=Stream}) ->
-    UserAccess = iorio_user:user_grants_for(Bucket, Stream),
-    GroupAccess = iorio_user:group_grants_for(Bucket, Stream),
-    FormatGrant = fun (Grant) ->
-                          iorio_session:internal_to_permission(Bucket, Stream, Grant)
-                  end,
-    FormatGrants = fun ({Name, _, _, Grants}) ->
-                           FormattedGrants = lists:map(FormatGrant, Grants),
-                           [{name, Name}, {grants, FormattedGrants}]
-                   end,
-    AccessUsersJson = lists:map(FormatGrants, UserAccess),
-    AccessGroupsJson = lists:map(FormatGrants, GroupAccess),
-    AccessJsonStr = iorio_json:encode([{users, AccessUsersJson}, {groups, AccessGroupsJson}]),
+    handle_update(Req1, Info, State, Action, Role, Permission).
+
+to_json(Req, State=#state{access=Access, info=Info}) ->
+    {ok, AccessPList} = ioriol_access:access_details(Access, Info),
+    AccessJsonStr = iorio_json:encode(AccessPList),
     {AccessJsonStr, Req, State}.
 
 rest_terminate(_Req, _State) ->
@@ -74,74 +80,36 @@ terminate(_Reason, _Req, _State) ->
 
 % private api
 
-check_auth(Req, Secret, State, GetSession, SetSession, Bucket, any) ->
-    iorio_session:handle_is_authorized_for_bucket(Req, Secret, State,
-                                                  GetSession, SetSession,
-                                                  Bucket, ?PERM_BUCKET_GRANT);
+fill_session(Req, State=#state{access=Access, info=Info}) ->
+    case iorio_session:fill_session(Req, Access, Info) of
+        {ok, Req1, Info1} ->
+            State1 = State#state{info=Info1},
+            {ok, Req1, State1};
+        Error -> Error
+    end.
 
-check_auth(Req, Secret, State, GetSession, SetSession, Bucket, Stream) ->
-    iorio_session:handle_is_authorized_for_stream(Req, Secret, State,
-                                                  GetSession, SetSession,
-                                                  Bucket, Stream,
-                                                  ?PERM_STREAM_GRANT).
-
-
-get_session(#state{session=Session}) -> Session.
-set_session(State, Session) -> State#state{session=Session}.
-
-invalid_field_response(Req, FieldName, FieldValue) ->
+invalid_field_response(Req, State, FieldName, FieldValue) ->
     Reason = <<"invalid-field">>,
     Body = [{type, Reason}, {field, FieldName}, {value, FieldValue}],
-    iorio_http:json_response(Req, Body).
-
-
-handle_access_action(notfound, _Role, _Bucket, _Stream, _RealPermission,
-                     Req, State, _Permission) ->
-    Req1 = invalid_field_response(Req, ?FIELD_ACTION, nil),
-    {false, Req1, State};
-
-handle_access_action(_Action, notfound, _Bucket, _Stream, _RealPemission, Req,
-                     State, _Permission) ->
-    Req1 = invalid_field_response(Req, ?FIELD_ROLE, nil),
-    {false, Req1, State};
-
-handle_access_action(_Action, _Role, _Bucket, _Stream, notfound, Req,
-                     State, Permission) ->
-    Req1 = invalid_field_response(Req, ?FIELD_PERMISSION, Permission),
-    {false, Req1, State};
-
-handle_access_action(<<"grant">>, Role, Bucket, Stream, RealPermission,
-                     Req1, State, Permission) ->
-    grant_access(Role, Bucket, Stream, RealPermission, Req1, State, Permission);
-
-handle_access_action(<<"revoke">>, Role, Bucket, Stream, RealPermission,
-                     Req1, State, Permission) ->
-    revoke_access(Role, Bucket, Stream, RealPermission, Req1, State, Permission);
-
-handle_access_action(Other, _Role, _Bucket, _Stream, _RealPermission,
-                     Req, State, _Permission) ->
-    Req1 = invalid_field_response(Req, ?FIELD_ACTION, Other),
+    Req1 = iorio_http:json_response(Req, Body),
     {false, Req1, State}.
 
+handle_update(Req, _Info, State, undefined, _Role, _Permission) ->
+    invalid_field_response(Req, State, ?FIELD_ACTION, nil);
+handle_update(Req, _Info, State, _Action, undefined, _Permission) ->
+    invalid_field_response(Req, State, ?FIELD_ROLE, nil);
+handle_update(Req, _Info, State, _Action, _Role, undefined) ->
+    invalid_field_response(Req, State, ?FIELD_PERMISSION, nil);
 
-revoke_access(Role, Bucket, Stream, RealPermission, Req, State, _Permission) ->
-    Result = iorio_session:revoke(Role, Bucket, Stream, RealPermission),
-    grant_result_to_response(Result, Req, State).
-
-
-grant_access(Role, Bucket, Stream, RealPermission, Req, State, _Permission) ->
-    Result = iorio_session:grant(Role, Bucket, Stream, RealPermission),
-    grant_result_to_response(Result, Req, State).
-
-
-grant_result_to_response({error, Error}, Req, State) ->
-    grant_result_to_response({errors, [Error]}, Req, State);
-
-grant_result_to_response({errors, Errors}, Req, State) ->
-    Req1 = iorio_http:json_response(Req, [{type, <<"error">>},
-                                          {value, Errors}]),
-    {false, Req1, State};
-
-grant_result_to_response(ok, Req, State) ->
-    Req1 = iorio_http:ok(Req),
-    {true, Req1, State}.
+handle_update(Req, Info, State=#state{access=Access}, Action, Role, Permission) ->
+    {ok, Info1} = ioriol_access:update_req(Info, [{action, Action},
+                                                  {permission, Permission},
+                                                  {role, Role}]),
+    State1 = State#state{info=Info1},
+    case ioriol_access:handle_req(Access, Info1) of
+        ok ->
+            {true, Req, State1};
+        {error, Reason} ->
+            lager:warning("Error processing access operation ~p", [Reason]),
+            {false, Req, State1}
+    end.

@@ -2,6 +2,8 @@
 
 -export([init/3, terminate/3]).
 
+-ignore_xref([init/3, terminate/3]).
+
 -export([rest_init/2,
          rest_terminate/2,
          allowed_methods/2,
@@ -9,15 +11,23 @@
          is_authorized/2,
          to_json/2]).
 
--record(state, {bucket, secret, session=nil}).
+-ignore_xref([rest_init/2,
+         rest_terminate/2,
+         allowed_methods/2,
+         content_types_provided/2,
+         is_authorized/2,
+         to_json/2]).
+
+-record(state, {access, info, bucket}).
 -include("include/iorio.hrl").
 
 init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest};
 init({ssl, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
-rest_init(Req, [{secret, Secret}]) ->
+rest_init(Req, [{access, Access}]) ->
     {Bucket, Req1} = cowboy_req:binding(bucket, Req, any),
-	{ok, Req1, #state{bucket=Bucket, secret=Secret}}.
+    {ok, Info} = ioriol_access:new_req([{bucket, Bucket}]),
+	{ok, Req1, #state{access=Access, info=Info, bucket=Bucket}}.
 
 allowed_methods(Req, State) -> {[<<"GET">>], Req, State}.
 
@@ -28,16 +38,20 @@ unique(List) ->
     Set = sets:from_list(List),
     sets:to_list(Set).
 
-get_session(#state{session=Session}) -> Session.
-set_session(State, Session) -> State#state{session=Session}.
-
-is_authorized(Req, State=#state{secret=Secret, bucket=Bucket}) ->
-    Action = ?PERM_BUCKET_LIST,
-    GetSession = fun get_session/1,
-    SetSession = fun set_session/2,
-    iorio_session:handle_is_authorized_for_bucket(Req, Secret, State,
-                                                  GetSession, SetSession,
-                                                  Bucket, Action).
+is_authorized(Req, State=#state{access=Access, bucket=Bucket, info=Info}) ->
+    case iorio_session:fill_session(Req, Access, Info) of
+        {ok, Req1, Info1} ->
+            State1 = State#state{info=Info1},
+            Action = ?PERM_BUCKET_LIST,
+            case ioriol_access:is_authorized_for_bucket(Access, Info1, Action) of
+                {ok, Info2} ->
+                    {true, Req1, State1#state{info=Info2}};
+                {error, Reason} ->
+                    unauthorized_response(Req1, Bucket, Reason, State1)
+            end;
+        {error, Reason} ->
+            unauthorized_response(Req, Bucket, Reason, State)
+    end.
 
 response_to_json(Req, State, Response) ->
     {Status, Data} = case Response of
@@ -62,3 +76,10 @@ rest_terminate(_Req, _State) ->
 
 terminate(_Reason, _Req, _State) ->
 	ok.
+
+%% private api
+unauthorized_response(Req, Bucket, Reason, State) ->
+    Req1 = iorio_http:no_permission(Req),
+    lager:warning("unauthorized list request on bucket ~p: ~p",
+                  [Bucket, Reason]),
+    {{false, <<"jwt">>}, Req1, State}.

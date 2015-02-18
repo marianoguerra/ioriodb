@@ -2,7 +2,16 @@
 
 -export([init/3, terminate/3]).
 
+-ignore_xref([init/3, terminate/3]).
+
 -export([rest_init/2,
+         rest_terminate/2,
+         allowed_methods/2,
+         content_types_provided/2,
+         to_json/2
+        ]).
+
+-ignore_xref([rest_init/2,
          rest_terminate/2,
          allowed_methods/2,
          content_types_provided/2,

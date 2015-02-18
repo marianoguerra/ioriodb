@@ -9,6 +9,7 @@ dev
 apps/iorio/src/*
 rel/vars/dev[0-9]_vars.config
 rel/ssl/
+rel/iorio_internal_data/
 tools/__pycache__/
 scratch
 errors.txt

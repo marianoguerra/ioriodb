@@ -15,74 +15,77 @@ start(_StartType, _StartArgs) ->
     % TODO: see where to start it
     file_handle_cache:start_link(),
     % TODO: check here that secret is binary and algorigthm is a valid one
-    {ok, ApiSecret} = application:get_env(iorio, secret),
-    {ok, ApiAlgorithm} = application:get_env(iorio, algorithm),
+    {ok, ApiSecret} = env(iorio, secret),
+    {ok, ApiAlgorithm} = env(iorio, algorithm),
 
-    AdminUsername = application:get_env(iorio, admin_username, "admin"),
-    {ok, AdminPassword} = application:get_env(iorio, admin_password),
+    AdminUsername = env(iorio, admin_username, "admin"),
+    {ok, AdminPassword} = env(iorio, admin_password),
 
-    AnonUsername = application:get_env(iorio, anon_username, "anonymous"),
+    AnonUsername = env(iorio, anon_username, "anonymous"),
     % default password since login in as anonymous is not that useful
-    AnonPassword = application:get_env(iorio, anon_password, <<"secret">>),
+    AnonPassword = env(iorio, anon_password, <<"secret">>),
 
-    SessionDurationSecs = application:get_env(iorio, session_duration_secs, 3600),
+    SessionDurationSecs = env(iorio, session_duration_secs, 3600),
 
-    N = application:get_env(iorio, req_n, 3),
-    W = application:get_env(iorio, req_w, 3),
-    Timeout = application:get_env(iorio, req_timeout, 5000),
+    N = env(iorio, req_n, 3),
+    W = env(iorio, req_w, 3),
+    Timeout = env(iorio, req_timeout, 5000),
 
-    create_groups(),
+    AccessHandler = env(iorio, access_handler, iorio_rk_access),
+    {ok, AccessLogic} = ioriol_access:new([{handler, AccessHandler}, {secret, ApiSecret}]),
+
+    create_groups(AccessLogic),
 
     GrantAdminUsers = fun (Username) ->
-                              Res = iorio_session:grant(AdminUsername,
+                              Res = ioriol_access:grant(AccessLogic, AdminUsername,
                                                         ?PERM_MAGIC_BUCKET, any,
                                                         ?PERM_ADMIN_USERS),
                               lager:info("assign admin users to ~p: ~p",
                                          [Username, Res]),
-                              iorio_session:maybe_grant_bucket_ownership(AdminUsername)
+                              ioriol_access:maybe_grant_bucket_ownership(AccessLogic, AdminUsername)
                       end,
     create_user(AdminUsername, AdminPassword, ?DEFAULT_ADMIN_GROUPS, GrantAdminUsers),
     create_user(AnonUsername, AnonPassword, ?DEFAULT_ANONYMOUS_GROUPS, fun (_) -> ok end),
 
-    setup_initial_permissions(AdminUsername),
+    setup_initial_permissions(AccessLogic, AdminUsername),
 
     BaseDispatchRoutes = [
-               {"/listen", bullet_handler, [{handler, iorio_listen_handler}, {secret, ApiSecret}]},
-               {"/streams/:bucket", iorio_list_handler, [{secret, ApiSecret}]},
+               {"/listen", bullet_handler, [{handler, iorio_listen_handler}, {access, AccessLogic}]},
+               {"/streams/:bucket", iorio_list_handler, [{access, AccessLogic}]},
                {"/streams/:bucket/:stream", iorio_stream_handler,
-                [{secret, ApiSecret}, {n, N}, {w, W}, {timeout, Timeout}]},
-               {"/buckets/", iorio_list_handler, [{secret, ApiSecret}]},
-               {"/access/:bucket/", iorio_access_handler, [{secret, ApiSecret}]},
-               {"/access/:bucket/:stream", iorio_access_handler, [{secret, ApiSecret}]},
+                [{access, AccessLogic}, {n, N}, {w, W}, {timeout, Timeout}]},
+               {"/buckets/", iorio_list_handler, [{access, AccessLogic}]},
+               {"/access/:bucket/", iorio_access_handler, [{access, AccessLogic}]},
+               {"/access/:bucket/:stream", iorio_access_handler, [{access, AccessLogic}]},
 
                {"/sessions", iorio_session_handler,
-                [{secret, ApiSecret}, {algorithm, ApiAlgorithm},
+                [{access, AccessLogic}, {algorithm, ApiAlgorithm},
                  {session_duration_secs, SessionDurationSecs}]},
-               {"/users/", iorio_user_handler, [{secret, ApiSecret}]},
+               {"/users/", iorio_user_handler, [{access, AccessLogic}]},
                {"/ping", iorio_ping_handler, []}
     ],
 
-    UserDispatchRoutes = application:get_env(iorio, api_handlers, []),
+    UserDispatchRoutes = env(iorio, api_handlers, []),
     lager:info("configuring routes with following user provided routes: ~p",
                [UserDispatchRoutes]),
     DispatchRoutes = BaseDispatchRoutes ++ UserDispatchRoutes,
 
     Dispatch = cowboy_router:compile([{'_', DispatchRoutes}]),
 
-    ApiPort = application:get_env(iorio, port, 8080),
-    ApiAcceptors = application:get_env(iorio, nb_acceptors, 100),
+    ApiPort = env(iorio, port, 8080),
+    ApiAcceptors = env(iorio, nb_acceptors, 100),
     {ok, _} = cowboy:start_http(http, ApiAcceptors, [{port, ApiPort}],
                                 [{env, [{dispatch, Dispatch}]}]),
 
-    SecureEnabled = application:get_env(iorio, secure_enabled, false),
-    SecureApiPort = application:get_env(iorio, secure_port, 8443),
+    SecureEnabled = env(iorio, secure_enabled, false),
+    SecureApiPort = env(iorio, secure_port, 8443),
 
     if
         SecureEnabled ->
             lager:info("secure api enabled, starting"),
-            SSLCACertPath = application:get_env(iorio, secure_cacert, notset),
-            {ok, SSLCertPath} = application:get_env(iorio, secure_cert),
-            {ok, SSLKeyPath} = application:get_env(iorio, secure_key),
+            SSLCACertPath = env(iorio, secure_cacert, notset),
+            {ok, SSLCertPath} = env(iorio, secure_cert),
+            {ok, SSLKeyPath} = env(iorio, secure_key),
 
             BaseSSLOpts = [{port, SecureApiPort}, {certfile, SSLCertPath},
                            {keyfile, SSLKeyPath}],
@@ -127,19 +130,19 @@ create_user(Username, Password, Groups, OnUserCreated) ->
             lager:error("creating ~p user ~p", [Username, OtherError])
     end.
 
-setup_initial_permissions(AdminUsername) ->
+setup_initial_permissions(AccessLogic, AdminUsername) ->
     PublicReadBucket = <<"public">>,
-    R1 = iorio_session:grant(<<"*">>, PublicReadBucket, any, "iorio.get"),
+    R1 = ioriol_access:grant(AccessLogic, <<"*">>, PublicReadBucket, any, "iorio.get"),
     lager:info("set read permissions to ~s to all: ~p",
                [PublicReadBucket, R1]),
-    R2 = iorio_session:grant(list_to_binary(AdminUsername), PublicReadBucket,
+    R2 = ioriol_access:grant(AccessLogic, list_to_binary(AdminUsername), PublicReadBucket,
                              any, "iorio.put"),
     lager:info("set write permissions to ~s to ~p: ~p",
                [PublicReadBucket, AdminUsername, R2]).
 
-create_group(Name) ->
+create_group(AccessLogic, Name) ->
     lager:info("creating group ~p", [Name]),
-    case riak_core_security:add_group(Name, []) of
+    case ioriol_access:add_group(AccessLogic, Name) of
         ok ->
             lager:info("~p group created", [Name]);
         {error, role_exists} ->
@@ -149,6 +152,12 @@ create_group(Name) ->
                        [Name, Other])
     end.
 
-create_groups() ->
-    lists:foreach(fun (Group) -> create_group(Group) end,
+create_groups(AccessLogic) ->
+    lists:foreach(fun (Group) -> create_group(AccessLogic, Group) end,
                   ?ALL_GROUPS).
+
+env(App, Par) ->
+    application:get_env(App, Par).
+
+env(App, Par, Def) ->
+    application:get_env(App, Par, Def).
