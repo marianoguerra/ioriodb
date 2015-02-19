@@ -7,10 +7,12 @@
 -export([behaviour_info/1]).
 
 -export([maybe_grant_bucket_ownership/2]).
+-export([create_user/3, create_user/4, update_user_password/3, users/1]).
 
 -export_type([access_details/0]).
 
--ignore_xref([behaviour_info/1]).
+-ignore_xref([behaviour_info/1, create_user/3, create_user/4,
+              update_user_password/3]).
 
 -include("include/iorio.hrl").
 
@@ -86,6 +88,18 @@ authenticate(#state{handler=Handler}, Req, Username, Password) ->
         Other -> Other
     end.
 
+create_user(State, Username, Password) ->
+    create_user(State, Username, Password, ?DEFAULT_USER_GROUPS).
+
+create_user(#state{handler=Handler}, Username, Password, Groups) ->
+    Handler:create_user(Username, Password, Groups).
+
+update_user_password(#state{handler=Handler}, Username, Password) ->
+    Handler:update_user_password(Username, Password).
+
+users(#state{handler=Handler}) ->
+    Handler:users().
+
 %% behaviour functions
 
 behaviour_info(callbacks) ->
@@ -93,6 +107,9 @@ behaviour_info(callbacks) ->
      {is_authorized, 5},
      {user_access_details, 3},
      {grant_bucket_ownership, 2},
+     {create_user, 3},
+     {update_user_password, 2},
+     {users, 0},
      {add_group, 1},
      {grant, 4},
      {revoke, 4},

@@ -44,8 +44,8 @@ start(_StartType, _StartArgs) ->
                                          [Username, Res]),
                               ioriol_access:maybe_grant_bucket_ownership(AccessLogic, AdminUsername)
                       end,
-    create_user(AdminUsername, AdminPassword, ?DEFAULT_ADMIN_GROUPS, GrantAdminUsers),
-    create_user(AnonUsername, AnonPassword, ?DEFAULT_ANONYMOUS_GROUPS, fun (_) -> ok end),
+    create_user(AccessLogic, AdminUsername, AdminPassword, ?DEFAULT_ADMIN_GROUPS, GrantAdminUsers),
+    create_user(AccessLogic, AnonUsername, AnonPassword, ?DEFAULT_ANONYMOUS_GROUPS, fun (_) -> ok end),
 
     setup_initial_permissions(AccessLogic, AdminUsername),
 
@@ -119,8 +119,8 @@ stop(_State) ->
 
 %% private api
 
-create_user(Username, Password, Groups, OnUserCreated) ->
-    case iorio_user:create(Username, Password, Groups) of
+create_user(Access, Username, Password, Groups, OnUserCreated) ->
+    case ioriol_access:create_user(Access, Username, Password, Groups) of
         ok ->
             lager:info("~p user created", [Username]),
             OnUserCreated(Username);

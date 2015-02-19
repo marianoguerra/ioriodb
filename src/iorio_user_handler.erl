@@ -71,8 +71,8 @@ is_authorized(Req, State=#state{access=Access, info=Info}) ->
 action_from_req(Req) ->
     {Method, Req1} = cowboy_req:method(Req),
     case Method of
-        <<"POST">> -> {create, Req1};
-        <<"PUT">> -> {update, Req1}
+        <<"POST">> -> {create_user, Req1};
+        <<"PUT">> -> {update_user_password, Req1}
     end.
 
 from_json(Req, State=#state{access=Access}) ->
@@ -89,8 +89,8 @@ from_json(Req, State=#state{access=Access}) ->
         error:badarg -> {false, iorio_http:invalid_body(Req1), State}
     end.
 
-to_json(Req, State) ->
-    Users = iorio_user:users(),
+to_json(Req, State=#state{access=Access}) ->
+    Users = ioriol_access:users(Access),
     UsersJson = lists:map(fun ({Username, _}) -> [{username, Username}] end,
                           Users),
     UsersJsonStr = iorio_json:encode(UsersJson),
@@ -115,7 +115,7 @@ do_action(_Access, _, undefined, Req, _Action) ->
 
 do_action(Access, Username, Password, Req, Action) ->
     lager:info("~p'ing user '~s'", [Action, Username]),
-    case {Action, iorio_user:Action(Username, Password)} of
+    case {Action, ioriol_access:Action(Access, Username, Password)} of
         {create, ok} ->
             ioriol_access:maybe_grant_bucket_ownership(Access, Username),
             UriStr = io_lib:format("/users/~s", [Username]),

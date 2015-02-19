@@ -3,7 +3,8 @@
 
 -export([is_authorized/4, is_authorized/5, access_details/4,
          user_access_details/3, grant_bucket_ownership/2, add_group/1,
-         authenticate/2, grant/4, revoke/4]).
+         authenticate/2, grant/4, revoke/4,
+         create_user/3, update_user_password/2, users/0]).
 
 % NOTE '$deleted' is copied here since the other is a constant on
 % riak_core_security ?TOMBSTONE
@@ -62,6 +63,38 @@ authenticate(Username, Password) ->
             {error, unauthorized}
     end.
  
+create_user(Username, Password, Groups) when is_binary(Username) ->
+    create_user(binary_to_list(Username), Password, Groups);
+
+create_user(Username, Password, Groups) when is_binary(Password) ->
+    create_user(Username, binary_to_list(Password), Groups);
+
+create_user(Username, Password, Groups) ->
+    RcsGroups = lists:map(fun (Group) -> {"groups", [Group]} end, Groups),
+    case riak_core_security:add_user(Username, [{"password", Password}]) of
+        ok ->
+            ok = riak_core_security:add_source([Username], {{127, 0, 0, 1}, 32}, password, []),
+            ok = riak_core_security:alter_user(Username, RcsGroups),
+            ok;
+        Error ->
+            Error
+    end.
+
+update_user_password(Username, Password) when is_binary(Username) ->
+    update_user_password(binary_to_list(Username), Password);
+
+update_user_password(Username, Password) when is_binary(Password) ->
+    update_user_password(Username, binary_to_list(Password));
+
+update_user_password(Username, Password) ->
+    riak_core_security:alter_user(Username, [{"password", Password}]).
+
+users() ->
+    riak_core_metadata:fold(fun({_Username, [?TOMBSTONE]}, Acc) ->
+                                    Acc;
+                               ({Username, Options}, Acc) ->
+                                    [{Username, Options}|Acc]
+                            end, [], {<<"security">>, <<"users">>}).
 %% private
 user_grants(User) ->
     Fun = fun({{Username, {Bucket, Stream}}, [Perms]}, Acc) when User == Username->
