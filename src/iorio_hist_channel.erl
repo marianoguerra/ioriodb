@@ -100,7 +100,7 @@ handle_info(timeout, State=#state{buffer=Buffer, sub_count=SubCount}) ->
     end;
 
 handle_info({gen_event_EXIT, Handler, Reason}, State=#state{sub_count=SubCount}) ->
-    lager:info("handler removed due to exit ~p ~p", [Handler, Reason]),
+    lager:debug("handler removed due to exit ~p ~p", [Handler, Reason]),
     NewSubCount = SubCount - 1,
     NewState = State#state{sub_count=NewSubCount},
     {noreply, NewState};
