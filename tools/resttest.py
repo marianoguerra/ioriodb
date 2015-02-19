@@ -11,6 +11,9 @@ import iorio
 MT_JSON = 'application/json'
 MT_XML = 'application/xml'
 
+def p(bucket):
+    return '_user_' + bucket
+
 def error(*args):
     '''poor man's error log'''
     print(*args, file=sys.stderr)
@@ -133,6 +136,7 @@ def test_all_create_user(conn, args):
 
 def test_send_event(conn, bucket, stream, expected_id=1):
     '''test sending a correct event'''
+    bucket = p(bucket)
     log('send event', bucket, stream)
     resp = conn.send(bucket, stream, dict(name='bob', age=29, sponge=True))
     expect(resp, 'status', 201)
@@ -154,12 +158,12 @@ def test_send_granted_bucket(aconn, uconn, bucket):
     '''test send event to bucket with granted access'''
     stream = uconn.username
     test_send_event_no_auth(uconn, bucket, stream)
-    grant_r = aconn.grant_bucket(uconn.username, iorio.PERM_BUCKET_PUT, bucket)
+    grant_r = aconn.grant_bucket(p(uconn.username), iorio.PERM_BUCKET_PUT, bucket)
     expect(grant_r, 'status', 200)
     expect(grant_r, 'content_type', MT_JSON)
     expect(grant_r.body, 'ok', True)
     test_send_event(uconn, bucket, stream)
-    revoke_r = aconn.revoke_bucket(uconn.username, iorio.PERM_BUCKET_PUT,
+    revoke_r = aconn.revoke_bucket(p(uconn.username), iorio.PERM_BUCKET_PUT,
             bucket)
     expect(revoke_r, 'status', 200)
     expect(revoke_r, 'content_type', MT_JSON)

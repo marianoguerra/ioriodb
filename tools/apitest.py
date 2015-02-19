@@ -19,7 +19,7 @@ class Generator(object):
         self.seed = seed
         self.faker = faker.Factory.create()
         self.faker.seed(seed)
-        self.bucket = self.faker.domain_word()
+        self.bucket = '_user_admin' #self.faker.domain_word()
         self.streams = [self.faker.domain_word() for _ in range(stream_count)]
         log('initialized generator', self.bucket, 'buckets:',
                 ', '.join(self.streams))
