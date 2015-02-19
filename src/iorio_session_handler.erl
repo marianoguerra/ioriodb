@@ -109,6 +109,7 @@ check_is_authenticated(Req, State=#state{info=Info, access=Access}) ->
     case iorio_session:fill_session(Req, Access, Info) of
         {ok, Req1, Info1} ->
             {true, Req1, State#state{info=Info1}};
-        _Other ->
-            {{false, <<"jwt">>}, iorio_http:no_permission(Req), State}
+        {error, Reason, Req1} ->
+            lager:debug("auth check failed ~p", [Reason]),
+            {{false, <<"jwt">>}, iorio_http:no_permission(Req1), State}
     end.

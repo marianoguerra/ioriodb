@@ -93,8 +93,8 @@ is_authorized(Req, State=#state{access=Access, info=Info}) ->
                 {error, Reason} ->
                     unauthorized_response(Req2, State1, Info, Reason)
             end;
-        {error, Reason} ->
-            unauthorized_response(Req, State, Info, Reason)
+        {error, Reason, Req1} ->
+            unauthorized_response(Req1, State, Info, Reason)
     end.
 
 

@@ -3,11 +3,14 @@
 -export([new/1, new_req/1, update_req/2, is_authorized/2,
          is_authorized_for_bucket/3, is_authorized_for_stream/3,
          access_details/2, add_group/2, grant/5, revoke/5, authenticate/4]).
+
 -export([secret/1, username/1, session_body/1, bucket/1, stream/1]).
+
 -export([behaviour_info/1]).
 
 -export([maybe_grant_bucket_ownership/2]).
--export([create_user/3, create_user/4, update_user_password/3, users/1]).
+-export([create_user/3, create_user/4, update_user_password/3, users/1,
+         get_session/2]).
 
 -export_type([access_details/0]).
 
@@ -100,6 +103,9 @@ update_user_password(#state{handler=Handler}, Username, Password) ->
 users(#state{handler=Handler}) ->
     Handler:users().
 
+get_session(#state{handler=Handler}, Username) ->
+    Handler:get_session(Username).
+
 %% behaviour functions
 
 behaviour_info(callbacks) ->
@@ -107,6 +113,7 @@ behaviour_info(callbacks) ->
      {is_authorized, 5},
      {user_access_details, 3},
      {grant_bucket_ownership, 2},
+     {get_session, 1},
      {create_user, 3},
      {update_user_password, 2},
      {users, 0},

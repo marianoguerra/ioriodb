@@ -49,8 +49,8 @@ is_authorized(Req, State=#state{access=Access, bucket=Bucket, info=Info}) ->
                 {error, Reason} ->
                     unauthorized_response(Req1, Bucket, Reason, State1)
             end;
-        {error, Reason} ->
-            unauthorized_response(Req, Bucket, Reason, State)
+        {error, Reason, Req1} ->
+            unauthorized_response(Req1, Bucket, Reason, State)
     end.
 
 response_to_json(Req, State, Response) ->

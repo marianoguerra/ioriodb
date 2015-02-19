@@ -4,7 +4,7 @@
 -export([is_authorized/4, is_authorized/5, access_details/4,
          user_access_details/3, grant_bucket_ownership/2, add_group/1,
          authenticate/2, grant/4, revoke/4,
-         create_user/3, update_user_password/2, users/0]).
+         create_user/3, update_user_password/2, users/0, get_session/1]).
 
 % NOTE '$deleted' is copied here since the other is a constant on
 % riak_core_security ?TOMBSTONE
@@ -95,6 +95,34 @@ users() ->
                                ({Username, Options}, Acc) ->
                                     [{Username, Options}|Acc]
                             end, [], {<<"security">>, <<"users">>}).
+
+get_session(Username) ->
+    get_security_context(Username).
+
+grant(<<"*">>, Bucket, any, Permission) ->
+    riak_core_security:add_grant(all, Bucket, [Permission]);
+
+grant(Username, Bucket, any, Permission) ->
+    riak_core_security:add_grant([Username], Bucket, [Permission]);
+
+grant(<<"*">>, Bucket, Stream, Permission) ->
+    riak_core_security:add_grant(all, {Bucket, Stream}, [Permission]);
+
+grant(Username, Bucket, Stream, Permission) ->
+    riak_core_security:add_grant([Username], {Bucket, Stream}, [Permission]).
+
+revoke(<<"*">>, Bucket, any, Permission) ->
+    riak_core_security:add_revoke(all, Bucket, [Permission]);
+
+revoke(Username, Bucket, any, Permission) ->
+    riak_core_security:add_revoke([Username], Bucket, [Permission]);
+
+revoke(<<"*">>, Bucket, Stream, Permission) ->
+    riak_core_security:add_revoke(all, {Bucket, Stream}, [Permission]);
+
+revoke(Username, Bucket, Stream, Permission) ->
+    riak_core_security:add_revoke([Username], {Bucket, Stream}, [Permission]).
+
 %% private
 user_grants(User) ->
     Fun = fun({{Username, {Bucket, Stream}}, [Perms]}, Acc) when User == Username->
@@ -168,27 +196,13 @@ internal_to_permission(_Bucket, _Stream, ?PERM_ADMIN_USERS) -> <<"adminusers">>.
 %
 %permission_to_internal(_Bucket, _Stream, <<"adminusers">>) -> ?PERM_ADMIN_USERS.
 %
-grant(<<"*">>, Bucket, any, Permission) ->
-    riak_core_security:add_grant(all, Bucket, [Permission]);
 
-grant(Username, Bucket, any, Permission) ->
-    riak_core_security:add_grant([Username], Bucket, [Permission]);
-
-grant(<<"*">>, Bucket, Stream, Permission) ->
-    riak_core_security:add_grant(all, {Bucket, Stream}, [Permission]);
-
-grant(Username, Bucket, Stream, Permission) ->
-    riak_core_security:add_grant([Username], {Bucket, Stream}, [Permission]).
-
-revoke(<<"*">>, Bucket, any, Permission) ->
-    riak_core_security:add_revoke(all, Bucket, [Permission]);
-
-revoke(Username, Bucket, any, Permission) ->
-    riak_core_security:add_revoke([Username], Bucket, [Permission]);
-
-revoke(<<"*">>, Bucket, Stream, Permission) ->
-    riak_core_security:add_revoke(all, {Bucket, Stream}, [Permission]);
-
-revoke(Username, Bucket, Stream, Permission) ->
-    riak_core_security:add_revoke([Username], {Bucket, Stream}, [Permission]).
+get_security_context(Username) ->
+    % TODO: don't try catch
+    % TODO: this is private
+    try
+        {ok, riak_core_security:get_context(Username)}
+    catch error:badarg ->
+        {error, notfound}
+    end.
 
