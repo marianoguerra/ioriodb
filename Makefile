@@ -13,7 +13,6 @@ depsclean:
 	rm -rf deps
 
 refetchdeps: depsclean deps
-	./tools/fix_deps_warnings_as_errors.sh
 
 clean:
 	$(REBAR) clean
