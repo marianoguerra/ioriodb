@@ -1,8 +1,8 @@
 -module(ioriol_access).
 
--export([new/1, new_req/1, update_req/2, handle_req/2,
-         is_authorized/2, is_authorized_for_bucket/3, is_authorized_for_stream/3,
-         access_details/2, add_group/2, grant/5, authenticate/4]).
+-export([new/1, new_req/1, update_req/2, is_authorized/2,
+         is_authorized_for_bucket/3, is_authorized_for_stream/3,
+         access_details/2, add_group/2, grant/5, revoke/5, authenticate/4]).
 -export([secret/1, username/1, session_body/1, bucket/1, stream/1]).
 -export([behaviour_info/1]).
 
@@ -15,7 +15,7 @@
 -include("include/iorio.hrl").
 
 -record(state, {secret, handler}).
--record(req, {bucket, stream, username, session_body, session, role, action, permission}).
+-record(req, {bucket, stream, username, session_body, session}).
 
 %% XXX should I just pick one?
 -type grant() :: binary() | string().
@@ -37,10 +37,8 @@ update_req(Req, Opts) ->
     parse_req_opts(Opts, Req).
 
 is_authorized(State=#state{},
-              Req=#req{bucket=Bucket, stream=Stream, username=Username, role=Role,
-                       action=Action, permission=Permission})
-  when ?IsSet(Bucket), ?IsSet(Stream), ?IsSet(Username), ?IsSet(Role),
-       ?IsSet(Action), ?IsSet(Permission)->
+              Req=#req{bucket=Bucket, stream=Stream, username=Username})
+  when ?IsSet(Bucket), ?IsSet(Stream), ?IsSet(Username) ->
 
     if
         Stream == any ->
@@ -50,16 +48,6 @@ is_authorized(State=#state{},
     end;
 
 is_authorized(#state{}, Req) ->
-    {error, {invalid_req, Req}}.
-
-handle_req(#state{secret=Secret, handler=Handler},
-           #req{bucket=Bucket, stream=Stream, username=Username, role=Role,
-                action=Action, permission=Permission, session=Session})
-  when ?IsSet(Bucket), ?IsSet(Stream), ?IsSet(Username), ?IsSet(Role),
-       ?IsSet(Action), ?IsSet(Permission), ?IsSet(Session) ->
-    Handler:handle(Username, Secret, Bucket, Stream, Session, Role, Action, Permission);
-
-handle_req(#state{}, Req) ->
     {error, {invalid_req, Req}}.
 
 access_details(#state{handler=Handler, secret=Secret},
@@ -89,6 +77,9 @@ add_group(#state{handler=Handler}, Name) ->
 grant(#state{handler=Handler}, Role, Bucket, Stream, Permission) ->
     Handler:grant(Role, Bucket, Stream, Permission).
 
+revoke(#state{handler=Handler}, Role, Bucket, Stream, Permission) ->
+    Handler:revoke(Role, Bucket, Stream, Permission).
+
 authenticate(#state{handler=Handler}, Req, Username, Password) ->
     case Handler:authenticate(Username, Password) of
         {ok, Fields} -> update_req(Req, Fields);
@@ -100,11 +91,11 @@ authenticate(#state{handler=Handler}, Req, Username, Password) ->
 behaviour_info(callbacks) ->
     [{is_authorized, 4},
      {is_authorized, 5},
-     {handle, 8},
      {user_access_details, 3},
      {grant_bucket_ownership, 2},
      {add_group, 1},
      {grant, 4},
+     {revoke, 4},
      {authenticate, 2},
      {access_details, 4}];
 
@@ -152,15 +143,6 @@ parse_req_opts([{session_body, Val}|Opts], Req) ->
 
 parse_req_opts([{session, Val}|Opts], Req) ->
     parse_req_opts(Opts, Req#req{session=Val});
-
-parse_req_opts([{role, Val}|Opts], Req) ->
-    parse_req_opts(Opts, Req#req{role=Val});
-
-parse_req_opts([{action, Val}|Opts], Req) ->
-    parse_req_opts(Opts, Req#req{action=Val});
-
-parse_req_opts([{permission, Val}|Opts], Req) ->
-    parse_req_opts(Opts, Req#req{permission=Val});
 
 parse_req_opts([Other|Opts], Req) ->
     %% XXX crash?

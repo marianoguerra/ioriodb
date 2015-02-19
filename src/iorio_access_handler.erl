@@ -22,7 +22,7 @@
          to_json/2,
          from_json/2]).
 
--record(state, {access, info}).
+-record(state, {access, info, role, action, permission}).
 
 -define(FIELD_PERMISSION, <<"permission">>).
 -define(FIELD_ROLE, <<"role">>).
@@ -101,15 +101,22 @@ handle_update(Req, _Info, State, _Action, undefined, _Permission) ->
 handle_update(Req, _Info, State, _Action, _Role, undefined) ->
     invalid_field_response(Req, State, ?FIELD_PERMISSION, nil);
 
-handle_update(Req, Info, State=#state{access=Access}, Action, Role, Permission) ->
-    {ok, Info1} = ioriol_access:update_req(Info, [{action, Action},
-                                                  {permission, Permission},
-                                                  {role, Role}]),
-    State1 = State#state{info=Info1},
-    case ioriol_access:handle_req(Access, Info1) of
-        ok ->
-            {true, Req, State1};
-        {error, Reason} ->
-            lager:warning("Error processing access operation ~p", [Reason]),
-            {false, Req, State1}
-    end.
+handle_update(Req, Info, State=#state{access=Access}, <<"grant">>, Role, Permission) ->
+    Bucket = ioriol_access:bucket(Info),
+    Stream = ioriol_access:stream(Info),
+    Res = ioriol_access:grant(Access, Role, Bucket, Stream, Permission),
+    handle_access_op_result(Res, Req, State);
+handle_update(Req, Info, State=#state{access=Access}, <<"revoke">>, Role, Permission) ->
+    Bucket = ioriol_access:bucket(Info),
+    Stream = ioriol_access:stream(Info),
+    Res = ioriol_access:revoke(Access, Role, Bucket, Stream, Permission),
+    handle_access_op_result(Res, Req, State);
+handle_update(Req, _Info, State, OtherAction, _Role, _Permission) ->
+    invalid_field_response(Req, State, ?FIELD_PERMISSION, OtherAction).
+
+handle_access_op_result(ok, Req, State) ->
+    {true, Req, State};
+handle_access_op_result({error, Reason}, Req, State) ->
+    lager:warning("Error processing access operation ~p", [Reason]),
+    Res1 = iorio_http:error(Req, <<"error">>, error_processing_operation),
+    {false, Res1, State}.

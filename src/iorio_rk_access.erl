@@ -1,9 +1,9 @@
 -module(iorio_rk_access).
 -behaviour(ioriol_access).
 
--export([is_authorized/4, is_authorized/5, handle/8, access_details/4,
+-export([is_authorized/4, is_authorized/5, access_details/4,
          user_access_details/3, grant_bucket_ownership/2, add_group/1,
-         authenticate/2, grant/4]).
+         authenticate/2, grant/4, revoke/4]).
 
 % NOTE '$deleted' is copied here since the other is a constant on
 % riak_core_security ?TOMBSTONE
@@ -12,15 +12,6 @@
 -include("include/iorio.hrl").
 
 -type rk_security_ctx() :: term().
-
--spec handle(binary(), binary(), binary(), binary(), term(), binary(), binary(),
-             binary()) -> ok | {error, term()}.
-handle(_Username, _Secret, Bucket, Stream, _Session, Role, <<"grant">>, Permission) ->
-    grant(Role, Bucket, Stream, Permission);
-handle(_Username, _Secret, Bucket, Stream, _Session, Role, <<"revoke">>, Permission) ->
-    revoke(Role, Bucket, Stream, Permission);
-handle(_Username, _Secret, _Bucket, _Stream, _Session, _Role, OtherAction, _Permission) ->
-    {error, {invalid_access_operation, OtherAction}}.
 
 -spec access_details(binary(), binary(), binary(), rk_security_ctx()) ->
     {ok, ioriol_access:access_details()} | {error, term()}.
