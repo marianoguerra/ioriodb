@@ -91,7 +91,7 @@ handle_info(timeout, State=#state{buffer=Buffer, sub_count=SubCount}) ->
 
     if
         NewBufferSize == 0 andalso SubCount == 0 ->
-            lager:info("channel buffer empty and no subscribers, stopping channel"),
+            lager:debug("channel buffer empty and no subscribers, stopping channel"),
             {stop, normal, NewState};
         true ->
             lager:debug("reduced channel buffer because of inactivity to ~p items",
