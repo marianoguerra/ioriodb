@@ -31,6 +31,9 @@ devrelclean:
 
 newrel: relclean rel
 
+console:
+	./rel/iorio/bin/iorio console
+
 newdevrel: devrelclean devrel
 
 xref: all
