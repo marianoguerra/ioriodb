@@ -15,8 +15,8 @@ start(_StartType, _StartArgs) ->
     % TODO: see where to start it
     file_handle_cache:start_link(),
     % TODO: check here that secret is binary and algorigthm is a valid one
-    {ok, ApiSecret} = env(iorio, secret),
-    {ok, ApiAlgorithm} = env(iorio, algorithm),
+    {ok, ApiSecret} = env(iorio, auth_secret),
+    {ok, ApiAlgorithm} = env(iorio, auth_algorithm),
 
     AdminUsername = env(iorio, admin_username, "admin"),
     {ok, AdminPassword} = env(iorio, admin_password),
@@ -31,7 +31,7 @@ start(_StartType, _StartArgs) ->
     W = env(iorio, req_w, 3),
     Timeout = env(iorio, req_timeout, 5000),
 
-    AccessHandler = env(iorio, access_handler, iorio_rk_access),
+    AccessHandler = env(iorio, auth_handler, iorio_rk_access),
     {ok, AccessLogic} = ioriol_access:new([{handler, AccessHandler}, {secret, ApiSecret}]),
 
     create_groups(AccessLogic),
@@ -72,20 +72,20 @@ start(_StartType, _StartArgs) ->
 
     Dispatch = cowboy_router:compile([{'_', DispatchRoutes}]),
 
-    ApiPort = env(iorio, port, 8080),
-    ApiAcceptors = env(iorio, nb_acceptors, 100),
+    ApiPort = env(iorio, http_port, 8080),
+    ApiAcceptors = env(iorio, http_acceptors, 100),
     {ok, _} = cowboy:start_http(http, ApiAcceptors, [{port, ApiPort}],
                                 [{env, [{dispatch, Dispatch}]}]),
 
-    SecureEnabled = env(iorio, secure_enabled, false),
-    SecureApiPort = env(iorio, secure_port, 8443),
+    SecureEnabled = env(iorio, https_enabled, false),
+    SecureApiPort = env(iorio, https_port, 8443),
 
     if
         SecureEnabled ->
-            lager:info("secure api enabled, starting"),
-            SSLCACertPath = env(iorio, secure_cacert, notset),
-            {ok, SSLCertPath} = env(iorio, secure_cert),
-            {ok, SSLKeyPath} = env(iorio, secure_key),
+            lager:info("https api enabled, starting"),
+            SSLCACertPath = env(iorio, https_cacert, notset),
+            {ok, SSLCertPath} = env(iorio, https_cert),
+            {ok, SSLKeyPath} = env(iorio, https_key),
 
             BaseSSLOpts = [{port, SecureApiPort}, {certfile, SSLCertPath},
                            {keyfile, SSLKeyPath}],
@@ -97,7 +97,7 @@ start(_StartType, _StartArgs) ->
             {ok, _} = cowboy:start_https(https, ApiAcceptors, SSLOpts,
                                          [{env, [{dispatch, Dispatch}]}]);
         true ->
-            lager:info("secure api disabled"),
+            lager:info("https api disabled"),
             ok
     end,
 
