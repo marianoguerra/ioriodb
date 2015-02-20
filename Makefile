@@ -13,6 +13,7 @@ depsclean:
 	rm -rf deps
 
 refetchdeps: depsclean deps
+	./tools/fix_deps.sh
 
 clean:
 	$(REBAR) clean
