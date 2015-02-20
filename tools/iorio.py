@@ -250,7 +250,7 @@ class Subscriptions(object):
                 if current_count is None or seqnum > current_count:
                     latest[key][2] = seqnum
             else:
-                latest[key] = [bucket, stream, seqnum]
+                latest[key] = [bucket, stream, seqnum + 1]
 
         for key, val in latest.items():
             self.subs[key] = val
