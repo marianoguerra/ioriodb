@@ -53,7 +53,7 @@ init([Partition]) ->
     Buckets = sblob_preg:new(),
     Channels = sblob_preg:new(),
     {ok, BucketsSup} = gblob_buckets_sup:start_link(),
-    {ok, ChannelsSup} = iorio_channels_sup:start_link(),
+    {ok, ChannelsSup} = smc_channels_sup:start_link(),
 
     % TODO: use a real process here and have a supervisor
     WriterPid = spawn(fun task_queue_runner/0),
@@ -137,14 +137,16 @@ handle_command({subscribe, BucketName, Stream, FromSeqNum, Pid}, _Sender,
                State=#state{partition=Partition}) ->
     lager:debug("subscribe ~s ~s at ~p", [BucketName, Stream, Partition]),
     {NewState, Channel} = get_channel(State, BucketName, Stream),
-    iorio_hist_channel:subscribe(Channel, Pid, FromSeqNum),
+    % XXX: add smc:subscribe/3?
+    smc_hist_channel:replay(Channel, Pid, FromSeqNum),
+    smc_hist_channel:subscribe(Channel, Pid),
     {reply, ok, NewState};
 
 handle_command({unsubscribe, BucketName, Stream, Pid}, _Sender, State=#state{partition=Partition}) ->
     lager:debug("unsubscribe ~s ~s at ~p", [BucketName, Stream, Partition]),
     % TODO: don't create it if it doesn't exist
     {NewState, Channel} = get_channel(State, BucketName, Stream),
-    iorio_hist_channel:unsubscribe(Channel, Pid),
+    smc_hist_channel:unsubscribe(Channel, Pid),
     {reply, ok, NewState};
 
 handle_command(Message, _Sender, State) ->
@@ -410,7 +412,9 @@ get_channel(State=#state{channels=Channels, channels_sup=ChannelsSup}, BucketNam
         none ->
             % TODO: make it configurable
             BufferSize = 50,
-            {ok, Channel} = iorio_channels_sup:start_child(ChannelsSup, [BufferSize]),
+            GetSeqNum = fun get_seqnum/1,
+            ChOpts = [{buffer_size, BufferSize}, {get_seqnum, GetSeqNum}],
+            {ok, Channel} = smc_channels_sup:start_child(ChannelsSup, ChOpts),
             erlang:monitor(process, Channel),
             NewChannels= sblob_preg:put(Channels, ChannelKey, Channel),
             NewState = State#state{channels=NewChannels},
@@ -440,7 +444,7 @@ do_put(Bucket, BucketName, Stream, Timestamp, Data, ReqId, Channel, LastSeqNum) 
         {error, _Reason}=Error ->
             {ReqId, Error};
         Entry ->
-            iorio_hist_channel:send(Channel, {entry, BucketName, Stream, Entry}),
+            smc_hist_channel:send(Channel, {entry, BucketName, Stream, Entry}),
             {ReqId, Entry}
     end.
 
@@ -458,3 +462,5 @@ task_queue_runner() ->
                     task_queue_runner()
                 end
     end.
+
+get_seqnum({entry, _Bucket, _Stream, #sblob_entry{seqnum=SeqNum}}) -> SeqNum.
