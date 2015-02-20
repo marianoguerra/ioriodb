@@ -51,10 +51,10 @@ start(_StartType, _StartArgs) ->
 
     BaseDispatchRoutes = [
                {"/listen", bullet_handler, [{handler, iorio_listen_handler}, {access, AccessLogic}]},
-               {"/streams/:bucket", iorio_list_handler, [{access, AccessLogic}]},
+               {"/streams/:bucket", iorio_rest_list, [{access, AccessLogic}]},
                {"/streams/:bucket/:stream", iorio_stream_handler,
                 [{access, AccessLogic}, {n, N}, {w, W}, {timeout, Timeout}]},
-               {"/buckets/", iorio_list_handler, [{access, AccessLogic}]},
+               {"/buckets/", iorio_rest_list, [{access, AccessLogic}]},
                {"/access/:bucket/", iorio_rest_access, [{access, AccessLogic}]},
                {"/access/:bucket/:stream", iorio_rest_access, [{access, AccessLogic}]},
 

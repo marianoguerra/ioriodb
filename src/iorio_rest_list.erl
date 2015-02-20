@@ -1,4 +1,4 @@
--module(iorio_list_handler).
+-module(iorio_rest_list).
 
 -export([init/3, terminate/3]).
 
