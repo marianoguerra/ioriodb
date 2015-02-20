@@ -1,4 +1,4 @@
--module(iorio_session_handler).
+-module(iorio_rest_session).
 
 -export([init/3, terminate/3]).
 

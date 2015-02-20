@@ -58,7 +58,7 @@ start(_StartType, _StartArgs) ->
                {"/access/:bucket/", iorio_rest_access, [{access, AccessLogic}]},
                {"/access/:bucket/:stream", iorio_rest_access, [{access, AccessLogic}]},
 
-               {"/sessions", iorio_session_handler,
+               {"/sessions", iorio_rest_session,
                 [{access, AccessLogic}, {algorithm, ApiAlgorithm},
                  {session_duration_secs, SessionDurationSecs}]},
                {"/users/", iorio_user_handler, [{access, AccessLogic}]},
