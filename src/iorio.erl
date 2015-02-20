@@ -2,11 +2,12 @@
 -include("iorio.hrl").
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 
--export([ping/0, put/3, put/6, put_conditionally/7, get/3, get/4, get_last/2, subscribe/4, unsubscribe/3,
-         list/0, list/1, list/2, bucket_size/1, bucket_size/2, truncate/2,
-         truncate_percentage/2]).
+-export([ping/0, put/3, put/6, put_conditionally/7, get/3, get/4, get_last/2,
+         subscribe/3, subscribe/4, unsubscribe/3, list/0, list/1, list/2,
+         bucket_size/1, bucket_size/2, truncate/2, truncate_percentage/2]).
 
--ignore_xref([ping/0, bucket_size/1, bucket_size/2, get/3, list/2, put/3, subscribe/4, truncate_percentage/2, unsubscribe/3]).
+-ignore_xref([ping/0, bucket_size/1, bucket_size/2, get/3, list/2, put/3,
+              subscribe/3, subscribe/4, truncate_percentage/2, unsubscribe/3]).
 
 get_index_node(Bucket, Stream) ->
     DocIdx = riak_core_util:chash_key({Bucket, Stream}),
@@ -58,6 +59,9 @@ get(Bucket, Stream, From, Count) ->
     riak_core_vnode_master:sync_spawn_command(IndexNode,
                                               {get, Bucket, Stream, From, Count},
                                               iorio_vnode_master).
+
+subscribe(Bucket, Stream, Pid) ->
+    subscribe(Bucket, Stream, nil, Pid).
 
 subscribe(Bucket, Stream, FromSeqNum, Pid) ->
     IndexNode = get_index_node(Bucket, Stream),

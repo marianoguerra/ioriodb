@@ -101,6 +101,8 @@ start(_StartType, _StartArgs) ->
             ok
     end,
 
+    {ok, _MqttSupPid} = start_mqtt(),
+
     case iorio_sup:start_link() of
         {ok, Pid} ->
             ok = riak_core:register([{vnode_module, iorio_vnode}]),
@@ -155,6 +157,18 @@ create_group(AccessLogic, Name) ->
 create_groups(AccessLogic) ->
     lists:foreach(fun (Group) -> create_group(AccessLogic, Group) end,
                   ?ALL_GROUPS).
+
+start_mqtt() ->
+    Acceptors = env(iorio, mqtt_acceptors, 100),
+    MaxConnections = env(iorio, mqtt_max_connections, 1024),
+    Port = env(iorio, mqtt_port, 1883),
+	{ok, _} = ranch:start_listener(iorio_mqtt, Acceptors, ranch_tcp,
+                                   [{port, Port},
+                                    {max_connections, MaxConnections}],
+                                   mqttl_protocol,
+                                   [{handler_opts,
+                                     [{handler, iorio_mqtt_handler}]}]),
+    mqttl_sup:start_link().
 
 env(App, Par) ->
     application:get_env(App, Par).
