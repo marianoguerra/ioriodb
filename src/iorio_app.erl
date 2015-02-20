@@ -101,7 +101,10 @@ start(_StartType, _StartArgs) ->
             ok
     end,
 
-    {ok, _MqttSupPid} = start_mqtt(),
+    MqttEnabled = env(iorio, mqtt_enabled, false),
+    if MqttEnabled -> {ok, _MqttSupPid} = start_mqtt();
+       true -> lager:info("mqtt disabled"), ok
+    end,
 
     case iorio_sup:start_link() of
         {ok, Pid} ->
@@ -159,6 +162,7 @@ create_groups(AccessLogic) ->
                   ?ALL_GROUPS).
 
 start_mqtt() ->
+    lager:info("mqtt enabled, starting"),
     Acceptors = env(iorio, mqtt_acceptors, 100),
     MaxConnections = env(iorio, mqtt_max_connections, 1024),
     Port = env(iorio, mqtt_port, 1883),
