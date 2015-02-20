@@ -13,7 +13,6 @@ depsclean:
 	rm -rf deps
 
 refetchdeps: depsclean deps
-	./tools/fix_deps_warnings_as_errors.sh
 
 clean:
 	$(REBAR) clean
@@ -31,6 +30,9 @@ devrelclean:
 	rm -rf dev
 
 newrel: relclean rel
+
+console:
+	./rel/iorio/bin/iorio console
 
 newdevrel: devrelclean devrel
 

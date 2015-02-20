@@ -2,27 +2,27 @@
 
 -export([init/4, stream/3, info/3, terminate/2]).
 
-% exported for tests
--export([encode_ok/1, encode_error/2]).
+-ignore_xref([init/4, stream/3, info/3, terminate/2]).
 
 -include_lib("sblob/include/sblob.hrl").
--include("priv/include/listener.hrl").
 -include("include/iorio.hrl").
 
-init(_Transport, Req, [_, {secret, Secret}|_]=Opts, Active) ->
+-record(state, {channels=[], iorio, token, info, access}).
+
+init(_Transport, Req, [_, {access, Access}|_]=Opts, Active) ->
     Iorio = proplists:get_value(iorio, Opts, iorio),
     {Token, Req1} = cowboy_req:qs_val(<<"jwt">>, Req, nil),
     {Params, Req2} = cowboy_req:qs_vals(Req1),
     RawSubs = proplists:get_all_values(<<"s">>, Params),
     Subs = iorio_parse:subscriptions(RawSubs),
-    case iorio_session:session_from_token(Token, Secret) of
-        {ok, Session} ->
-            State = #state{channels=[], iorio=Iorio,
-                           secret=Secret, token=Token, session=Session},
+    {ok, Info} = ioriol_access:new_req([]),
+    case iorio_session:fill_session_from_token(Access, Info, Token) of
+        {ok, Info1} ->
+            State = #state{channels=[], iorio=Iorio, access=Access,
+                           token=Token, info=Info1},
 
             State1 = subscribe_all(Subs, State),
-            Req3 = if Active == once ->
-                          cowboy_req:set_resp_header(<<"Content-Type">>, <<"application/json">>, Req2);
+            Req3 = if Active == once -> set_json_response(Req2);
                       true -> Req2
                    end,
             {ok, Req3, State1};
@@ -89,7 +89,7 @@ handle_ping(_Msg, Id, Req, State) ->
 fail(Msg, Id, State) ->
     {encode_error(Msg, Id), State}.
 
-with_stream(Fn, Msg, Id, Req, State=#state{session={Username, SBody, Ctx}}) ->
+with_stream(Fn, Msg, Id, Req, State=#state{access=Access, info=Info}) ->
     {Body, NewState} = case get_channel_args(Msg) of
                {undefined, undefined} ->
                                fail(<<"missing bucket and stream">>, Id, State);
@@ -99,11 +99,12 @@ with_stream(Fn, Msg, Id, Req, State=#state{session={Username, SBody, Ctx}}) ->
                                fail(<<"missing stream">>, Id, State);
                {Bucket, Stream} ->
                                Action = ?PERM_STREAM_GET,
-                               case iorio_session:is_authorized_for_stream(Ctx, Username, Bucket, Stream, Action) of
-                                   {true, NewCtx} ->
+                               {ok, Info1} = ioriol_access:update_req(Info,
+                                        [{bucket, Bucket}, {stream, Stream}]),
+                               case ioriol_access:is_authorized_for_stream(Access, Info1, Action) of
+                                   {ok, Info2} ->
                                        {FBody, State1} = Fn(Bucket, Stream),
-                                       NewSession = {Username, SBody, NewCtx},
-                                       State2 = State1#state{session=NewSession},
+                                       State2 = State1#state{info=Info2},
                                        {FBody, State2};
                                    _Other -> fail(<<"unauthorized">>, Id, State)
                                end
@@ -177,3 +178,6 @@ encode_error(Reason, Id) ->
     lager:warning("error ~s ~p~n", [Reason, Id]),
     IdBin = integer_to_binary(Id),
     <<"{\"ok\":false,\"id\":", IdBin/binary, ",\"reason\":\"", Reason/binary, "\"}">>.
+
+set_json_response(Req) ->
+    cowboy_req:set_resp_header(<<"Content-Type">>, <<"application/json">>, Req).

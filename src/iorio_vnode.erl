@@ -23,7 +23,8 @@
          handle_exit/3]).
 
 -ignore_xref([
-             start_vnode/1
+             start_vnode/1,
+             handle_info/2
              ]).
 
 -record(state, {partition,
@@ -452,7 +453,7 @@ get_put_info(State, BucketName, Stream) ->
 task_queue_runner() ->
     receive F ->
                 try F()
-                catch T:E -> lager:warn("error running task ~p ~p", [T, E])
+                catch T:E -> lager:warning("error running task ~p ~p", [T, E])
                 after
                     task_queue_runner()
                 end

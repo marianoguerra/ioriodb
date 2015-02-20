@@ -2,7 +2,19 @@
 
 -export([init/3, terminate/3]).
 
+-ignore_xref([init/3, terminate/3]).
+
 -export([rest_init/2,
+         rest_terminate/2,
+         allowed_methods/2,
+         is_authorized/2,
+         resource_exists/2,
+         content_types_accepted/2,
+         content_types_provided/2,
+         to_json/2,
+         from_json/2]).
+
+-ignore_xref([rest_init/2,
          rest_terminate/2,
          allowed_methods/2,
          is_authorized/2,
@@ -14,13 +26,15 @@
 
 -include("include/iorio.hrl").
 
--record(state, {session, secret}).
+-record(state, {access, info}).
 
 init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest};
 init({ssl, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
-rest_init(Req, [{secret, Secret}]) ->
-	{ok, Req, #state{secret=Secret}}.
+rest_init(Req, [{access, Access}]) ->
+    Bucket = ?PERM_MAGIC_BUCKET,
+    {ok, Info} = ioriol_access:new_req([{bucket, Bucket}]),
+	{ok, Req, #state{access=Access, info=Info}}.
 
 allowed_methods(Req, State) -> {[<<"POST">>, <<"PUT">>, <<"GET">>], Req, State}.
 
@@ -38,29 +52,30 @@ content_types_accepted(Req, State) ->
 content_types_provided(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, to_json}], Req, State}.
 
-is_authorized(Req, State=#state{secret=Secret}) ->
-    GetSession = fun (#state{session=Session}) -> Session end,
-    SetSession = fun (St, Sess) -> St#state{session=Sess} end,
-    Res = iorio_session:handle_is_authorized_for_bucket(Req, Secret, State,
-                                                        GetSession, SetSession,
-                                                        ?PERM_MAGIC_BUCKET,
-                                                        ?PERM_ADMIN_USERS),
-    {AuthOk, Req1, State1} = Res,
+is_authorized(Req, State=#state{access=Access, info=Info}) ->
+     case iorio_session:fill_session(Req, Access, Info) of
+         {ok, Req1, Info1} ->
+             State1 = State#state{info=Info1},
+             Action = ?PERM_ADMIN_USERS,
 
-    if AuthOk -> Res;
-        true ->
-            Req2 = iorio_http:no_permission(Req1),
-            {{false, <<"jwt">>}, Req2, State1}
-    end.
+             case ioriol_access:is_authorized_for_bucket(Access, Info1, Action) of
+                 {ok, Info2} ->
+                     {true, Req1, State1#state{info=Info2}};
+                 {error, Reason} ->
+                     unauthorized_response(Req1, State1, Reason)
+             end;
+         {error, Reason, Req1} ->
+             unauthorized_response(Req1, State, Reason)
+     end.
 
 action_from_req(Req) ->
     {Method, Req1} = cowboy_req:method(Req),
     case Method of
-        <<"POST">> -> {create, Req1};
-        <<"PUT">> -> {update, Req1}
+        <<"POST">> -> {create_user, Req1};
+        <<"PUT">> -> {update_user_password, Req1}
     end.
 
-from_json(Req, State) ->
+from_json(Req, State=#state{access=Access}) ->
     {ok, BodyRaw, Req1} = cowboy_req:body(Req),
     try
         Body = iorio_json:decode_plist(BodyRaw),
@@ -68,14 +83,14 @@ from_json(Req, State) ->
         Password = proplists:get_value(<<"password">>, Body),
 
         {Action, Req2} = action_from_req(Req),
-        {Ok, Req3} = do_action(Username, Password, Req2, Action),
+        {Ok, Req3} = do_action(Access, Username, Password, Req2, Action),
         {Ok, Req3, State}
     catch
         error:badarg -> {false, iorio_http:invalid_body(Req1), State}
     end.
 
-to_json(Req, State) ->
-    Users = iorio_user:users(),
+to_json(Req, State=#state{access=Access}) ->
+    Users = ioriol_access:users(Access),
     UsersJson = lists:map(fun ({Username, _}) -> [{username, Username}] end,
                           Users),
     UsersJsonStr = iorio_json:encode(UsersJson),
@@ -89,20 +104,20 @@ terminate(_Reason, _Req, _State) ->
 
 %% private
 
-do_action(undefined, undefined, Req, _Action) ->
+do_action(_Access, undefined, undefined, Req, _Action) ->
     {false, iorio_http:error(Req, <<"no-user-and-pass">>, <<"No username and password fields">>)};
 
-do_action(undefined, _, Req, _Action) ->
+do_action(_Access, undefined, _, Req, _Action) ->
     {false, iorio_http:error(Req, <<"no-user">>, <<"No username field">>)};
 
-do_action(_, undefined, Req, _Action) ->
+do_action(_Access, _, undefined, Req, _Action) ->
     {false, iorio_http:error(Req, <<"no-pass">>, <<"No password field">>)};
 
-do_action(Username, Password, Req, Action) ->
+do_action(Access, Username, Password, Req, Action) ->
     lager:info("~p'ing user '~s'", [Action, Username]),
-    case {Action, iorio_user:Action(Username, Password)} of
+    case {Action, ioriol_access:Action(Access, Username, Password)} of
         {create, ok} ->
-            iorio_session:maybe_grant_bucket_ownership(Username),
+            ioriol_access:maybe_grant_bucket_ownership(Access, Username),
             UriStr = io_lib:format("/users/~s", [Username]),
             {{true, UriStr}, iorio_http:ok(Req)};
         {update, ok} ->
@@ -118,3 +133,7 @@ do_action(Username, Password, Req, Action) ->
             {false, iorio_http:error(Req, <<"unknown-error">>, <<"Unknown Error">>)}
     end.
 
+unauthorized_response(Req, State, Reason) ->
+    Req1 = iorio_http:no_permission(Req),
+    lager:warning("unauthorized user op: ~p", [Reason]),
+    {{false, <<"jwt">>}, Req1, State}.

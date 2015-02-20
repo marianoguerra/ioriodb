@@ -6,7 +6,7 @@
          list/0, list/1, list/2, bucket_size/1, bucket_size/2, truncate/2,
          truncate_percentage/2]).
 
--ignore_xref([ping/0]).
+-ignore_xref([ping/0, bucket_size/1, bucket_size/2, get/3, list/2, put/3, subscribe/4, truncate_percentage/2, unsubscribe/3]).
 
 get_index_node(Bucket, Stream) ->
     DocIdx = riak_core_util:chash_key({Bucket, Stream}),

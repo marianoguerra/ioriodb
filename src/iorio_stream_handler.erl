@@ -2,6 +2,8 @@
 
 -export([init/3, terminate/3]).
 
+-ignore_xref([init/3, terminate/3]).
+
 -export([rest_init/2,
          rest_terminate/2,
          allowed_methods/2,
@@ -14,8 +16,20 @@
          to_json/2
         ]).
 
--record(state, {bucket, stream, from_sn, limit, secret, filename,
-                session=nil, n=3, w=3, timeout=5000}).
+-ignore_xref([rest_init/2,
+         rest_terminate/2,
+         allowed_methods/2,
+         content_types_accepted/2,
+         content_types_provided/2,
+         is_authorized/2,
+         resource_exists/2,
+         from_json/2,
+         from_json_patch/2,
+         to_json/2
+        ]).
+
+-record(state, {bucket, stream, from_sn, limit, access, info, filename,
+                n=3, w=3, timeout=5000}).
 
 -include_lib("sblob/include/sblob.hrl").
 -include("include/iorio.hrl").
@@ -30,7 +44,7 @@ to_int_or(Bin, Default) ->
 init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest};
 init({ssl, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
-rest_init(Req, [{secret, Secret}, {n, N}, {w, W}, {timeout, Timeout}]) ->
+rest_init(Req, [{access, Access}, {n, N}, {w, W}, {timeout, Timeout}]) ->
     {Bucket, Req1} = cowboy_req:binding(bucket, Req),
     {Stream, Req2} = cowboy_req:binding(stream, Req1),
     {FromSNStr, Req3} = cowboy_req:qs_val(<<"from">>, Req2, <<"">>),
@@ -40,9 +54,11 @@ rest_init(Req, [{secret, Secret}, {n, N}, {w, W}, {timeout, Timeout}]) ->
     FromSN = to_int_or(FromSNStr, nil),
     Limit = to_int_or(LimitStr, 1),
 
-	{ok, Req5, #state{bucket=Bucket, stream=Stream, from_sn=FromSN,
-                      limit=Limit, secret=Secret, filename=Filename,
-                     n=N, w=W, timeout=Timeout}}.
+    {ok, Info} = ioriol_access:new_req([{bucket, Bucket}, {stream, Stream}]),
+
+    {ok, Req5, #state{bucket=Bucket, stream=Stream, from_sn=FromSN,
+                      limit=Limit, filename=Filename, n=N, w=W, access=Access,
+                      info=Info, timeout=Timeout}}.
 
 allowed_methods(Req, State) -> {[<<"GET">>, <<"POST">>, <<"PATCH">>], Req, State}.
 
@@ -53,9 +69,6 @@ resource_exists(Req, State) ->
                  _ -> true
              end,
     {Exists, Req1, State}.
-
-get_session(#state{session=Session}) -> Session.
-set_session(State, Session) -> State#state{session=Session}.
 
 action_for_method(<<"POST">>) ->
     ?PERM_STREAM_PUT;
@@ -69,13 +82,21 @@ action_for_request(Req) ->
     Action = action_for_method(Method),
     {Req1, Action}.
 
-is_authorized(Req, State=#state{secret=Secret, bucket=Bucket, stream=Stream}) ->
-    GetSession = fun get_session/1,
-    SetSession = fun set_session/2,
-    {Req1, Action} = action_for_request(Req),
-    iorio_session:handle_is_authorized_for_stream(Req1, Secret, State,
-                                                  GetSession, SetSession,
-                                                  Bucket, Stream, Action).
+is_authorized(Req, State=#state{access=Access, info=Info}) ->
+    case iorio_session:fill_session(Req, Access, Info) of
+        {ok, Req1, Info1} ->
+            State1 = State#state{info=Info1},
+            {Req2, Action} = action_for_request(Req1),
+            case ioriol_access:is_authorized_for_stream(Access, Info1, Action) of
+                {ok, Info2} ->
+                    {true, Req1, State1#state{info=Info2}};
+                {error, Reason} ->
+                    unauthorized_response(Req2, State1, Info, Reason)
+            end;
+        {error, Reason, Req1} ->
+            unauthorized_response(Req1, State, Info, Reason)
+    end.
+
 
 content_types_accepted(Req, State) ->
     {Method, Req1} = cowboy_req:method(Req),
@@ -125,7 +146,7 @@ publish_patch(Bucket, Stream, Data, State) ->
     PatchStream = list_to_binary(io_lib:format("~s-$patch", [Stream])),
     case put(Bucket, PatchStream, Data, State) of
         {error, Reason}=Error ->
-            lager:warn("Error publishing patch ~s:~s ~p", [Bucket, PatchStream, Reason]),
+            lager:warning("Error publishing patch ~s:~s ~p", [Bucket, PatchStream, Reason]),
             Error;
         Other -> Other
     end.
@@ -218,3 +239,13 @@ rest_terminate(_Req, _State) ->
 
 terminate(_Reason, _Req, _State) ->
 	ok.
+
+%% private api
+
+unauthorized_response(Req, State, Info, Reason) ->
+    Req1 = iorio_http:no_permission(Req),
+    Bucket = ioriol_access:bucket(Info),
+    Stream = ioriol_access:stream(Info),
+    lager:debug("unauthorized stream request on stream ~p/~p: ~p",
+                  [Bucket, Stream, Reason]),
+    {{false, <<"jwt">>}, Req1, State}.

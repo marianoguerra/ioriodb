@@ -9,8 +9,13 @@
 -export([init/1, code_change/4, handle_event/3, handle_info/3,
          handle_sync_event/4, terminate/3]).
 
+-ignore_xref([start_link/8, init/1, code_change/4, handle_event/3, handle_info/3,
+         handle_sync_event/4, terminate/3]).
+
 %% States
 -export([prepare/2, execute/2, waiting/2]).
+
+-ignore_xref([prepare/2, execute/2, waiting/2]).
 
 %% req_id: The request id so the caller can verify the response.
 %%

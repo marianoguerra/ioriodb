@@ -4,7 +4,13 @@
 -export([start_link/0, start_link/1, subscribe/2, subscribe/3, unsubscribe/2,
          send/2, replay/3]).
 
+-ignore_xref([start_link/0, start_link/1, subscribe/2, subscribe/3, unsubscribe/2,
+         send/2, replay/3]).
+
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
+         code_change/3]).
+
+-ignore_xref([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
 
 -record(state, {buffer, channel, check_interval_ms=30000, sub_count=0}).
@@ -85,7 +91,7 @@ handle_info(timeout, State=#state{buffer=Buffer, sub_count=SubCount}) ->
 
     if
         NewBufferSize == 0 andalso SubCount == 0 ->
-            lager:info("channel buffer empty and no subscribers, stopping channel"),
+            lager:debug("channel buffer empty and no subscribers, stopping channel"),
             {stop, normal, NewState};
         true ->
             lager:debug("reduced channel buffer because of inactivity to ~p items",
@@ -94,7 +100,7 @@ handle_info(timeout, State=#state{buffer=Buffer, sub_count=SubCount}) ->
     end;
 
 handle_info({gen_event_EXIT, Handler, Reason}, State=#state{sub_count=SubCount}) ->
-    lager:info("handler removed due to exit ~p ~p", [Handler, Reason]),
+    lager:debug("handler removed due to exit ~p ~p", [Handler, Reason]),
     NewSubCount = SubCount - 1,
     NewState = State#state{sub_count=NewSubCount},
     {noreply, NewState};

@@ -3,6 +3,8 @@
 -export([start_link/4, start/2]).
 -export([init/2, process_results/2, finish/2]).
 
+-ignore_xref([start_link/4]).
+
 -behaviour(riak_core_coverage_fsm).
 
 -record(state, {req_id, from, request, accum=[]}).

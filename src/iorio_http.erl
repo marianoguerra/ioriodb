@@ -1,5 +1,5 @@
 -module(iorio_http).
--export([response/2, ok/1, no_permission/1, invalid_body/1, json_response/2,
+-export([ok/1, no_permission/1, invalid_body/1, json_response/2,
         error/3, unauthorized/1]).
 
 response(Req, Body) ->

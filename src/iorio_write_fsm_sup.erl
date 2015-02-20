@@ -6,6 +6,8 @@
          start_link/0]).
 -export([init/1]).
 
+-ignore_xref([init/1, start_link/0]).
+
 start_write_fsm(Args) ->
     supervisor:start_child(?MODULE, Args).
 

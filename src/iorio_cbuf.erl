@@ -1,6 +1,8 @@
 -module(iorio_cbuf).
 -export([new/1, new/2, add/2, remove_percentage/2, size/1, takewhile_reverse/2]).
 
+-ignore_xref([new/2]).
+
 % a kind of circular buffer that is only useful for iorio_channel to keep the
 % last N events, it has a MinSize and a MaxSize to avoid calling sublist on
 % every add call when the buffer is full, by default the buffer will grow to
