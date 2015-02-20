@@ -1,4 +1,4 @@
--module(iorio_access_handler).
+-module(iorio_rest_access).
 
 -export([init/3, terminate/3]).
 

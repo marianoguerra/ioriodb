@@ -55,8 +55,8 @@ start(_StartType, _StartArgs) ->
                {"/streams/:bucket/:stream", iorio_stream_handler,
                 [{access, AccessLogic}, {n, N}, {w, W}, {timeout, Timeout}]},
                {"/buckets/", iorio_list_handler, [{access, AccessLogic}]},
-               {"/access/:bucket/", iorio_access_handler, [{access, AccessLogic}]},
-               {"/access/:bucket/:stream", iorio_access_handler, [{access, AccessLogic}]},
+               {"/access/:bucket/", iorio_rest_access, [{access, AccessLogic}]},
+               {"/access/:bucket/:stream", iorio_rest_access, [{access, AccessLogic}]},
 
                {"/sessions", iorio_session_handler,
                 [{access, AccessLogic}, {algorithm, ApiAlgorithm},
