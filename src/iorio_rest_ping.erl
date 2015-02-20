@@ -1,4 +1,4 @@
--module(iorio_ping_handler).
+-module(iorio_rest_ping).
 
 -export([init/3, terminate/3]).
 
