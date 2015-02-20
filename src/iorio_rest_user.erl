@@ -1,4 +1,4 @@
--module(iorio_user_handler).
+-module(iorio_rest_user).
 
 -export([init/3, terminate/3]).
 
