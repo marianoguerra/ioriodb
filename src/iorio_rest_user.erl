@@ -116,13 +116,13 @@ do_action(_Access, _, undefined, Req, _Action) ->
 do_action(Access, Username, Password, Req, Action) ->
     lager:info("~p'ing user '~s'", [Action, Username]),
     case {Action, ioriol_access:Action(Access, Username, Password)} of
-        {create, ok} ->
+        {create_user, ok} ->
             ioriol_access:maybe_grant_bucket_ownership(Access, Username),
             UriStr = io_lib:format("/users/~s", [Username]),
             {{true, UriStr}, iorio_http:ok(Req)};
-        {update, ok} ->
+        {update_user_password, ok} ->
             {true, iorio_http:ok(Req)};
-        {create, {error, role_exists}} ->
+        {create_user, {error, role_exists}} ->
             lager:error("creating existing user '~s'", [Username]),
             {false, iorio_http:error(Req, <<"user-exists">>, <<"User already exists">>)};
         {_, {error, illegal_name_char}} ->
