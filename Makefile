@@ -30,7 +30,10 @@ relclean:
 devrelclean:
 	rm -rf dev
 
-newrel: relclean rel
+dumpbuild:
+	echo "build by $(USER) at $(shell date -u +%Y-%m-%dT%H-%M-%S) on $(shell uname -a).\nCommit Hash: $(shell git log -n 1 --pretty=format:"%H")" >> ./rel/iorio/build.txt
+
+newrel: relclean rel dumpbuild
 
 console:
 	./rel/iorio/bin/iorio console
