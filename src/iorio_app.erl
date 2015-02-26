@@ -6,6 +6,7 @@
 -export([start/2, stop/1]).
 
 -include("include/iorio.hrl").
+-include_lib("permiso/include/permiso.hrl").
 
 %% ===================================================================
 %% Application callbacks
@@ -32,7 +33,12 @@ start(_StartType, _StartArgs) ->
     Timeout = env(iorio, req_timeout, 5000),
 
     AuthMod = env(iorio, auth_mod, permiso_rcore),
-    AuthModOpts = env(iorio, auth_mod_opts, []),
+    AuthModOpts0 = env(iorio, auth_mod_opts, []),
+
+    OnUserCreated = fun (Mod, State, #user{username=Username}) ->
+                            ioriol_access:maybe_grant_bucket_ownership(Mod, State, Username)
+                    end,
+    AuthModOpts = [{user_created_cb, OnUserCreated}|AuthModOpts0],
     {ok, AccessLogic} = ioriol_access:new([{auth_mod, AuthMod},
                                            {auth_mod_opts, AuthModOpts},
                                            {secret, ApiSecret}]),
@@ -182,3 +188,4 @@ env(App, Par) ->
 
 env(App, Par, Def) ->
     application:get_env(App, Par, Def).
+

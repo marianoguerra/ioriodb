@@ -9,7 +9,9 @@
 
 -export([secret/1, username/1, session_body/1, bucket/1, stream/1]).
 
--export([maybe_grant_bucket_ownership/2, permission_to_internal/3]).
+-export([maybe_grant_bucket_ownership/2, maybe_grant_bucket_ownership/3,
+         permission_to_internal/3]).
+
 -export([create_user/3, create_user/4, update_user_password/3, users/1,
          get_session/2]).
 
@@ -81,20 +83,21 @@ session_body(#req{session_body=Val}) -> Val.
 bucket(#req{bucket=Val}) -> Val.
 stream(#req{stream=Val}) -> Val.
 
-maybe_grant_bucket_ownership(State, Username) ->
-    HasStream = application:get_env(iorio, user_has_bucket, false),
-    maybe_grant_bucket_ownership(State, Username, HasStream).
-
-maybe_grant_bucket_ownership(_State, _Username, false) ->
-    ok;
 maybe_grant_bucket_ownership(#state{auth_mod=AuthMod, auth_state=AuthState},
-                             Username, true) ->
-    Bucket = prefix_user_bucket(Username),
-    lager:info("granting ~s bucket ownership to ~s", [Bucket, Username]),
-    Permissions = [?PERM_BUCKET_GET, ?PERM_BUCKET_PUT, ?PERM_BUCKET_GRANT,
-                   ?PERM_BUCKET_LIST],
-    Grant = #grant{resource={Bucket, any}, permissions=Permissions},
-    drop_ok_state(AuthMod:user_grant(AuthState, Username, Grant)).
+                             Username) ->
+    maybe_grant_bucket_ownership(AuthMod, AuthState, Username).
+
+maybe_grant_bucket_ownership(AuthMod, AuthState, Username) ->
+    HasStream = application:get_env(iorio, user_has_bucket, false),
+    if HasStream ->
+        Bucket = prefix_user_bucket(Username),
+        lager:info("granting ~s bucket ownership to ~s", [Bucket, Username]),
+        Permissions = [?PERM_BUCKET_GET, ?PERM_BUCKET_PUT, ?PERM_BUCKET_GRANT,
+                       ?PERM_BUCKET_LIST],
+        Grant = #grant{resource={Bucket, any}, permissions=Permissions},
+        drop_ok_state(AuthMod:user_grant(AuthState, Username, Grant));
+       true -> ok
+    end.
 
 add_group(#state{auth_mod=AuthMod, auth_state=AuthState}, Name) ->
     Group = #group{name=Name},
