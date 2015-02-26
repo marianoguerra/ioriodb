@@ -83,18 +83,18 @@ action_for_request(Req) ->
     {Req1, Action}.
 
 is_authorized(Req, State=#state{access=Access, info=Info}) ->
-    case iorio_session:fill_session(Req, Access, Info) of
-        {ok, Req1, Info1} ->
+    {Req1, Action} = action_for_request(Req),
+    case iorio_session:fill_session(Req1, Access, Info) of
+        {ok, Req2, Info1} ->
             State1 = State#state{info=Info1},
-            {Req2, Action} = action_for_request(Req1),
             case ioriol_access:is_authorized_for_stream(Access, Info1, Action) of
                 {ok, Info2} ->
-                    {true, Req1, State1#state{info=Info2}};
+                    {true, Req2, State1#state{info=Info2}};
                 {error, Reason} ->
-                    unauthorized_response(Req2, State1, Info, Reason)
+                    unauthorized_response(Req2, State1, Info1, Reason, Action)
             end;
         {error, Reason, Req1} ->
-            unauthorized_response(Req1, State, Info, Reason)
+            unauthorized_response(Req1, State, Info, Reason, Action)
     end.
 
 
@@ -242,10 +242,10 @@ terminate(_Reason, _Req, _State) ->
 
 %% private api
 
-unauthorized_response(Req, State, Info, Reason) ->
+unauthorized_response(Req, State, Info, Reason, Action) ->
     Req1 = iorio_http:no_permission(Req),
     Bucket = ioriol_access:bucket(Info),
     Stream = ioriol_access:stream(Info),
-    lager:debug("unauthorized stream request on stream ~p/~p: ~p",
-                  [Bucket, Stream, Reason]),
+    lager:info("unauthorized stream request on ~p/~p (~p): ~p ~p",
+                  [Bucket, Stream, Action, Reason, Info]),
     {{false, <<"jwt">>}, Req1, State}.

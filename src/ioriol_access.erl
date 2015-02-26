@@ -1,25 +1,26 @@
 -module(ioriol_access).
 
--export([new/1, new_req/1, update_req/2, is_authorized/2,
+%% NOTE: this module assumes the auth_mod is stateful and this module doesn't
+%% require to update auth_state when is returned
+
+-export([new/1, new_req/1, update_req/2, is_authorized_for_grant/2,
          is_authorized_for_bucket/3, is_authorized_for_stream/3,
          access_details/2, add_group/2, grant/5, revoke/5, authenticate/4]).
 
 -export([secret/1, username/1, session_body/1, bucket/1, stream/1]).
 
--export([behaviour_info/1]).
-
--export([maybe_grant_bucket_ownership/2]).
+-export([maybe_grant_bucket_ownership/2, permission_to_internal/3]).
 -export([create_user/3, create_user/4, update_user_password/3, users/1,
          get_session/2]).
 
 -export_type([access_details/0]).
 
--ignore_xref([behaviour_info/1, create_user/3, create_user/4,
-              update_user_password/3]).
+-ignore_xref([create_user/3, create_user/4, update_user_password/3]).
 
 -include("include/iorio.hrl").
+-include_lib("permiso/include/permiso.hrl").
 
--record(state, {secret, handler}).
+-record(state, {secret, auth_mod, auth_state}).
 -record(req, {bucket, stream, username, session_body, session}).
 
 %% XXX should I just pick one?
@@ -33,7 +34,12 @@
 %% api
 
 new(Opts) ->
-    parse_opts(Opts, #state{}).
+    {secret, Secret} = proplists:lookup(secret, Opts),
+    {auth_mod, AuthMod} = proplists:lookup(auth_mod, Opts),
+    AuthModOpts = proplists:get_value(auth_mod_opts, Opts, []),
+    {ok, AuthState} = AuthMod:new(AuthModOpts),
+    State = #state{secret=Secret, auth_mod=AuthMod, auth_state=AuthState},
+    {ok, State}.
 
 new_req(Opts) ->
     parse_req_opts(Opts, #req{}).
@@ -41,23 +47,33 @@ new_req(Opts) ->
 update_req(Req, Opts) ->
     parse_req_opts(Opts, Req).
 
-is_authorized(State=#state{},
-              Req=#req{bucket=Bucket, stream=Stream, username=Username})
+is_authorized_for_grant(State=#state{},
+                        Req=#req{bucket=Bucket, stream=Stream, username=Username})
   when ?IsSet(Bucket), ?IsSet(Stream), ?IsSet(Username) ->
 
-    if
-        Stream == any ->
-            is_authorized_for_bucket(State, Req, ?PERM_BUCKET_GRANT);
-        true ->
-            is_authorized_for_stream(State, Req, ?PERM_STREAM_GRANT)
+    if Stream == any ->
+           is_authorized_for_bucket(State, Req, ?PERM_BUCKET_GRANT);
+       true ->
+           is_authorized_for_stream(State, Req, ?PERM_STREAM_GRANT)
     end;
 
-is_authorized(#state{}, Req) ->
+is_authorized_for_grant(#state{}, Req) ->
     {error, {invalid_req, Req}}.
 
-access_details(#state{handler=Handler, secret=Secret},
-               #req{username=Username, session=Session}) ->
-    Handler:access_details(Username, Secret, Session).
+is_authorized_for_bucket(#state{auth_mod=AuthMod, auth_state=AuthState},
+              Req=#req{bucket=Bucket, session=Session}, Perm) ->
+    user_allowed(Req, AuthMod, AuthState, Session , Bucket, Perm).
+
+is_authorized_for_stream(#state{auth_mod=AuthMod, auth_state=AuthState},
+              Req=#req{bucket=Bucket, stream=Stream, session=Session}, Perm) ->
+    user_allowed(Req, AuthMod, AuthState, Session , {Bucket, Stream}, Perm).
+
+access_details(#state{auth_mod=AuthMod, auth_state=AuthState},
+               #req{bucket=Bucket, stream=Stream}) ->
+    case AuthMod:resource_get(AuthState, {Bucket, Stream}) of
+        {ok, Resource} -> {ok, resource_perms_to_public(Resource)};
+        Other -> Other
+    end.
 
 secret(#state{secret=Val}) -> Val.
 username(#req{username=Val}) -> Val.
@@ -71,83 +87,58 @@ maybe_grant_bucket_ownership(State, Username) ->
 
 maybe_grant_bucket_ownership(_State, _Username, false) ->
     ok;
-maybe_grant_bucket_ownership(#state{handler=Handler}, Username, true) ->
-    Stream = prefix_user_bucket(Username),
-    lager:info("granting ~s bucket ownership to ~s", [Stream, Username]),
-    Handler:grant_bucket_ownership(Username, Stream).
+maybe_grant_bucket_ownership(#state{auth_mod=AuthMod, auth_state=AuthState},
+                             Username, true) ->
+    Bucket = prefix_user_bucket(Username),
+    lager:info("granting ~s bucket ownership to ~s", [Bucket, Username]),
+    Permissions = [?PERM_BUCKET_GET, ?PERM_BUCKET_PUT, ?PERM_BUCKET_GRANT,
+                   ?PERM_BUCKET_LIST],
+    Grant = #grant{resource={Bucket, any}, permissions=Permissions},
+    drop_ok_state(AuthMod:user_grant(AuthState, Username, Grant)).
 
-add_group(#state{handler=Handler}, Name) ->
-    Handler:add_group(Name).
+add_group(#state{auth_mod=AuthMod, auth_state=AuthState}, Name) ->
+    Group = #group{name=Name},
+    drop_ok_state(AuthMod:group_add(AuthState, Group)).
 
-grant(#state{handler=Handler}, Role, Bucket, Stream, Permission) ->
-    Handler:grant(Role, Bucket, Stream, Permission).
+grant(#state{auth_mod=AuthMod, auth_state=AuthState}, Username, Bucket, Stream,
+      Permission) ->
+    lager:info("grant ~p ~p/~p: ~p", [Username, Bucket, Stream, Permission]),
+    Grant = #grant{resource={Bucket, Stream}, permissions=[Permission]},
+    drop_ok_state(AuthMod:user_grant(AuthState, Username, Grant)).
 
-revoke(#state{handler=Handler}, Role, Bucket, Stream, Permission) ->
-    Handler:revoke(Role, Bucket, Stream, Permission).
+revoke(#state{auth_mod=AuthMod, auth_state=AuthState}, Username, Bucket, Stream,
+      Permission) ->
+    lager:info("revoke ~p ~p/~p: ~p", [Username, Bucket, Stream, Permission]),
+    Grant = #grant{resource={Bucket, Stream}, permissions=[Permission]},
+    drop_ok_state(AuthMod:user_revoke(AuthState, Username, Grant)).
 
-authenticate(#state{handler=Handler}, Req, Username, Password) ->
-    case Handler:authenticate(Username, Password) of
-        {ok, Fields} -> update_req(Req, Fields);
+authenticate(#state{auth_mod=AuthMod, auth_state=AuthState}, Req, Username, Password) ->
+    case AuthMod:user_auth(AuthState, Username, Password) of
+        {ok, Session} ->
+            Body = [{u, Username}],
+            Fields = [{username, Username}, {session_body, Body}, {session, Session}],
+            update_req(Req, Fields);
         Other -> Other
     end.
 
 create_user(State, Username, Password) ->
     create_user(State, Username, Password, ?DEFAULT_USER_GROUPS).
 
-create_user(#state{handler=Handler}, Username, Password, Groups) ->
-    Handler:create_user(Username, Password, Groups).
+create_user(#state{auth_mod=AuthMod, auth_state=AuthState}, Username, Password,
+            Groups) ->
+    User = #user{username=Username, password=Password, groups=Groups},
+    drop_ok_state(AuthMod:user_add(AuthState, User)).
 
-update_user_password(#state{handler=Handler}, Username, Password) ->
-    Handler:update_user_password(Username, Password).
+update_user_password(#state{auth_mod=AuthMod, auth_state=AuthState}, Username, Password) ->
+    drop_ok_state(AuthMod:user_passwd(AuthState, Username, Password)).
 
-users(#state{handler=Handler}) ->
-    Handler:users().
+users(#state{auth_mod=AuthMod, auth_state=AuthState}) ->
+    AuthMod:user_list(AuthState).
 
-get_session(#state{handler=Handler}, Username) ->
-    Handler:get_session(Username).
-
-%% behaviour functions
-
-behaviour_info(callbacks) ->
-    [{is_authorized, 4},
-     {is_authorized, 5},
-     {user_access_details, 3},
-     {grant_bucket_ownership, 2},
-     {get_session, 1},
-     {create_user, 3},
-     {update_user_password, 2},
-     {users, 0},
-     {add_group, 1},
-     {grant, 4},
-     {revoke, 4},
-     {authenticate, 2},
-     {access_details, 4}];
-
-behaviour_info(_Other) ->
-    undefined.
+get_session(#state{auth_mod=AuthMod, auth_state=AuthState}, Username) ->
+    AuthMod:user_context(AuthState, Username).
 
 %% private functions
-
-parse_opts([], State) ->
-    if
-        State#state.secret == undefined ->
-            {error, secret_not_set};
-        State#state.handler == undefined ->
-            {error, handler_not_set};
-        true ->
-            {ok, State}
-    end;
-
-parse_opts([{secret, Val}|Opts], State) ->
-    parse_opts(Opts, State#state{secret=Val});
-
-parse_opts([{handler, Val}|Opts], State) ->
-    parse_opts(Opts, State#state{handler=Val});
-
-parse_opts([Other|Opts], State) ->
-    %% XXX crash?
-    lager:warning("Unknown option ~p", [Other]),
-    parse_opts(Opts, State).
 
 %% a request can start incomplete
 parse_req_opts([], Req) ->
@@ -173,26 +164,51 @@ parse_req_opts([Other|Opts], Req) ->
     lager:warning("Unknown option ~p", [Other]),
     parse_req_opts(Opts, Req).
 
-update_req_on_is_authorized(Req, {ok, Fields}) ->
-    update_req(Req, Fields);
-update_req_on_is_authorized(_Req, Other) ->
-    Other.
-
-is_authorized_for_bucket(#state{handler=Handler},
-                         Req=#req{bucket=Bucket,
-                                  username=Username, session=Session},
-                         Perm) ->
-    Result = Handler:is_authorized(Username, Bucket, Session, Perm),
-    update_req_on_is_authorized(Req, Result).
-
-is_authorized_for_stream(#state{handler=Handler},
-                         Req=#req{bucket=Bucket, stream=Stream,
-                                  username=Username, session=Session},
-                         Perm) ->
-    Result = Handler:is_authorized(Username, Bucket, Stream, Session, Perm),
-    update_req_on_is_authorized(Req, Result).
-
 prefix_user_bucket(Bucket) ->
     Prefix = application:get_env(iorio, user_bucket_prefix, ""),
     list_to_binary(io_lib:format("~s~s", [Prefix, Bucket])).
 
+internal_to_permission({_Bucket, any}, ?PERM_BUCKET_GET) -> <<"get">>;
+internal_to_permission({_Bucket, any}, ?PERM_BUCKET_PUT) -> <<"put">>;
+internal_to_permission({_Bucket, any}, ?PERM_BUCKET_LIST) -> <<"list">>;
+internal_to_permission({_Bucket, any}, ?PERM_BUCKET_GRANT) -> <<"grant">>;
+
+internal_to_permission({_Bucket, _Stream}, ?PERM_STREAM_GET) -> <<"get">>;
+internal_to_permission({_Bucket, _Stream}, ?PERM_STREAM_PUT) -> <<"put">>;
+internal_to_permission({_Bucket, _Stream}, ?PERM_STREAM_GRANT) -> <<"grant">>;
+
+internal_to_permission({_Bucket, _Stream}, ?PERM_ADMIN_USERS) -> <<"adminusers">>.
+
+internals_to_permissions(Id, Perms, Name) ->
+    {Name, lists:map(fun (Perm) ->
+                      internal_to_permission(Id, Perm)
+              end, Perms)}.
+
+resource_perms_to_public(R=#resource{id=Id, user_grants=UPerms, group_grants=GPerms}) ->
+    ToPublic = fun ({Name, Perms}) ->
+                       internals_to_permissions(Id, Perms, Name)
+               end,
+    NewUPerms = lists:map(ToPublic, UPerms),
+    NewGPerms = lists:map(ToPublic, GPerms),
+    R#resource{user_grants=NewUPerms, group_grants=NewGPerms}.
+
+drop_ok_state({ok, _State}) -> ok;
+drop_ok_state(Other) -> Other.
+
+user_allowed(Req, AuthMod, AuthState, Session, Resource, Perm) ->
+    IsAuthorized = AuthMod:user_allowed(AuthState, Session, Resource, [Perm]),
+    case IsAuthorized of
+        true -> {ok, Req};
+        false -> {error, unauthorized}
+    end.
+
+permission_to_internal(_Bucket, any, <<"get">>) -> ?PERM_BUCKET_GET;
+permission_to_internal(_Bucket, any, <<"put">>) -> ?PERM_BUCKET_PUT;
+permission_to_internal(_Bucket, any, <<"list">>) -> ?PERM_BUCKET_LIST;
+permission_to_internal(_Bucket, any, <<"grant">>) -> ?PERM_BUCKET_GRANT;
+
+permission_to_internal(_Bucket, _Stream, <<"get">>) -> ?PERM_STREAM_GET;
+permission_to_internal(_Bucket, _Stream, <<"put">>) -> ?PERM_STREAM_PUT;
+permission_to_internal(_Bucket, _Stream, <<"grant">>) -> ?PERM_STREAM_GRANT;
+
+permission_to_internal(_Bucket, _Stream, <<"adminusers">>) -> ?PERM_ADMIN_USERS.

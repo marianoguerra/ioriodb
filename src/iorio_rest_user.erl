@@ -90,8 +90,8 @@ from_json(Req, State=#state{access=Access}) ->
     end.
 
 to_json(Req, State=#state{access=Access}) ->
-    Users = ioriol_access:users(Access),
-    UsersJson = lists:map(fun ({Username, _}) -> [{username, Username}] end,
+    {ok, Users} = ioriol_access:users(Access),
+    UsersJson = lists:map(fun (Username) -> [{username, Username}] end,
                           Users),
     UsersJsonStr = iorio_json:encode(UsersJson),
     {UsersJsonStr, Req, State}.
@@ -122,7 +122,7 @@ do_action(Access, Username, Password, Req, Action) ->
             {{true, UriStr}, iorio_http:ok(Req)};
         {update_user_password, ok} ->
             {true, iorio_http:ok(Req)};
-        {create_user, {error, role_exists}} ->
+        {create_user, {error, duplicate}} ->
             lager:error("creating existing user '~s'", [Username]),
             {false, iorio_http:error(Req, <<"user-exists">>, <<"User already exists">>)};
         {_, {error, illegal_name_char}} ->

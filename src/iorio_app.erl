@@ -31,8 +31,11 @@ start(_StartType, _StartArgs) ->
     W = env(iorio, req_w, 3),
     Timeout = env(iorio, req_timeout, 5000),
 
-    AccessHandler = env(iorio, auth_handler, iorio_rk_access),
-    {ok, AccessLogic} = ioriol_access:new([{handler, AccessHandler}, {secret, ApiSecret}]),
+    AuthMod = env(iorio, auth_mod, permiso_rcore),
+    AuthModOpts = env(iorio, auth_mod_opts, []),
+    {ok, AccessLogic} = ioriol_access:new([{auth_mod, AuthMod},
+                                           {auth_mod_opts, AuthModOpts},
+                                           {secret, ApiSecret}]),
 
     create_groups(AccessLogic),
 
@@ -129,7 +132,7 @@ create_user(Access, Username, Password, Groups, OnUserCreated) ->
         ok ->
             lager:info("~p user created", [Username]),
             OnUserCreated(Username);
-        {error, role_exists}  ->
+        {error, duplicate}  ->
             lager:info("~p user exists", [Username]);
         OtherError ->
             lager:error("creating ~p user ~p", [Username, OtherError])
@@ -150,7 +153,7 @@ create_group(AccessLogic, Name) ->
     case ioriol_access:add_group(AccessLogic, Name) of
         ok ->
             lager:info("~p group created", [Name]);
-        {error, role_exists} ->
+        {error, duplicate} ->
             lager:info("~p group exists", [Name]);
         Other ->
             lager:warning("unknown response in group ~p creation '~p'",
