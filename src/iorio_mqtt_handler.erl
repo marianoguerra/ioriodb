@@ -5,15 +5,18 @@
          disconnect/1, error/2, publish/2, subscribe/2, unsubscribe/2,
          login/2]).
 
--record(state, {username, send, bucket_separator}).
+-record(state, {username, send, bucket_separator, access, session}).
 
+-include("include/iorio.hrl").
 -include_lib("sblob/include/sblob.hrl").
+-include_lib("mqttl/include/rabbit_mqtt_frame.hrl").
 
 init(Opts) ->
     {mqttl_send, Send} = proplists:lookup(mqttl_send, Opts),
     BucketSeparator = proplists:get_value(bucket_separator, Opts, <<"!">>),
     DefaultUsername = proplists:get_value(default_username, Opts, <<"mqtt">>),
-    {ok, #state{send=Send, bucket_separator=BucketSeparator,
+    {access, Access} = proplists:lookup(access, Opts),
+    {ok, #state{send=Send, bucket_separator=BucketSeparator, access=Access,
                 username=DefaultUsername}}.
 
 ping(State=#state{}) -> {ok, State}.
@@ -24,30 +27,38 @@ error(State=#state{}, Error) ->
     lager:error("Error ~p", [Error]),
     {ok, State}.
 
-publish(State=#state{username=Username, bucket_separator=BucketSeparator},
+publish(State=#state{username=Username, bucket_separator=BucketSeparator,
+                     access=Access},
         {Topic, Qos, Dup, Retain, MessageId, Payload}) ->
     lager:info("Publish ~p ~p ~p ~p ~p ~p",
                [Topic, Qos, Dup, Retain, MessageId, Payload]),
     {Bucket, Stream} = extract_bucket_and_stream(Topic, Username,
                                                  BucketSeparator),
-    iorio:put(Bucket, Stream, Payload),
-    {ok, State}.
+    case get_session(State) of
+        {ok, State1, Session} ->
+            Perm = ?PERM_STREAM_PUT,
+            CheckResult = ioriol_access:is_authorized_for_stream(Access,
+                                                                 Session,
+                                                                 Bucket,
+                                                                 Stream, Perm),
+            case CheckResult of
+                ok ->
+                    iorio:put(Bucket, Stream, Payload),
+                    {ok, State1};
+                {error, Reason} ->
+                    {error, State1, Reason}
+            end;
+        {error, Reason} ->
+            {error, State, Reason}
+    end.
 
-subscribe(State=#state{username=Username, bucket_separator=BucketSeparator},
-          Topics) ->
-    Fun = fun ({TopicName, Qos}, {QosList, IState}) ->
-                  OState = IState,
-                  QosVal = Qos,
-                  {Bucket, Stream} = extract_bucket_and_stream(TopicName,
-                                                               Username,
-                                                               BucketSeparator),
-                  lager:info("Subscribe ~p ~p", [TopicName, Qos]),
-                  iorio:subscribe(Bucket, Stream, self()),
-                  {[QosVal|QosList], OState}
-          end,
-    R = lists:foldl(Fun, {[], State}, Topics),
-    {QoSList, NewState} = R,
-    {ok, QoSList, NewState}.
+subscribe(State, Topics) ->
+    case get_session(State) of
+        {ok, State1, Session} ->
+            subscribe(State1, Session, Topics);
+        {error, Reason} ->
+            {error, State, Reason}
+    end.
 
 unsubscribe(State=#state{username=Username, bucket_separator=BucketSeparator}, Topics) ->
     Fun = fun (TopicName, IState) ->
@@ -87,9 +98,21 @@ terminate(State=#state{}, Reason) ->
     lager:info("terminate ~p", [Reason]),
     {ok, State}.
 
-login(State=#state{}, {Username, Password}) ->
-    lager:info("login ~p", [Username, Password]),
-    {ok, State#state{username=to_binary(Username)}}.
+login(State, {Username, Password}) when is_list(Username) ->
+    login(State, {list_to_binary(Username), Password});
+
+login(State, {Username, Password}) when is_list(Password) ->
+    login(State, {Username, list_to_binary(Password)});
+
+login(State=#state{access=Access}, {Username, Password}) ->
+    case ioriol_access:authenticate(Access, Username, Password) of
+        {ok, Session} ->
+            lager:info("login ~p ok", [Username]),
+            {ok, State#state{username=to_binary(Username), session=Session}};
+        {error, Reason} ->
+            lager:warning("login ~p failed: ~p", [Username, Reason]),
+            {error, State, Reason}
+    end.
 
 to_binary(Val) when is_binary(Val) -> Val;
 to_binary(Val) when is_list(Val) -> list_to_binary(Val).
@@ -106,3 +129,42 @@ extract_bucket_and_stream(Topic, Username, Sep) ->
 
 topic_from_bucket_and_stream(Bucket, Stream, Sep) ->
     list_to_binary([Bucket, Sep, Stream]).
+
+%% Private
+
+get_session(State=#state{session=undefined, access=Access, username=Username}) ->
+    case ioriol_access:get_session(Access, Username) of
+        {ok, Session} -> {ok, State#state{session=Session}, Session};
+        Other -> Other
+    end;
+get_session(State=#state{session=Session}) ->
+    {ok, State, Session}.
+
+
+subscribe(State=#state{username=Username, bucket_separator=BucketSeparator,
+                       access=Access}, Session, Topics) ->
+    Fun = fun ({TopicName, Qos}, {QosList, IState}) ->
+                  OState = IState,
+                  {Bucket, Stream} = extract_bucket_and_stream(TopicName,
+                                                               Username,
+                                                               BucketSeparator),
+                  Perm = ?PERM_STREAM_GET,
+                  CheckResult = ioriol_access:is_authorized_for_stream(Access, Session,
+                                                                       Bucket, Stream, Perm),
+                  case CheckResult of
+                      ok ->
+                          % TODO
+                          QosVal = ?QOS_0,
+                          lager:info("Subscribe ~p ~p", [TopicName, Qos]),
+                          iorio:subscribe(Bucket, Stream, self()),
+                          {[QosVal|QosList], OState};
+                      {error, Reason} ->
+                          lager:warning("Subscribe error ~p ~p ~p",
+                                        [TopicName, Qos, Reason]),
+                          QosVal = ?SUBACK_FAILURE,
+                          {[QosVal|QosList], OState}
+                  end
+          end,
+    R = lists:foldl(Fun, {[], State}, Topics),
+    {QoSList, NewState} = R,
+    {ok, QoSList, NewState}.

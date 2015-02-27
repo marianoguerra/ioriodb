@@ -5,7 +5,9 @@
 
 -export([new/1, new_req/1, update_req/2, is_authorized_for_grant/2,
          is_authorized_for_bucket/3, is_authorized_for_stream/3,
-         access_details/2, add_group/2, grant/5, revoke/5, authenticate/4]).
+         is_authorized_for_bucket/4, is_authorized_for_stream/5,
+         access_details/2, add_group/2, grant/5, revoke/5,
+         authenticate/3, authenticate/4]).
 
 -export([secret/1, username/1, session_body/1, bucket/1, stream/1]).
 
@@ -62,13 +64,23 @@ is_authorized_for_grant(State=#state{},
 is_authorized_for_grant(#state{}, Req) ->
     {error, {invalid_req, Req}}.
 
+is_authorized_for_bucket(State, Req=#req{bucket=Bucket, session=Session},
+                         Perm) ->
+    Result = is_authorized_for_bucket(State, Session, Bucket, Perm),
+    wrap_ok_with_req(Req, Result).
+
+is_authorized_for_stream(State, Req=#req{bucket=Bucket, stream=Stream,
+                                         session=Session}, Perm) ->
+    Result = is_authorized_for_stream(State, Session, Bucket, Stream, Perm),
+    wrap_ok_with_req(Req, Result).
+
 is_authorized_for_bucket(#state{auth_mod=AuthMod, auth_state=AuthState},
-              Req=#req{bucket=Bucket, session=Session}, Perm) ->
-    user_allowed(Req, AuthMod, AuthState, Session , Bucket, Perm).
+              Session, Bucket, Perm) ->
+    user_allowed(AuthMod, AuthState, Session , Bucket, Perm).
 
 is_authorized_for_stream(#state{auth_mod=AuthMod, auth_state=AuthState},
-              Req=#req{bucket=Bucket, stream=Stream, session=Session}, Perm) ->
-    user_allowed(Req, AuthMod, AuthState, Session , {Bucket, Stream}, Perm).
+                         Session, Bucket, Stream, Perm) ->
+    user_allowed(AuthMod, AuthState, Session , {Bucket, Stream}, Perm).
 
 access_details(#state{auth_mod=AuthMod, auth_state=AuthState},
                #req{bucket=Bucket, stream=Stream}) ->
@@ -115,14 +127,17 @@ revoke(#state{auth_mod=AuthMod, auth_state=AuthState}, Username, Bucket, Stream,
     Grant = #grant{resource={Bucket, Stream}, permissions=[Permission]},
     drop_ok_state(AuthMod:user_revoke(AuthState, Username, Grant)).
 
-authenticate(#state{auth_mod=AuthMod, auth_state=AuthState}, Req, Username, Password) ->
-    case AuthMod:user_auth(AuthState, Username, Password) of
+authenticate(State, Req, Username, Password) ->
+    case authenticate(State, Username, Password) of
         {ok, Session} ->
             Body = [{u, Username}],
             Fields = [{username, Username}, {session_body, Body}, {session, Session}],
             update_req(Req, Fields);
         Other -> Other
     end.
+
+authenticate(#state{auth_mod=AuthMod, auth_state=AuthState}, Username, Password) ->
+    AuthMod:user_auth(AuthState, Username, Password).
 
 create_user(State, Username, Password) ->
     create_user(State, Username, Password, ?DEFAULT_USER_GROUPS).
@@ -198,10 +213,10 @@ resource_perms_to_public(R=#resource{id=Id, user_grants=UPerms, group_grants=GPe
 drop_ok_state({ok, _State}) -> ok;
 drop_ok_state(Other) -> Other.
 
-user_allowed(Req, AuthMod, AuthState, Session, Resource, Perm) ->
+user_allowed(AuthMod, AuthState, Session, Resource, Perm) ->
     IsAuthorized = AuthMod:user_allowed(AuthState, Session, Resource, [Perm]),
     case IsAuthorized of
-        true -> {ok, Req};
+        true -> ok;
         false -> {error, unauthorized}
     end.
 
@@ -215,3 +230,6 @@ permission_to_internal(_Bucket, _Stream, <<"put">>) -> ?PERM_STREAM_PUT;
 permission_to_internal(_Bucket, _Stream, <<"grant">>) -> ?PERM_STREAM_GRANT;
 
 permission_to_internal(_Bucket, _Stream, <<"adminusers">>) -> ?PERM_ADMIN_USERS.
+
+wrap_ok_with_req(Req, ok) -> {ok, Req};
+wrap_ok_with_req(_Req, Other) -> Other.

@@ -111,7 +111,7 @@ start(_StartType, _StartArgs) ->
     end,
 
     MqttEnabled = env(iorio, mqtt_enabled, false),
-    if MqttEnabled -> {ok, _MqttSupPid} = start_mqtt();
+    if MqttEnabled -> {ok, _MqttSupPid} = start_mqtt(AccessLogic);
        true -> lager:info("mqtt disabled"), ok
     end,
 
@@ -170,17 +170,19 @@ create_groups(AccessLogic) ->
     lists:foreach(fun (Group) -> create_group(AccessLogic, Group) end,
                   ?ALL_GROUPS).
 
-start_mqtt() ->
+start_mqtt(Access) ->
     lager:info("mqtt enabled, starting"),
     Acceptors = env(iorio, mqtt_acceptors, 100),
     MaxConnections = env(iorio, mqtt_max_connections, 1024),
     Port = env(iorio, mqtt_port, 1883),
+    UserHandlerOpts = [{access, Access}],
 	{ok, _} = ranch:start_listener(iorio_mqtt, Acceptors, ranch_tcp,
                                    [{port, Port},
                                     {max_connections, MaxConnections}],
                                    mqttl_protocol,
                                    [{handler_opts,
-                                     [{handler, iorio_mqtt_handler}]}]),
+                                     [{handler, iorio_mqtt_handler},
+                                      {user_handler_opts, UserHandlerOpts}]}]),
     mqttl_sup:start_link().
 
 env(App, Par) ->
