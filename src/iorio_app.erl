@@ -82,9 +82,12 @@ start(_StartType, _StartArgs) ->
                {"/ping", iorio_rest_ping, []}
     ],
 
-    UserDispatchRoutes = env(iorio, api_handlers, []),
+    UserDispatchRoutes = env(iorio, api_handlers,
+                             [{"/ui/[...]", iorio_cowboy_static,
+                               {priv_dir, iorio, "assets",
+                                [{mimetypes, cow_mimetypes, all}]}}]),
     lager:info("configuring routes with following user provided routes: ~p",
-               [UserDispatchRoutes]),
+               UserDispatchRoutes),
     DispatchRoutes = BaseDispatchRoutes ++ UserDispatchRoutes,
 
     Dispatch = cowboy_router:compile([{'_', DispatchRoutes}]),

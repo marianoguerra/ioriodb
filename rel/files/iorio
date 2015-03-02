@@ -23,17 +23,29 @@ cd $RUNNER_BASE_DIR
 mkdir -p $RUNNER_LOG_DIR
 
 # Extract the target node name from node.args
-NAME_ARG=`grep -e '-[s]*name' $RUNNER_ETC_DIR/vm.args`
+NAME_ARG=`egrep '^\-name' $RUNNER_ETC_DIR/vm.args 2> /dev/null`
 if [ -z "$NAME_ARG" ]; then
-    echo "vm.args needs to have either -name or -sname parameter."
-    exit 1
+    NODENAME=`egrep '^[ \t]*nodename[ \t]*=[ \t]*' $RUNNER_ETC_DIR/{{cuttlefish_conf}} 2> /dev/null | tail -n 1 | cut -d = -f 2`
+    if [ -z "$NODENAME" ]; then
+        echo "vm.args needs to have a -name parameter."
+        echo "  -sname is not supported."
+        exit 1
+    else
+        NAME_ARG="-name ${NODENAME# *}"
+    fi
 fi
 
 # Extract the target cookie
 COOKIE_ARG=`grep -e '-setcookie' $RUNNER_ETC_DIR/vm.args`
 if [ -z "$COOKIE_ARG" ]; then
-    echo "vm.args needs to have a -setcookie parameter."
-    exit 1
+#TODO: change {{cuttlefish_conf}} to something more senisble!
+    COOKIE=`egrep '^[ \t]*distributed_cookie[ \t]*=[ \t]*' $RUNNER_ETC_DIR/{{cuttlefish_conf}} 2> /dev/null | cut -d = -f 2`
+    if [ -z "$COOKIE" ]; then
+        echo "vm.args needs to have a -setcookie parameter."
+        exit 1
+    else
+        COOKIE_ARG="-setcookie $COOKIE"
+    fi
 fi
 
 # Identify the script name
@@ -130,7 +142,14 @@ case "$1" in
         BINDIR=$ROOTDIR/erts-$ERTS_VSN/bin
         EMU=beam
         PROGNAME=`echo $0 | sed 's/.*\\///'`
-        CMD="$BINDIR/erlexec -boot $RUNNER_BASE_DIR/releases/$APP_VSN/$BOOTFILE -embedded -config $RUNNER_ETC_DIR/app.config -args_file $RUNNER_ETC_DIR/vm.args -- ${1+"$@"}"
+        if CUTTLEFISH_CONFIG=$($RUNNER_BASE_DIR/bin/cuttlefish -e $RUNNER_ETC_DIR -d $RUNNER_BASE_DIR/generated.configs -s $RUNNER_BASE_DIR/lib/ -c $RUNNER_ETC_DIR/{{cuttlefish_conf}})
+        then
+            CONFIG_FILES="$CUTTLEFISH_CONFIG"
+        else
+            echo "Cuttlefish failed! Oh no!: $CUTTLEFISH_CONFIG"
+            CONFIG_FILES="-config $RUNNER_ETC_DIR/app.config -args_file $RUNNER_ETC_DIR/vm.args"
+        fi
+        CMD="$BINDIR/erlexec -boot $RUNNER_BASE_DIR/releases/$APP_VSN/$BOOTFILE -embedded $CONFIG_FILES -- ${1+"$@"}"
         export EMU
         export ROOTDIR
         export BINDIR

@@ -1,0 +1,165 @@
+%%-*- mode: erlang -*-
+%% ex: ft=erlang ts=4 sw=4 et
+{mapping, "http.enabled", "iorio.http_enabled", [
+  {datatype, {flag, yes, no}},
+  {default, yes}
+]}.
+
+{mapping, "http.port", "iorio.http_port", [
+  {datatype, integer},
+  {default, 8080}
+]}.
+
+{mapping, "http.acceptors", "iorio.http_acceptors", [
+  {datatype, integer},
+  {default, 100}
+]}.
+
+{mapping, "https.enabled", "iorio.https_enabled", [
+  {datatype, {flag, yes, no}},
+  {default, no}
+]}.
+
+{mapping, "https.port", "iorio.https_port", [
+  {datatype, integer},
+  {default, 8443}
+]}.
+
+{mapping, "https.acceptors", "iorio.https_acceptors", [
+  {datatype, integer},
+  {default, 100}
+]}.
+
+{mapping, "mqtt.enabled", "iorio.mqtt_enabled", [
+  {datatype, {flag, yes, no}},
+  {default, no}
+]}.
+
+{mapping, "mqtt.port", "iorio.mqtt_port", [
+  {datatype, integer},
+  {default, 1883}
+]}.
+
+{mapping, "mqtt.acceptors", "iorio.mqtt_acceptors", [
+  {datatype, integer},
+  {default, 100}
+]}.
+
+{mapping, "mqtt.connections.max", "iorio.mqtt_max_connections", [
+  {datatype, integer},
+  {default, 1024}
+]}.
+
+
+{mapping, "auth.secret", "iorio.auth_secret", [
+  {default, "changeme"}
+]}.
+
+{translation, "auth.secret",
+ fun(Conf) ->
+         Setting = cuttlefish:conf_get("auth.secret", Conf),
+         list_to_binary(Setting)
+ end}.
+
+{mapping, "auth.algorithm", "iorio.auth_algorithm", [
+  {datatype, {enum, [hs256, hs384, hs512]}},
+  {default, hs512}
+]}.
+
+{mapping, "auth.admin.username", "iorio.admin_username", [
+  {default, "admin"}
+]}.
+
+{mapping, "auth.admin.password", "iorio.admin_password", [
+  {default, "secret"}
+]}.
+
+{mapping, "auth.anon.username", "iorio.anon_username", [
+  {default, "anonymous"}
+]}.
+
+{mapping, "auth.anon.password", "iorio.anon_password", [
+  {default, "secret"}
+]}.
+
+{mapping, "auth.session.duration", "iorio.session_duration_secs", [
+  {datatype, {duration, s}},
+  {default, "24h"}
+]}.
+
+{mapping, "auth.permission.user.has_bucket", "iorio.user_has_bucket", [
+  {datatype, {flag, yes, no}},
+  {default, yes}
+]}.
+
+{mapping, "auth.permission.user.bucket.prefix", "iorio.user_bucket_prefix", [
+  {default, "_user_"}
+]}.
+
+{mapping, "request.n", "iorio.req_n", [
+  {datatype, integer},
+  {default, 3}
+]}.
+
+{mapping, "request.w", "iorio.req_w", [
+  {datatype, integer},
+  {default, 3}
+]}.
+
+{mapping, "request.timeout", "iorio.req_timeout", [
+  {datatype, {duration, ms}},
+  {default, "0.5s"}
+]}.
+
+
+{mapping, "paths.data", "iorio.data_path", [
+  {datatype, directory},
+  {default, "../iorio_data"}
+]}.
+
+{mapping, "eviction.bucket.interval", "iorio.bucket_evict_time_ms", [
+  {datatype, {duration, ms}},
+  {default, "60s"}
+]}.
+
+{mapping, "eviction.bucket.size.max", "iorio.max_bucket_size_bytes", [
+  {datatype, bytesize},
+  {default, "50MB"}
+]}.
+
+{mapping, "auth.backend.module", "iorio.auth_mod", [
+  {datatype, {enum, [ldap, riak_core]}},
+  {default, riak_core}
+]}.
+
+{translation, "iorio.auth_mod",
+ fun(Conf) ->
+         Setting = cuttlefish:conf_get("auth.backend.module", Conf),
+         case Setting of
+             ldap -> permiso_ldap;
+             riak_core -> permiso_rcore
+         end
+ end}.
+
+{mapping, "auth.backend.ldap.host", "iorio.auth_mod_opts.host", [
+  {commented, "127.0.0.1"}
+]}.
+
+{mapping, "auth.backend.ldap.port", "iorio.auth_mod_opts.port", [
+  {type, integer},
+  {commented, "10389"}
+]}.
+
+{mapping, "auth.backend.handler", "iorio.auth_mod.handler", [
+  {datatype, {enum, [permiso_rcore, permiso_mem]}},
+  {hidden, true},
+  {default, permiso_rcore}
+]}.
+
+{mapping, "auth.backend.ldap.local_auth_suffix", "iorio.auth_mod_opts.local_auth_suffix", [
+  {commented, "@local"}
+]}.
+
+{mapping, "auth.backend.ldap.user_suffix", "iorio.auth_mod_opts.user_base", [
+  {commented, "ou=users,dc=example,dc=com"}
+]}.
