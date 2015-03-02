@@ -36,7 +36,12 @@ start(_StartType, _StartArgs) ->
     AuthModOpts0 = env(iorio, auth_mod_opts, []),
 
     OnUserCreated = fun (Mod, State, #user{username=Username}) ->
-                            ioriol_access:maybe_grant_bucket_ownership(Mod, State, Username)
+                            ioriol_access:maybe_grant_bucket_ownership(Mod, State, Username),
+                            lists:foreach(fun (Group) ->
+                                                  Mod:user_join(State,
+                                                                Username,
+                                                                Group)
+                                          end, ?DEFAULT_USER_GROUPS)
                     end,
     AuthModOpts = [{user_created_cb, OnUserCreated}|AuthModOpts0],
     {ok, AccessLogic} = ioriol_access:new([{auth_mod, AuthMod},
@@ -53,13 +58,16 @@ start(_StartType, _StartArgs) ->
                                          [Username, Res]),
                               ioriol_access:maybe_grant_bucket_ownership(AccessLogic, AdminUsername)
                       end,
-    create_user(AccessLogic, AdminUsername, AdminPassword, ?DEFAULT_ADMIN_GROUPS, GrantAdminUsers),
-    create_user(AccessLogic, AnonUsername, AnonPassword, ?DEFAULT_ANONYMOUS_GROUPS, fun (_) -> ok end),
+    create_user(AccessLogic, AdminUsername, AdminPassword,
+                ?DEFAULT_ADMIN_GROUPS, GrantAdminUsers),
+    create_user(AccessLogic, AnonUsername, AnonPassword,
+                ?DEFAULT_ANONYMOUS_GROUPS, fun (_) -> ok end),
 
     setup_initial_permissions(AccessLogic, AdminUsername),
 
     BaseDispatchRoutes = [
-               {"/listen", bullet_handler, [{handler, iorio_listen_handler}, {access, AccessLogic}]},
+               {"/listen", bullet_handler, [{handler, iorio_listen_handler},
+                                            {access, AccessLogic}]},
                {"/streams/:bucket", iorio_rest_list, [{access, AccessLogic}]},
                {"/streams/:bucket/:stream", iorio_rest_stream,
                 [{access, AccessLogic}, {n, N}, {w, W}, {timeout, Timeout}]},

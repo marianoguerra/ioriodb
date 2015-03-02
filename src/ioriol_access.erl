@@ -19,7 +19,8 @@
 
 -export_type([access_details/0]).
 
--ignore_xref([create_user/3, create_user/4, update_user_password/3]).
+-ignore_xref([is_authorized_for_bucket/4, create_user/3, create_user/4,
+              update_user_password/3]).
 
 -include("include/iorio.hrl").
 -include_lib("permiso/include/permiso.hrl").
