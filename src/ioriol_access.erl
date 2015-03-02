@@ -127,11 +127,14 @@ revoke(#state{auth_mod=AuthMod, auth_state=AuthState}, Username, Bucket, Stream,
     Grant = #grant{resource={Bucket, Stream}, permissions=[Permission]},
     drop_ok_state(AuthMod:user_revoke(AuthState, Username, Grant)).
 
-authenticate(State, Req, Username, Password) ->
+authenticate(State=#state{auth_mod=AuthMod, auth_state=AuthState},
+             Req, Username, Password) ->
     case authenticate(State, Username, Password) of
         {ok, Session} ->
-            Body = [{u, Username}],
-            Fields = [{username, Username}, {session_body, Body}, {session, Session}],
+            SessionUsername = AuthMod:username(AuthState, Session),
+            Body = [{u, SessionUsername}],
+            Fields = [{username, SessionUsername}, {session_body, Body},
+                      {session, Session}],
             update_req(Req, Fields);
         Other -> Other
     end.

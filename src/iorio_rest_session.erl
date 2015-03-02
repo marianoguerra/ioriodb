@@ -76,10 +76,11 @@ from_json(Req, State=#state{access=Access, info=Info, algorithm=Algorithm,
 
     Secret = ioriol_access:secret(Access),
     SessionBody = ioriol_access:session_body(Info),
+    Username = ioriol_access:username(Info),
     Expiration = jwt:now_secs() + SessionDurationSecs,
     {ok, Token} = jwt:encode(Algorithm, SessionBody, Secret,
                              [{exp, Expiration}]),
-    ResultJson = [{ok, true}, {token, Token}],
+    ResultJson = [{ok, true}, {token, Token}, {username, Username}],
     ResultJsonBin = iorio_json:encode(ResultJson),
     Req1 = cowboy_req:set_resp_body(ResultJsonBin, Req),
     {{true, <<"/session">>}, Req1, State}.
