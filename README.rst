@@ -1,9 +1,9 @@
 Iorio DB
 ========
 
-a stream database.
+Stream Store with HTTP/MQTT Pub/Sub.
 
-like a pubsub with history or "apache kafka if it was made by couchdb devs"
+Like a pubsub with history or "apache kafka if it was made by couchdb devs"
 (Iorio DB is not made by couchdb devs)
 
 Iorio DB is a data store that stores streams of events, it's objective is to
@@ -14,45 +14,54 @@ allow the following:
 * GET N blobs from a stream starting from a seqnum
 * LISTEN to new blobs on one or more streams
 
-  + push (websockets)
-  + pull (comet, providing the seqnum you saw last for each stream)
+  + push (WebSockets, Server Sent Events)
+  + pull (COMET, providing the seqnum you saw last for each stream)
 
   + catch up to recent events without touching the disk, each streams "remembers" last N events in memory
 
-* provide access control to who can do what on a per stream/bucket level
-* administer user credentials, permissions and sessions
-* list streams in a bucket and list buckets
-* provide eviction policies per stream and/or bucket
+* Provide access control to who can do what on a per stream/bucket level
+* Administer user credentials, permissions and sessions
+* List streams in a bucket and list buckets
+* Provide eviction policies per stream and/or bucket
 
-  + only keep last N events for a stream
-  + only keep X bytes per stream (say 4MB)
-  + only keep blobs for the last 7 days
+  + Only keep last N events for a stream
+  + Only keep X bytes per stream (say 4MB)
+  + Only keep blobs for the last 7 days
 
-* append only (eviction is done by removing "chunk" files from a stream)
+* Append only (eviction is done by removing "chunk" files from a stream)
 
 All through a RESTful HTTP API
+
+We also support MQTT protocol (only QoS 0 for the moment, QoS 1 planned)
 
 Setup
 -----
 
-start by fetching the dependencies, you can run this anytime you want to remove
+Start by fetching the dependencies, you can run this anytime you want to remove
 the dependencies and fetch the latest versions and apply some fixes we do to
 the deps::
-    
+
     make refetchdeps
 
-after you have all the deps you can simply do::
+After you have all the deps you can simply do::
 
     make newrel
 
-to run a single node::
+If you are running for the first time or you don't have config yet do the following::
 
-    ./rel/iorio/bin/iorio console
+    mkdir rel/db_config rel/db_data
+    cp rel/iorio/etc/{iorio.conf,advanced.config,vm.args} rel/db_config/
+
+Edit rel/db_config/iorio.conf to your needs.
+
+To run a single node::
+
+    make console
 
 API
 ---
 
-until we have some docs here is a brief description of the api, check
+Until we have some docs here is a brief description of the api, check
 tools/apitest.py to see how it's used
 
 ::
@@ -99,13 +108,13 @@ tools/apitest.py to see how it's used
 WARNING
 -------
 
-    this is alpha software, it will break your hearth (and your data)
+    This is alpha software, it will break your hearth (and your data)
     use it only for evaluation and testing
 
 Test
 ----
 
-to test from he api::
+To test from he api::
 
     ./tools/apitest.py -h
 
@@ -150,7 +159,7 @@ to test from he api::
 
     ./apitest.py -i 100 -I 4 -L 1 -R 2 --listeners 1
 
-to play with the api from the command line::
+To play with the api from the command line::
 
     $ ./tools/ioriocli.py -h
 
@@ -181,7 +190,7 @@ to play with the api from the command line::
       -H HOST, --host HOST  host where ioriodb is running
       -P PORT, --port PORT  port where ioriodb is running
 
-examples::
+Examples::
 
     # get last N events from mariano:test
     ./tools/ioriocli.py get mariano test
@@ -246,7 +255,7 @@ examples::
 Seqnums in listen
 .................
 
-when subscribing to events on listen you can specify a seqnum, the current
+When subscribing to events on listen you can specify a seqnum, the current
 behaviour is that if you specify a seqnum in the past it will replay from the
 closest equal or higher seqnum that the channel has in cache, it won't replay
 from disk. The idea of this behaviour is that you can catch up with events that
@@ -254,21 +263,21 @@ happened while you weren't listening in the recent past, if you need all the
 events from a seqnum onwards you will have to query the stream to be sure you
 have all of them.
 
-if you specify a seqnum that is higher than the current one listen will send
+If you specify a seqnum that is higher than the current one listen will send
 you events with smaller seqnums if they happen while you are listening, it's
 your choice to adapt the seqnum in the next subscription or to ignore them.
 
-the channel cache contains the last N events for that channel if the events
+The channel cache contains the last N events for that channel if the events
 happen while the channel is alive, periodically a channel will reduce it's
 cache if it's inactive to free resources, a channel won't load the last N
 events from disk on first creation.
 
-this behaviour may change in the future as we see how it works.
+This behaviour may change in the future as we see how it works.
 
 Patch behaviour
 ...............
 
-patch only works on streams that already have at least one event, it doesn't
+Patch only works on streams that already have at least one event, it doesn't
 make sense to patch something that's not there, that's why a patch on an
 empty stream will fail, you have to handle that case by providing an initial
 value and then applying the patch.
@@ -421,7 +430,7 @@ in another one::
 Enabling HTTPS (and wss)
 ------------------------
 
-first you need to have ssl certificates, let's generate some self signed certificates::
+First you need to have ssl certificates, let's generate some self signed certificates::
 
     cd rel
     mkdir ssl
@@ -429,34 +438,34 @@ first you need to have ssl certificates, let's generate some self signed certifi
     openssl genrsa -out key.pem 1024
     openssl req -new -key key.pem -out request.pem
 
-answer the questions it asks and then::
+Answer the questions it asks and then::
 
     openssl x509 -req -days 30 -in request.pem -signkey key.pem -out cert.pem
 
-now edit iorio/etc/app.config, change secure_enabled from false to true and
-change the path to the ssl files if needed, if you followed the commands above
-you shouldn't need to change the paths.
+Now edit iorio.conf, change secure_enabled from no to yes and change the path
+to the ssl files if needed, if you followed the commands above you shouldn't
+need to change the paths.
 
-now start ioriodb, on the logs you should see a line like::
+Now start ioriodb, on the logs you should see a line like::
 
     [info] secure api enabled, starting
 
-if you have the cacert file you can provide it also by uncommenting the line
-in app.config and setting the correct path, after that you can use ioriodb
+If you have the cacert file you can provide it also by uncommenting the line
+in iorio.conf and setting the correct path, after that you can use ioriodb
 by accessing with https://<yourhost>:<secure_port>
 
 Tunning
 -------
 
-this section is a draft for now.
+This section is a draft for now.
 
-you may want to increase some environment variables, just as an example::
+You may want to increase some environment variables, just as an example::
 
     ERL_MAX_PORTS=65536
     ERL_PROCESSES=250000
     ERL_MAX_ETS_TABLES=20000
 
-also see the following post to get some tips:
+Also see the following post to get some tips:
 
 http://www.metabrew.com/article/a-million-user-comet-application-with-mochiweb-part-1
 
