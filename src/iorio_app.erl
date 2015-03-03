@@ -89,10 +89,17 @@ start(_StartType, _StartArgs) ->
 
     Dispatch = cowboy_router:compile([{'_', DispatchRoutes}]),
 
+    HttpEnabled = env(iorio, http_enabled, true),
     ApiPort = env(iorio, http_port, 8080),
     ApiAcceptors = env(iorio, http_acceptors, 100),
-    {ok, _} = cowboy:start_http(http, ApiAcceptors, [{port, ApiPort}],
-                                [{env, [{dispatch, Dispatch}]}]),
+    if HttpEnabled ->
+            lager:info("http api enabled, starting"),
+           {ok, _} = cowboy:start_http(http, ApiAcceptors, [{port, ApiPort}],
+                                       [{env, [{dispatch, Dispatch}]}]);
+       true ->
+           lager:info("http api disabled"),
+           ok
+    end,
 
     SecureEnabled = env(iorio, https_enabled, false),
     SecureApiPort = env(iorio, https_port, 8443),
