@@ -1,56 +1,68 @@
 %%-*- mode: erlang -*-
 %% ex: ft=erlang ts=4 sw=4 et
+
+%% @doc Enable/Disable HTTP API
 {mapping, "http.enabled", "iorio.http_enabled", [
   {datatype, {flag, yes, no}},
   {default, yes}
 ]}.
 
+%% @doc port to listen to for HTTP API
 {mapping, "http.port", "iorio.http_port", [
   {datatype, integer},
   {default, 8080}
 ]}.
 
+%% @doc number of acceptors to user for HTTP API
 {mapping, "http.acceptors", "iorio.http_acceptors", [
   {datatype, integer},
   {default, 100}
 ]}.
 
+%% @doc Enable/Disable HTTPS API
 {mapping, "https.enabled", "iorio.https_enabled", [
   {datatype, {flag, yes, no}},
   {default, no}
 ]}.
 
+%% @doc port to listen to for HTTPS API
 {mapping, "https.port", "iorio.https_port", [
   {datatype, integer},
   {default, 8443}
 ]}.
 
+%% @doc number of acceptors to use for HTTPS API
 {mapping, "https.acceptors", "iorio.https_acceptors", [
   {datatype, integer},
   {default, 100}
 ]}.
 
+%% @doc Enable/Disable MQTT protocol
 {mapping, "mqtt.enabled", "iorio.mqtt_enabled", [
   {datatype, {flag, yes, no}},
   {default, no}
 ]}.
 
+%% @doc port to listen to for MQTT protocol
 {mapping, "mqtt.port", "iorio.mqtt_port", [
   {datatype, integer},
   {default, 1883}
 ]}.
 
+%% @doc number of acceptors to use for MQTT protocol
 {mapping, "mqtt.acceptors", "iorio.mqtt_acceptors", [
   {datatype, integer},
   {default, 100}
 ]}.
 
+%% @doc max number of connections to accept concurrently
 {mapping, "mqtt.connections.max", "iorio.mqtt_max_connections", [
   {datatype, integer},
   {default, 1024}
 ]}.
 
 
+%% @doc secret used to encrypt the session token, IMPORTANT: change this
 {mapping, "auth.secret", "iorio.auth_secret", [
   {default, "changeme"}
 ]}.
@@ -61,72 +73,90 @@
          list_to_binary(Setting)
  end}.
 
+%% @doc algorithm to use to encrypt the session token
 {mapping, "auth.algorithm", "iorio.auth_algorithm", [
   {datatype, {enum, [hs256, hs384, hs512]}},
   {default, hs512}
 ]}.
 
+%% @doc username for the initial admin user, it's created if it doesn't exist
+%% on server startup
 {mapping, "auth.admin.username", "iorio.admin_username", [
   {default, "admin"}
 ]}.
 
+%% @doc password for the initial admin user, IMPORTANT: change this
 {mapping, "auth.admin.password", "iorio.admin_password", [
   {default, "secret"}
 ]}.
 
+%% @doc username for the initial admin user, it's created if it doesn't exist
+%% on server startup
 {mapping, "auth.anon.username", "iorio.anon_username", [
   {default, "anonymous"}
 ]}.
 
+%% @doc password for the initial anonymous user, IMPORTANT: change this
 {mapping, "auth.anon.password", "iorio.anon_password", [
   {default, "secret"}
 ]}.
 
+%% @doc time a session is valid after login
 {mapping, "auth.session.duration", "iorio.session_duration_secs", [
   {datatype, {duration, s}},
   {default, "24h"}
 ]}.
 
+%% @doc if enabled it will grant read write access to newly created users
+%% to a bucket he owns
 {mapping, "auth.permission.user.has_bucket", "iorio.user_has_bucket", [
   {datatype, {flag, yes, no}},
   {default, yes}
 ]}.
 
+%% @doc if has_bucket is enabled this value will be used to prefix user's bucket
+%% to avoid coliding with non user buckets
 {mapping, "auth.permission.user.bucket.prefix", "iorio.user_bucket_prefix", [
   {default, "_user_"}
 ]}.
 
+%% @doc number of request that must succeed to consider a write request successful
 {mapping, "request.n", "iorio.req_n", [
   {datatype, integer},
   {default, 3}
 ]}.
 
+%% @doc number of request to attempt in a write request
 {mapping, "request.w", "iorio.req_w", [
   {datatype, integer},
   {default, 3}
 ]}.
 
+%% @doc timeout value for request
 {mapping, "request.timeout", "iorio.req_timeout", [
   {datatype, {duration, ms}},
   {default, "0.5s"}
 ]}.
 
-
+%% @doc folder where bucket/streams are stored
 {mapping, "paths.data", "iorio.data_path", [
   {datatype, directory},
   {default, "{{platform_data_dir}}/vnodes"}
 ]}.
 
+%% @doc interval to run bucket eviction
 {mapping, "eviction.bucket.interval", "iorio.bucket_evict_time_ms", [
   {datatype, {duration, ms}},
   {default, "60s"}
 ]}.
 
+%% @doc default maximum size to fire a bucket eviction
 {mapping, "eviction.bucket.size.max", "iorio.max_bucket_size_bytes", [
   {datatype, bytesize},
   {default, "50MB"}
 ]}.
 
+%% @doc backend to use for authentication
 {mapping, "auth.backend.module", "iorio.auth_mod", [
   {datatype, {enum, [ldap, riak_core]}},
   {default, riak_core}
@@ -141,25 +171,37 @@
          end
  end}.
 
+%% @doc if ldap enabled, host to connect to
 {mapping, "auth.backend.ldap.host", "iorio.auth_mod_opts.host", [
   {commented, "127.0.0.1"}
 ]}.
 
+%% @doc if ldap enabled, port to connect to
 {mapping, "auth.backend.ldap.port", "iorio.auth_mod_opts.port", [
   {type, integer},
   {commented, "10389"}
 ]}.
 
+%% @doc if ldap enabled, local backend to use to store user/group data
 {mapping, "auth.backend.handler", "iorio.auth_mod.handler", [
   {datatype, {enum, [permiso_rcore, permiso_mem]}},
   {hidden, true},
   {default, permiso_rcore}
 ]}.
 
+%% @doc if ldap enabled, if the user authenticates with username with this
+%% suffix it will force local authentication instead of authenticating against
+%% ldap server
 {mapping, "auth.backend.ldap.local_auth_suffix", "iorio.auth_mod_opts.local_auth_suffix", [
   {commented, "@local"}
 ]}.
 
+%% @doc if ldap enabled, prefix to use when authenticating against ldap
+{mapping, "auth.backend.ldap.user_prefix", "iorio.auth_mod_opts.user_prefix", [
+  {commented, "uid="}
+]}.
+
+%% @doc if ldap enabled, suffix to use when authenticating against ldap
 {mapping, "auth.backend.ldap.user_suffix", "iorio.auth_mod_opts.user_base", [
   {commented, "ou=users,dc=example,dc=com"}
 ]}.
