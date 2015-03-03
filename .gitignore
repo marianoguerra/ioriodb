@@ -16,3 +16,5 @@ errors.txt
 notes.txt
 .rebar
 TODO
+db_config
+db_data

@@ -37,18 +37,15 @@ start(_StartType, _StartArgs) ->
 
     OnUserCreated = fun (Mod, State, #user{username=Username}) ->
                             ioriol_access:maybe_grant_bucket_ownership(Mod, State, Username),
-                            lists:foreach(fun (Group) ->
-                                                  Mod:user_join(State,
-                                                                Username,
-                                                                Group)
-                                          end, ?DEFAULT_USER_GROUPS)
+                            Mod:user_join(State, Username, ?USER_GROUP)
                     end,
     AuthModOpts = [{user_created_cb, OnUserCreated}|AuthModOpts0],
     {ok, AccessLogic} = ioriol_access:new([{auth_mod, AuthMod},
                                            {auth_mod_opts, AuthModOpts},
                                            {secret, ApiSecret}]),
 
-    create_groups(AccessLogic),
+    CreateGroupsResult = create_groups(AccessLogic),
+    lager:info("create groups ~p", [CreateGroupsResult]),
 
     GrantAdminUsers = fun (Username) ->
                               Res = ioriol_access:grant(AccessLogic, AdminUsername,
@@ -58,10 +55,10 @@ start(_StartType, _StartArgs) ->
                                          [Username, Res]),
                               ioriol_access:maybe_grant_bucket_ownership(AccessLogic, AdminUsername)
                       end,
-    create_user(AccessLogic, AdminUsername, AdminPassword,
-                ?DEFAULT_ADMIN_GROUPS, GrantAdminUsers),
-    create_user(AccessLogic, AnonUsername, AnonPassword,
-                ?DEFAULT_ANONYMOUS_GROUPS, fun (_) -> ok end),
+    create_user(AccessLogic, AdminUsername, AdminPassword, [?ADMIN_GROUP],
+                GrantAdminUsers),
+    create_user(AccessLogic, AnonUsername, AnonPassword, [],
+                fun (_) -> ok end),
 
     setup_initial_permissions(AccessLogic, AdminUsername),
 
@@ -157,11 +154,12 @@ create_user(Access, Username, Password, Groups, OnUserCreated) ->
 
 setup_initial_permissions(AccessLogic, AdminUsername) ->
     PublicReadBucket = <<"public">>,
-    R1 = ioriol_access:grant(AccessLogic, <<"*">>, PublicReadBucket, any, "iorio.get"),
+    R1 = ioriol_access:grant(AccessLogic, <<"*">>, PublicReadBucket, any,
+                             "iorio.get"),
     lager:info("set read permissions to ~s to all: ~p",
                [PublicReadBucket, R1]),
-    R2 = ioriol_access:grant(AccessLogic, list_to_binary(AdminUsername), PublicReadBucket,
-                             any, "iorio.put"),
+    R2 = ioriol_access:grant(AccessLogic, list_to_binary(AdminUsername),
+                             PublicReadBucket, any, "iorio.put"),
     lager:info("set write permissions to ~s to ~p: ~p",
                [PublicReadBucket, AdminUsername, R2]).
 
@@ -179,7 +177,11 @@ create_group(AccessLogic, Name) ->
 
 create_groups(AccessLogic) ->
     lists:foreach(fun (Group) -> create_group(AccessLogic, Group) end,
-                  ?ALL_GROUPS).
+                  ?ALL_GROUPS),
+    % TODO: move this to permiso
+    UserGroup = ?USER_GROUP,
+    AdminGroup = list_to_binary(?ADMIN_GROUP),
+    riak_core_security:alter_group(AdminGroup, [{"groups", [UserGroup]}]).
 
 start_mqtt(Access) ->
     lager:info("mqtt enabled, starting"),

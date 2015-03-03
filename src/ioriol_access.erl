@@ -144,7 +144,7 @@ authenticate(#state{auth_mod=AuthMod, auth_state=AuthState}, Username, Password)
     AuthMod:user_auth(AuthState, Username, Password).
 
 create_user(State, Username, Password) ->
-    create_user(State, Username, Password, ?DEFAULT_USER_GROUPS).
+    create_user(State, Username, Password, [?USER_GROUP]).
 
 create_user(#state{auth_mod=AuthMod, auth_state=AuthState}, Username, Password,
             Groups) ->

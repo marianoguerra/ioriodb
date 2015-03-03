@@ -114,7 +114,7 @@
 
 {mapping, "paths.data", "iorio.data_path", [
   {datatype, directory},
-  {default, "../iorio_data"}
+  {default, "{{platform_data_dir}}/vnodes"}
 ]}.
 
 {mapping, "eviction.bucket.interval", "iorio.bucket_evict_time_ms", [

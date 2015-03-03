@@ -13,8 +13,7 @@
 -define(PERM_ADMIN_USERS, "iorio.adminusers").
 -define(PERM_MAGIC_BUCKET, <<"$$iorio.permissions$$">>).
 
--define(DEFAULT_USER_GROUPS, ["g-authenticated"]).
--define(DEFAULT_ADMIN_GROUPS, ["g-authenticated", "g-admin"]).
--define(DEFAULT_ANONYMOUS_GROUPS, []).
+-define(USER_GROUP, "g-authenticated").
+-define(ADMIN_GROUP, "g-admin").
 
 -define(ALL_GROUPS, ["g-authenticated", "g-admin"]).
