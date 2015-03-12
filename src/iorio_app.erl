@@ -76,7 +76,9 @@ start(_StartType, _StartArgs) ->
                 [{access, AccessLogic}, {algorithm, ApiAlgorithm},
                  {session_duration_secs, SessionDurationSecs}]},
                {"/users/", iorio_rest_user, [{access, AccessLogic}]},
-               {"/ping", iorio_rest_ping, []}
+               {"/ping", iorio_rest_ping, []},
+
+               {"/x/:handler/[...]", iorio_rest_custom, [{access, AccessLogic}]}
     ],
 
     UserDispatchRoutes = env(iorio, api_handlers,
