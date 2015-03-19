@@ -7,7 +7,7 @@ name_to_module(Name) ->
         ModName = binary_to_existing_atom(CompleteHandlerName, utf8),
         {ok, ModName}
     catch
-        badarg -> {error, {invalid_module, Name}}
+        error:badarg -> {error, {invalid_module, Name}}
     end.
 
 load_configs(Configs) ->

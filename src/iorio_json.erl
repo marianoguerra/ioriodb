@@ -13,7 +13,7 @@ decode_file(Path) ->
             try
                 {ok, decode(Binary)}
             catch
-                badarg -> {error, invalid_json}
+                error:badarg -> {error, invalid_json}
             end;
         Other -> Other
     end.
