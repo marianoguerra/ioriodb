@@ -51,9 +51,8 @@ init({ssl, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
 rest_init(Req, [{access, Access}]) ->
     {HandlerName, Req1} = cowboy_req:binding(handler, Req),
-    CompleteHandlerName = << <<"ioriox_">>/binary, HandlerName/binary >>,
-    % TODO: catch badarg and return 404
-    Handler = binary_to_existing_atom(CompleteHandlerName, utf8),
+    % TODO: return 404 on error
+    {ok, Handler} = iorio_x:name_to_module(HandlerName),
     {HandlerState, Req2} = Handler:init_req(Req1, Access),
 	{ok, Req2, #state{access=Access, handler=Handler,
                       handler_name=HandlerName,

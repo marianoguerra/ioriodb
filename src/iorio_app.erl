@@ -16,24 +16,24 @@ start(_StartType, _StartArgs) ->
     % TODO: see where to start it
     file_handle_cache:start_link(),
     % TODO: check here that secret is binary and algorigthm is a valid one
-    {ok, ApiSecret} = env(iorio, auth_secret),
-    {ok, ApiAlgorithm} = env(iorio, auth_algorithm),
+    {ok, ApiSecret} = env(auth_secret),
+    {ok, ApiAlgorithm} = env(auth_algorithm),
 
-    AdminUsername = env(iorio, admin_username, "admin"),
-    {ok, AdminPassword} = env(iorio, admin_password),
+    AdminUsername = envd(admin_username, "admin"),
+    {ok, AdminPassword} = env(admin_password),
 
-    AnonUsername = env(iorio, anon_username, "anonymous"),
+    AnonUsername = envd(anon_username, "anonymous"),
     % default password since login in as anonymous is not that useful
-    AnonPassword = env(iorio, anon_password, <<"secret">>),
+    AnonPassword = envd(anon_password, <<"secret">>),
 
-    SessionDurationSecs = env(iorio, session_duration_secs, 3600),
+    SessionDurationSecs = envd(session_duration_secs, 3600),
 
-    N = env(iorio, req_n, 3),
-    W = env(iorio, req_w, 3),
-    Timeout = env(iorio, req_timeout, 5000),
+    N = envd(req_n, 3),
+    W = envd(req_w, 3),
+    Timeout = envd(req_timeout, 5000),
 
-    AuthMod = env(iorio, auth_mod, permiso_rcore),
-    AuthModOpts0 = env(iorio, auth_mod_opts, []),
+    AuthMod = envd(auth_mod, permiso_rcore),
+    AuthModOpts0 = envd(auth_mod_opts, []),
 
     OnUserCreated = fun (Mod, State, #user{username=Username}) ->
                             ioriol_access:maybe_grant_bucket_ownership(Mod, State, Username),
@@ -81,7 +81,7 @@ start(_StartType, _StartArgs) ->
                {"/x/:handler/[...]", iorio_rest_custom, [{access, AccessLogic}]}
     ],
 
-    UserDispatchRoutes = env(iorio, api_handlers,
+    UserDispatchRoutes = envd(api_handlers,
                              [{"/ui/[...]", iorio_cowboy_static,
                                {priv_dir, iorio, "assets",
                                 [{mimetypes, cow_mimetypes, all}]}}]),
@@ -91,9 +91,9 @@ start(_StartType, _StartArgs) ->
 
     Dispatch = cowboy_router:compile([{'_', DispatchRoutes}]),
 
-    HttpEnabled = env(iorio, http_enabled, true),
-    ApiPort = env(iorio, http_port, 8080),
-    ApiAcceptors = env(iorio, http_acceptors, 100),
+    HttpEnabled = envd(http_enabled, true),
+    ApiPort = envd(http_port, 8080),
+    ApiAcceptors = envd(http_acceptors, 100),
     if HttpEnabled ->
             lager:info("http api enabled, starting"),
            {ok, _} = cowboy:start_http(http, ApiAcceptors, [{port, ApiPort}],
@@ -103,15 +103,15 @@ start(_StartType, _StartArgs) ->
            ok
     end,
 
-    SecureEnabled = env(iorio, https_enabled, false),
-    SecureApiPort = env(iorio, https_port, 8443),
+    SecureEnabled = envd(https_enabled, false),
+    SecureApiPort = envd(https_port, 8443),
 
     if
         SecureEnabled ->
             lager:info("https api enabled, starting"),
-            SSLCACertPath = env(iorio, https_cacert, notset),
-            {ok, SSLCertPath} = env(iorio, https_cert),
-            {ok, SSLKeyPath} = env(iorio, https_key),
+            SSLCACertPath = envd(https_cacert, notset),
+            {ok, SSLCertPath} = env(https_cert),
+            {ok, SSLKeyPath} = env(https_key),
 
             BaseSSLOpts = [{port, SecureApiPort}, {certfile, SSLCertPath},
                            {keyfile, SSLKeyPath}],
@@ -127,9 +127,16 @@ start(_StartType, _StartArgs) ->
             ok
     end,
 
-    MqttEnabled = env(iorio, mqtt_enabled, false),
+    MqttEnabled = envd(mqtt_enabled, false),
     if MqttEnabled -> {ok, _MqttSupPid} = start_mqtt(AccessLogic);
        true -> lager:info("mqtt disabled"), ok
+    end,
+
+    ExtensionsLoadOk = load_extensions_configs(),
+    if ExtensionsLoadOk -> ok;
+       true ->
+           lager:warning("Some extension's Config failed to load. This may"
+                         " cause unexpected behaviour on those extensions")
     end,
 
     case iorio_sup:start_link() of
@@ -194,9 +201,9 @@ create_groups(AccessLogic) ->
 
 start_mqtt(Access) ->
     lager:info("mqtt enabled, starting"),
-    Acceptors = env(iorio, mqtt_acceptors, 100),
-    MaxConnections = env(iorio, mqtt_max_connections, 1024),
-    Port = env(iorio, mqtt_port, 1883),
+    Acceptors = envd(mqtt_acceptors, 100),
+    MaxConnections = envd(mqtt_max_connections, 1024),
+    Port = envd(mqtt_port, 1883),
     UserHandlerOpts = [{access, Access}],
 	{ok, _} = ranch:start_listener(iorio_mqtt, Acceptors, ranch_tcp,
                                    [{port, Port},
@@ -207,9 +214,18 @@ start_mqtt(Access) ->
                                       {user_handler_opts, UserHandlerOpts}]}]),
     mqttl_sup:start_link().
 
+env(Par) -> env(iorio, Par).
+envd(Par, Def) -> env(iorio, Par, Def).
+
 env(App, Par) ->
     application:get_env(App, Par).
 
 env(App, Par, Def) ->
     application:get_env(App, Par, Def).
+
+load_extensions_configs() ->
+    ExtensionsLoadResult = iorio_x:load_configs(envd(extension, [])),
+    FailedExntentionLoad = lists:filter(fun (ok) -> false; (_) -> true end,
+                                        ExtensionsLoadResult),
+    length(FailedExntentionLoad) == 0.
 

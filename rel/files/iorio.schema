@@ -205,3 +205,19 @@
 {mapping, "auth.backend.ldap.user_suffix", "iorio.auth_mod_opts.user_base", [
   {commented, "ou=users,dc=example,dc=com"}
 ]}.
+
+%% Extensions config paths
+%% @doc x.config.<name> is the path to a json file containing the configuration
+%% for extension <name>, it will be parsed and stored in the application,
+%% it can be retrieved using application:get_env
+{mapping, "extension.config.$name", "iorio.extension", [
+  {datatype, file}
+]}.
+
+{translation,
+ "iorio.extension",
+  fun(Conf) ->
+      Pairs = cuttlefish_variable:filter_by_prefix("extension.config", Conf),
+      [ {list_to_atom(lists:last(Parts)), Path} || {Parts, Path} <- Pairs]
+  end
+}.
