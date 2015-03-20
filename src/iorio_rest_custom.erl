@@ -84,17 +84,35 @@ from_json(Req, State=#state{handler_state=HState, handler=Handler}) ->
     Body = iorio_json:decode(BodyRaw),
 	{PathInfo, Req3} = cowboy_req:path_info(Req2),
 	{Qs, Req4} = cowboy_req:qs_vals(Req3),
-    {Ok, Response, Req5} = Handler:handle(HState, Req4, Method, PathInfo, Qs, Body),
-    Req6 = iorio_http:json_response(Req5, Response),
-    {Ok, Req6, State}.
+    case Handler:handle(HState, Req4, Method, PathInfo, Qs, Body) of
+        {ok, {json, Response}, Req5} ->
+            Req6 = iorio_http:json_response(Req5, Response),
+            {ok, Req6, State};
+        {ok, {raw, Response, ContentType}, Req5} ->
+            Req6 = iorio_http:set_content_type_body(Req5, ContentType, Response),
+            {ok, Req6, State};
+        {error, Reason, Req5} ->
+            Req6 = iorio_http:error(Req5, <<"error">>, Reason),
+            {ok, Req6, State}
+    end.
 
 to_json(Req, State=#state{handler_state=HState, handler=Handler}) ->
     {Method, Req1} = cowboy_req:method(Req),
 	{PathInfo, Req2} = cowboy_req:path_info(Req1),
 	{Qs, Req3} = cowboy_req:qs_vals(Req2),
-    {ok, Response, Req4} = Handler:handle(HState, Req3, Method, PathInfo, Qs),
-    ResponseJson = iorio_json:encode(Response),
-    {ResponseJson, Req4, State}.
+    case Handler:handle(HState, Req3, Method, PathInfo, Qs) of
+        {ok, {json, Response}, Req4} ->
+            ResponseJson = iorio_json:encode(Response),
+            {ResponseJson, Req4, State};
+        {ok, {raw, Response, ContentType}, Req4} ->
+            Req5 = iorio_http:set_content_type(Req4, ContentType),
+            {Response, Req5, State};
+        {error, Reason, Req4} ->
+            ResponseJson = iorio_json:encode([{type, <<"error">>},
+                                              {reason, Reason}]),
+            {ok, Req5} = cowboy_req:reply(400, [], ResponseJson, Req4),
+            {halt, Req5, State}
+    end.
 
 rest_terminate(Req, #state{handler_state=HState, handler=Handler}) ->
     Handler:stop_req(HState, Req).
