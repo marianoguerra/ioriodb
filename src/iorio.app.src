@@ -11,7 +11,8 @@
                   riak_core,
                   cowboy,
                   bullet,
-                  lager
+                  lager,
+                  shotgun
                  ]},
   {mod, { iorio_app, []}},
   {env, []}
