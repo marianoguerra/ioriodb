@@ -7,7 +7,7 @@
 
 -record(state, {username, send, bucket_separator, access, session}).
 
--include("include/iorio.hrl").
+-include_lib("iorioc/include/iorio.hrl").
 -include_lib("sblob/include/sblob.hrl").
 -include_lib("mqttl/include/rabbit_mqtt_frame.hrl").
 

@@ -215,9 +215,9 @@ handle_info({'DOWN', _MonitorRef, process, Pid, _Info}, State) ->
     {ok, NewState}.
 
 terminate(_Reason, State) ->
-    Partition = iorio_anode:partition(State),
-    lager:info("terminate ~p", [Partition]),
-    _State1 = iorio_anode:free_resources(State),
+    %Partition = iorio_anode:partition(State),
+    %lager:info("terminate ~p", [Partition]),
+    %_State1 = iorio_anode:free_resources(State),
     ok.
 
 %% private api
