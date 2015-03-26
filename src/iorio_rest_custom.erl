@@ -87,13 +87,13 @@ from_json(Req, State=#state{handler_state=HState, handler=Handler}) ->
     case Handler:handle(HState, Req4, Method, PathInfo, Qs, Body) of
         {ok, {json, Response}, Req5} ->
             Req6 = iorio_http:json_response(Req5, Response),
-            {ok, Req6, State};
+            {true, Req6, State};
         {ok, {raw, Response, ContentType}, Req5} ->
             Req6 = iorio_http:set_content_type_body(Req5, ContentType, Response),
-            {ok, Req6, State};
+            {true, Req6, State};
         {error, Reason, Req5} ->
             Req6 = iorio_http:error(Req5, <<"error">>, Reason),
-            {ok, Req6, State}
+            {false, Req6, State}
     end.
 
 to_json(Req, State=#state{handler_state=HState, handler=Handler}) ->
