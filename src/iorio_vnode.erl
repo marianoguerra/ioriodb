@@ -242,7 +242,7 @@ evict_bucket(BucketName, Partition, MaxSizeBytes, MaxTimeMsNoEviction) ->
 
     DoEvict = fun () ->
                       T1 = sblob_util:now_fast(),
-                      TruncateResult = iorio:truncate(BucketName, MaxSizeBytes),
+                      TruncateResult = iorio:truncate(nil, BucketName, MaxSizeBytes),
                       T2 = sblob_util:now_fast(),
                       TDiff = T2 - T1,
                       LogMsg = "bucket eviction ~s in ~pms ~p: ~p",

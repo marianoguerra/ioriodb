@@ -43,7 +43,7 @@ publish(State=#state{username=Username, bucket_separator=BucketSeparator,
                                                                  Stream, Perm),
             case CheckResult of
                 ok ->
-                    iorio:put(Bucket, Stream, Payload),
+                    iorio:put(nil, Bucket, Stream, Payload),
                     {ok, State1};
                 {error, Reason} ->
                     {error, State1, Reason}
@@ -67,7 +67,7 @@ unsubscribe(State=#state{username=Username, bucket_separator=BucketSeparator}, T
                                                                Username,
                                                                BucketSeparator),
                   lager:info("Unsubscribe ~p", [TopicName]),
-                  iorio:unsubscribe(Bucket, Stream, self()),
+                  iorio:unsubscribe(nil, Bucket, Stream, self()),
                   OState
           end,
     NewState = lists:foldl(Fun, State, Topics),
@@ -156,7 +156,7 @@ subscribe(State=#state{username=Username, bucket_separator=BucketSeparator,
                           % TODO
                           QosVal = ?QOS_0,
                           lager:info("Subscribe ~p ~p", [TopicName, Qos]),
-                          iorio:subscribe(Bucket, Stream, self()),
+                          iorio:subscribe(nil, Bucket, Stream, self()),
                           {[QosVal|QosList], OState};
                       {error, Reason} ->
                           lager:warning("Subscribe error ~p ~p ~p",
