@@ -142,7 +142,7 @@ case "$1" in
         BINDIR=$ROOTDIR/erts-$ERTS_VSN/bin
         EMU=beam
         PROGNAME=`echo $0 | sed 's/.*\\///'`
-        if CUTTLEFISH_CONFIG=$($RUNNER_BASE_DIR/bin/cuttlefish -e $RUNNER_ETC_DIR -d $RUNNER_BASE_DIR/generated.configs -s $RUNNER_BASE_DIR/lib/ -c $RUNNER_ETC_DIR/{{cuttlefish_conf}})
+        if CUTTLEFISH_CONFIG=$($ERTS_PATH/escript $RUNNER_BASE_DIR/bin/cuttlefish -e $RUNNER_ETC_DIR -d $RUNNER_BASE_DIR/generated.configs -s $RUNNER_BASE_DIR/lib/ -c $RUNNER_ETC_DIR/{{cuttlefish_conf}})
         then
             CONFIG_FILES="$CUTTLEFISH_CONFIG"
         else
