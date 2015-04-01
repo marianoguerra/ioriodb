@@ -76,8 +76,9 @@ execute(timeout, SD0=#state{req_id=ReqID,
                             preflist=Preflist,
                             last_seqnum=LastSeqNum}) ->
 
-    Command = if LastSeqNum == nil -> {put, ReqID, Bucket, Stream, Data};
-                 true -> {put_conditionally, ReqID, Bucket, Stream, Data, LastSeqNum}
+    Ts = sblob_util:now_fast(),
+    Command = if LastSeqNum == nil -> {put, ReqID, Bucket, Stream, Ts, Data};
+                 true -> {put_conditionally, ReqID, Bucket, Stream, Ts, Data, LastSeqNum}
               end,
     riak_core_vnode_master:command(Preflist, Command, {fsm, undefined, self()},
                                    iorio_vnode_master),
