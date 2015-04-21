@@ -178,8 +178,8 @@
 
 %% @doc if ldap enabled, port to connect to
 {mapping, "auth.backend.ldap.port", "iorio.auth_mod_opts.port", [
-  {type, integer},
-  {commented, "10389"}
+  {datatype, integer},
+  {commented, 10389}
 ]}.
 
 %% @doc if ldap enabled, local backend to use to store user/group data
