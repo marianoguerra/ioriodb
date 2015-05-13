@@ -52,10 +52,6 @@ info(Entries, Req, State) when is_list(Entries) ->
     reply_entries_json(Entries, Req, State).
 
 terminate(_Req, #state{channels=Channels, iorio=Iorio}) ->
-    lists:map(fun ({Bucket, Stream}) ->
-                      lager:debug("unsubscribing from ~s/~s~n", [Bucket, Stream]),
-                      Iorio:unsubscribe(Bucket, Stream, self())
-              end, Channels),
     ok.
 
 % private
