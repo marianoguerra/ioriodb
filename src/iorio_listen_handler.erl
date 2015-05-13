@@ -51,7 +51,7 @@ info(Entries, Req, State) when is_list(Entries) ->
     lager:debug("entries received~n"),
     reply_entries_json(Entries, Req, State).
 
-terminate(_Req, #state{channels=Channels, iorio=Iorio}) ->
+terminate(_Req, _State) ->
     ok.
 
 % private
