@@ -51,7 +51,14 @@ info(Entries, Req, State) when is_list(Entries) ->
     lager:debug("entries received~n"),
     reply_entries_json(Entries, Req, State).
 
-terminate(_Req, _State) ->
+terminate(_Req, #state{channels=Channels, iorio=Iorio}) ->
+    Pid = self(),
+    spawn(fun () ->
+                  lists:map(fun ({Bucket, Stream}) ->
+                                    lager:debug("unsubscribing from ~s/~s~n", [Bucket, Stream]),
+                                    Iorio:unsubscribe(Bucket, Stream, Pid)
+                            end, Channels)
+          end),
     ok.
 
 % private
