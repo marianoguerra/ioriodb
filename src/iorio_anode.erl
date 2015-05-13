@@ -247,8 +247,8 @@ do_put(Bucket, BucketName, Stream, Timestamp, Data, ReqId, Channel, LastSeqNum) 
             try
                 smc_hist_channel:send(Channel, {entry, BucketName, Stream, Entry})
             catch T:E ->
-                lager:error("Error sending event to channel ~p/~p ~p ~p",
-                            [BucketName, Stream, T, E])
+                lager:error("Error sending event to channel ~p/~p ~p ~p ~p",
+                            [BucketName, Stream, T, E, Channel])
             end,
             {ReqId, Entry}
     end.

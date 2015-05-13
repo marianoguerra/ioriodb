@@ -53,12 +53,10 @@ info(Entries, Req, State) when is_list(Entries) ->
 
 terminate(_Req, #state{channels=Channels, iorio=Iorio}) ->
     Pid = self(),
-    spawn(fun () ->
-                  lists:map(fun ({Bucket, Stream}) ->
-                                    lager:debug("unsubscribing from ~s/~s~n", [Bucket, Stream]),
-                                    Iorio:unsubscribe(Bucket, Stream, Pid)
-                            end, Channels)
-          end),
+    lists:foreach(fun ({Bucket, Stream}) ->
+                          lager:debug("unsubscribing from ~s/~s~n", [Bucket, Stream]),
+                          Iorio:unsubscribe(Bucket, Stream, Pid)
+                  end, Channels),
     ok.
 
 % private
