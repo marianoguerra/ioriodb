@@ -31,7 +31,6 @@ content_types_provided(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, to_json}], Req, State}.
 
 to_json(Req, State=#state{}) ->
-    lager:info("handling ping"),
     {pong, Partition} = iorio:ping(),
     {iorio_json:encode([{pong, integer_to_binary(Partition)}]), Req, State}.
 
