@@ -214,9 +214,9 @@ handle_info({'DOWN', _MonitorRef, process, Pid, _Info}, State) ->
     NewState = iorio_anode:remove_channel(State, Pid),
     {ok, NewState}.
 
-terminate(_Reason, State) ->
+terminate(Reason, State) ->
     Partition = iorio_anode:partition(State),
-    lager:info("terminate ~p", [Partition]),
+    lager:info("terminate ~p ~p", [Partition, Reason]),
     _State1 = iorio_anode:free_resources(State),
     ok.
 
