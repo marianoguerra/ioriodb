@@ -38,6 +38,8 @@ def get_arg_parser():
     p_listen = subparsers.add_parser('listen',
             help='listen to new content from streams')
 
+    p_stats = subparsers.add_parser('stats', help='get server stats')
+    p_stats.set_defaults(action='stats')
     #p_admin = subparsers.add_parser('admin', help='admin tasks')
 
     p_post.set_defaults(action='post')
@@ -174,6 +176,14 @@ def handle_list_buckets(args):
 
     do_when_authenticated(args, fun)
 
+def handle_stats(args):
+    '''get events'''
+    def fun(conn):
+        '''fun that does the work'''
+        return conn.stats()
+
+    do_when_authenticated(args, fun)
+
 def parse_subscription(sub):
     '''parse a subscription in notation bucket:stream[:from]'''
 
@@ -227,7 +237,8 @@ HANDLERS = {
         'get': handle_get_events,
         'listen': handle_listen,
         'list-buckets': handle_list_buckets,
-        'list-streams': handle_list_streams
+        'list-streams': handle_list_streams,
+        'stats': handle_stats
 }
 
 def main():

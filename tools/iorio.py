@@ -47,7 +47,7 @@ class Response(object):
 
     def __str__(self):
         lines = ["Status: " + str(self.status),
-                 "Type: " + self.content_type]
+                 "Type: " + str(self.content_type)]
 
 
         if not self.raw_body:
@@ -143,6 +143,9 @@ class Connection(object):
 
     def list_streams(self, bucket):
         return self.get(['streams', bucket])
+
+    def stats(self):
+        return self.get(['stats'])
 
     def listen(self, subs, content_type=MT_JSON):
         headers = self.make_headers(content_type)
