@@ -176,11 +176,34 @@ def handle_list_buckets(args):
 
     do_when_authenticated(args, fun)
 
+def diff_keys(dict1, dict2, keys):
+    '''calculate differebce between key on d2 and d1'''
+    result = {}
+    for key in keys:
+        val1 = dict1.get(key)
+        val2 = dict2.get(key)
+
+        if isinstance(val1, int) and isinstance(val2, int):
+            result[key] = val2 - val1
+
+    return result
+
 def handle_stats(args):
     '''get events'''
     def fun(conn):
         '''fun that does the work'''
-        return conn.stats()
+        response = conn.stats()
+        stats = response.body
+        node_stats = stats['node']
+        abs1 = node_stats['abs1']
+        abs2 = node_stats['abs2']
+
+        keys = ['error_logger_queue_len', 'memory_atoms' 'memory_bin',
+                'memory_ets', 'memory_procs', 'memory_total', 'process_count',
+                'run_queue']
+        abs_diff = diff_keys(abs1, abs2, keys)
+        stats['abs_diff'] = abs_diff
+        return response
 
     do_when_authenticated(args, fun)
 
