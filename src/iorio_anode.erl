@@ -90,17 +90,32 @@ get(State=#state{partition=Partition}, BucketName, Stream, From, Count, Callback
 subscribe(State=#state{partition=Partition}, BucketName, Stream, FromSeqNum, Pid) ->
     lager:debug("subscribe ~s ~s at ~p", [BucketName, Stream, Partition]),
     {NewState, Channel} = get_channel(State, BucketName, Stream),
-    % XXX: add smc:subscribe/3?
-    smc_hist_channel:replay(Channel, Pid, FromSeqNum),
-    Result = smc_hist_channel:subscribe(Channel, Pid),
-    {Result, NewState}.
+    check_channel(Channel),
+
+    try
+        smc_hist_channel:replay(Channel, Pid, FromSeqNum),
+        Result = smc_hist_channel:subscribe(Channel, Pid),
+        {Result, NewState}
+    catch T:E ->
+              lager:error("Error subscribing to channel ~p/~p ~p ~p",
+                          [BucketName, Stream, T, E, erlang:is_process_alive(Channel)]),
+        {error, NewState}
+    end.
 
 unsubscribe(State=#state{partition=Partition}, BucketName, Stream, Pid) ->
     lager:debug("unsubscribe ~s ~s at ~p", [BucketName, Stream, Partition]),
-    % TODO: don't create it if it doesn't exist
     {NewState, Channel} = get_channel(State, BucketName, Stream),
-    Result = smc_hist_channel:unsubscribe(Channel, Pid),
-    {Result, NewState}.
+    check_channel(Channel),
+
+    try
+        % TODO: don't create it if it doesn't exist
+        Result = smc_hist_channel:unsubscribe(Channel, Pid),
+        {Result, NewState}
+    catch T:E ->
+              lager:error("Error unsubscribing to channel ~p/~p ~p ~p",
+                          [BucketName, Stream, T, E, erlang:is_process_alive(Channel)]),
+              {error, NewState}
+    end.
 
 writer(#state{writer=Writer}) -> Writer.
 partition(#state{partition=Partition}) -> Partition.
@@ -229,6 +244,7 @@ get_put_info(State, BucketName, Stream) ->
     Timestamp = sblob_util:now(),
     {State1, Bucket} = get_bucket(State, BucketName),
     {NewState, Channel} = get_channel(State1, BucketName, Stream),
+    check_channel(Channel),
     {Timestamp, Bucket, Channel, NewState}.
 
 do_put(Bucket, BucketName, Stream, Timestamp, Data, ReqId, Channel, LastSeqNum) ->
@@ -244,11 +260,18 @@ do_put(Bucket, BucketName, Stream, Timestamp, Data, ReqId, Channel, LastSeqNum) 
         {error, _Reason}=Error ->
             {ReqId, Error};
         Entry ->
+            WasAlive = erlang:is_process_alive(Channel),
+
+            if WasAlive -> ok;
+               true -> lager:warning("Channel is dead ~p ~p", [Channel, WasAlive])
+            end,
+
             try
                 smc_hist_channel:send(Channel, {entry, BucketName, Stream, Entry})
             catch T:E ->
-                lager:error("Error sending event to channel ~p/~p ~p ~p ~p",
-                            [BucketName, Stream, T, E, Channel])
+                IsAlive = erlang:is_process_alive(Channel),
+                lager:error("Error sending event to channel ~p/~p ~p ~p ~p ? before: ~p, after: ~p",
+                            [BucketName, Stream, T, E, Channel, WasAlive, IsAlive])
             end,
             {ReqId, Entry}
     end.
@@ -281,4 +304,11 @@ foldl_gblobs(State, Fun, Acc0) ->
 
                         AccOut
                 end, Acc0, GblobNames).
+
+check_channel(Channel) ->
+    IsAlive = erlang:is_process_alive(Channel),
+
+    if IsAlive -> ok;
+       true -> lager:warning("got dead channel ~p: ~p", [Channel, IsAlive])
+    end.
 

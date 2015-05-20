@@ -103,8 +103,6 @@ bucket_size(Bucket, Timeout) ->
                                   end, AllSizes),
 
     SortedStreamSizes = lists:sort(fun ({Name1, Size1}, {Name2, Size2}) ->
-                        % TODO: check this, we want to sort by same stream name
-                        % first and then from bigger sizes to smaller ones
                         if Name1 < Name2 -> true;
                            Name1 == Name2 -> Size1 >= Size2;
                            true -> false
