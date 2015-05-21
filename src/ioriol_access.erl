@@ -108,25 +108,25 @@ maybe_grant_bucket_ownership(AuthMod, AuthState, Username) ->
         Permissions = [?PERM_BUCKET_GET, ?PERM_BUCKET_PUT, ?PERM_BUCKET_GRANT,
                        ?PERM_BUCKET_LIST],
         Grant = #grant{resource={Bucket, any}, permissions=Permissions},
-        drop_ok_state(AuthMod:user_grant(AuthState, Username, Grant));
+        drop_state(AuthMod:user_grant(AuthState, Username, Grant));
        true -> ok
     end.
 
 add_group(#state{auth_mod=AuthMod, auth_state=AuthState}, Name) ->
     Group = #group{name=Name},
-    drop_ok_state(AuthMod:group_add(AuthState, Group)).
+    drop_state(AuthMod:group_add(AuthState, Group)).
 
 grant(#state{auth_mod=AuthMod, auth_state=AuthState}, Username, Bucket, Stream,
       Permission) ->
     lager:info("grant ~p ~p/~p: ~p", [Username, Bucket, Stream, Permission]),
     Grant = #grant{resource={Bucket, Stream}, permissions=[Permission]},
-    drop_ok_state(AuthMod:user_grant(AuthState, Username, Grant)).
+    drop_state(AuthMod:user_grant(AuthState, Username, Grant)).
 
 revoke(#state{auth_mod=AuthMod, auth_state=AuthState}, Username, Bucket, Stream,
       Permission) ->
     lager:info("revoke ~p ~p/~p: ~p", [Username, Bucket, Stream, Permission]),
     Grant = #grant{resource={Bucket, Stream}, permissions=[Permission]},
-    drop_ok_state(AuthMod:user_revoke(AuthState, Username, Grant)).
+    drop_state(AuthMod:user_revoke(AuthState, Username, Grant)).
 
 authenticate(State=#state{auth_mod=AuthMod, auth_state=AuthState},
              Req, Username, Password) ->
@@ -149,10 +149,10 @@ create_user(State, Username, Password) ->
 create_user(#state{auth_mod=AuthMod, auth_state=AuthState}, Username, Password,
             Groups) ->
     User = #user{username=Username, password=Password, groups=Groups},
-    drop_ok_state(AuthMod:user_add(AuthState, User)).
+    drop_state(AuthMod:user_add(AuthState, User)).
 
 update_user_password(#state{auth_mod=AuthMod, auth_state=AuthState}, Username, Password) ->
-    drop_ok_state(AuthMod:user_passwd(AuthState, Username, Password)).
+    drop_state(AuthMod:user_passwd(AuthState, Username, Password)).
 
 users(#state{auth_mod=AuthMod, auth_state=AuthState}) ->
     AuthMod:user_list(AuthState).
@@ -214,8 +214,8 @@ resource_perms_to_public(R=#resource{id=Id, user_grants=UPerms, group_grants=GPe
     NewGPerms = lists:map(ToPublic, GPerms),
     R#resource{user_grants=NewUPerms, group_grants=NewGPerms}.
 
-drop_ok_state({ok, _State}) -> ok;
-drop_ok_state(Other) -> Other.
+drop_state({Other, _State}) -> Other;
+drop_state(Other) -> Other.
 
 user_allowed(AuthMod, AuthState, Session, Resource, Perm) ->
     IsAuthorized = AuthMod:user_allowed(AuthState, Session, Resource, [Perm]),
