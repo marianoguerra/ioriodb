@@ -98,7 +98,8 @@ subscribe(State=#state{partition=Partition}, BucketName, Stream, FromSeqNum, Pid
         {Result, NewState}
     catch T:E ->
               lager:error("Error subscribing to channel ~p/~p ~p ~p",
-                          [BucketName, Stream, T, E, erlang:is_process_alive(Channel)]),
+                          [BucketName, Stream, T, error_info(E),
+                           erlang:is_process_alive(Channel)]),
         {error, NewState}
     end.
 
@@ -113,7 +114,8 @@ unsubscribe(State=#state{partition=Partition}, BucketName, Stream, Pid) ->
         {Result, NewState}
     catch T:E ->
               lager:error("Error unsubscribing to channel ~p/~p ~p ~p",
-                          [BucketName, Stream, T, E, erlang:is_process_alive(Channel)]),
+                          [BucketName, Stream, T, error_info(E),
+                           erlang:is_process_alive(Channel)]),
               {error, NewState}
     end.
 
@@ -270,11 +272,16 @@ do_put(Bucket, BucketName, Stream, Timestamp, Data, ReqId, Channel, LastSeqNum) 
                 smc_hist_channel:send(Channel, {entry, BucketName, Stream, Entry})
             catch T:E ->
                 IsAlive = erlang:is_process_alive(Channel),
-                lager:error("Error sending event to channel ~p/~p ~p ~p ~p ? before: ~p, after: ~p",
-                            [BucketName, Stream, T, E, Channel, WasAlive, IsAlive])
+                lager:error("Error sending event to channel ~p/~p ~p ~p ~p alive: ~p/~p",
+                            [BucketName, Stream, T, error_info(E), Channel, WasAlive, IsAlive])
             end,
             {ReqId, Entry}
     end.
+
+error_info({noproc, {gen_server, call, _}}) ->
+    {noproc, {gen_server, call}};
+error_info(Other) ->
+    Other.
 
 
 have_bucket(#state{path=Path}, Bucket) ->
