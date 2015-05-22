@@ -81,12 +81,11 @@ get_channel_args(Msg) ->
     {proplists:get_value(<<"bucket">>, Msg),
      proplists:get_value(<<"stream">>, Msg)}.
 
-encode_ok(Id) ->
-    IdBin = integer_to_binary(Id),
-    <<"{\"ok\": true", ",\"id\":", IdBin/binary, "}">>.
+encode_ok(Id, Type) ->
+    iorio_json:encode([{ok, true}, {id, Id}, {type, Type}]).
 
 handle_ping(_Msg, Id, Req, State) ->
-    {reply, encode_ok(Id), Req, State}.
+    {reply, encode_ok(Id, <<"ping">>), Req, State}.
 
 fail(Msg, Id, State) ->
     {encode_error(Msg, Id), State}.
@@ -152,7 +151,8 @@ handle_subscribe(Msg, Id, Req, State=#state{channels=Channels}) ->
                                 {encode_error(<<"already subscribed">>, Id), State};
 
                             true ->
-                                {encode_ok(Id), subscribe(Bucket, Stream, nil, State)}
+                                {encode_ok(Id, <<"subscribe">>),
+                                 subscribe(Bucket, Stream, nil, State)}
                         end
                 end, Msg, Id, Req, State).
 
@@ -167,7 +167,7 @@ handle_unsubscribe(Msg, Id, Req, State=#state{channels=Channels, iorio=Iorio}) -
                                 Iorio:unsubscribe(Bucket, Stream, self()),
                                 NewChannels = remove(Key, Channels),
                                 State1 = State#state{channels=NewChannels},
-                                {encode_ok(Id), State1};
+                                {encode_ok(Id, <<"unsubscribe">>), State1};
 
                             true ->
                                 lager:warning("not subscribed ~s/~s~n", [Bucket, Stream]),
