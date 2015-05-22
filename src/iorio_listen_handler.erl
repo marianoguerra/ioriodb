@@ -13,6 +13,7 @@ init(_Transport, Req, [_, {access, Access}|_]=Opts, Active) ->
     Iorio = proplists:get_value(iorio, Opts, iorio),
     {Token, Req1} = cowboy_req:qs_val(<<"jwt">>, Req, nil),
     {Params, Req2} = cowboy_req:qs_vals(Req1),
+    Req3 = cowboy_req:compact(Req2),
     RawSubs = proplists:get_all_values(<<"s">>, Params),
     Subs = iorio_parse:subscriptions(RawSubs),
     {ok, Info} = ioriol_access:new_req([]),
@@ -22,13 +23,13 @@ init(_Transport, Req, [_, {access, Access}|_]=Opts, Active) ->
                            token=Token, info=Info1},
 
             State1 = subscribe_all(Subs, State),
-            Req3 = if Active == once -> set_json_response(Req2);
-                      true -> Req2
+            Req3 = if Active == once -> set_json_response(Req3);
+                      true -> Req3
                    end,
             {ok, Req3, State1};
         {error, Reason} ->
             lager:warning("shutdown listen ~p", [Reason]),
-            {shutdown, Req2, #state{}}
+            {shutdown, Req3, #state{}}
     end.
 
 
