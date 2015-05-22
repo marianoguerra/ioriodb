@@ -44,6 +44,16 @@ stream(Data, Req, State) ->
         _ -> {reply, encode_error(<<"unknown command">>, Id), Req, State}
     end.
 
+info({smc, {heartbeat, Props}}, Req, State=#state{channels=Channels}) ->
+    Subs = proplists:get_value(subs, Props, 0),
+    if Subs =< 0 ->
+           lager:warning("channel subs <= 0 (~p) for ~p", [Subs, Channels]);
+       true -> ok
+    end,
+    {ok, Req, State};
+info({smc, Info}, Req, State=#state{channels=Channels}) ->
+    lager:info("channel update for ~p: ~p (~p)", [self(), Info, Channels]),
+    {ok, Req, State};
 info({entry, BucketName, Stream, _Entry}=FullEntry, Req, State) ->
     lager:debug("entry received ~s/~s~n", [BucketName, Stream]),
     reply_entries_json([FullEntry], Req, State);
