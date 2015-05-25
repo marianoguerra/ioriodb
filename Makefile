@@ -9,22 +9,19 @@ compile:
 deps:
 	$(REBAR) get-deps
 
-depsclean:
-	rm -rf deps
-
-refetchdeps: depsclean deps
+refetchdeps: distclean deps
 	./tools/fix_deps.sh
 
 clean:
 	$(REBAR) clean
 
-distclean: clean devclean relclean
+distclean: relclean devclean
 	$(REBAR) delete-deps
 
 rel: all
 	$(REBAR) generate
 
-relclean:
+relclean: clean
 	rm -rf rel/iorio
 
 devrelclean:
