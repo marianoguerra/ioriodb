@@ -2,11 +2,14 @@
 -export([all_stats/0]).
 
 all_stats() ->
- [{node, node_stats()}, {riak_core, riak_core_stats()}].
+ [{node, node_stats()}, {riak_core, riak_core_stats()}, {file, file_stats()}].
 
 node_stats() ->
  [{Abs1, Inc1}, {Abs2, Inc2}] = recon:node_stats_list(2, 2000),
  [{abs1, Abs1}, {inc1, Inc1}, {abs2, Abs2}, {inc2, Inc2}].
+
+file_stats() ->
+    file_handle_cache:info().
 
 riak_core_stats() ->
     Stats = riak_core_stat:get_stats(),
