@@ -1,9 +1,13 @@
 -module(iorio_stats).
 -export([all_stats/0, cowboy_response_hook/4, init_metrics/0]).
 
+-export([auth_error/0, auth_success/0]).
+
 -behaviour(cowboy_middleware).
 -export([execute/2]).
 
+-define(METRIC_AUTH_ERROR, [iorio, auth, error]).
+-define(METRIC_AUTH_SUCCESS, [iorio, auth, success]).
 -define(METRIC_HTTP_ACTIVE_REQS, [iorio, api, http, active_requests]).
 -define(METRIC_HTTP_REQ_TIME, [iorio, api, http, req_time]).
 
@@ -42,6 +46,12 @@ riak_core_stats() ->
                           {BinKey, V}
                   end,
     lists:map(KeyToString, Stats).
+
+auth_error() ->
+    exometer:update(?METRIC_AUTH_ERROR, 1).
+
+auth_success() ->
+    exometer:update(?METRIC_AUTH_SUCCESS, 1).
 
 endpoint_key(Type, EndPoint) ->
     [iorio, api, http, Type, EndPoint].
@@ -82,9 +92,11 @@ create_resp_code_metric(Code) ->
 
 http_stats() ->
     [{active_reqs, unwrap_metric_value(?METRIC_HTTP_ACTIVE_REQS)},
-     {resp_code, lists:map(fun get_resp_code_value/1, ?STATUS_CODES)},
-     {req_time, lists:map(fun get_endpoint_time_value/1, ?ENDPOINTS)},
-     {req_min, lists:map(fun get_endpoint_min_value/1, ?ENDPOINTS)}].
+     {auth, [{error, unwrap_metric_value(?METRIC_AUTH_ERROR)},
+             {success, unwrap_metric_value(?METRIC_AUTH_SUCCESS)}]},
+     {resp, [{by_code, lists:map(fun get_resp_code_value/1, ?STATUS_CODES)}]},
+     {req, [{time, lists:map(fun get_endpoint_time_value/1, ?ENDPOINTS)},
+            {count, lists:map(fun get_endpoint_min_value/1, ?ENDPOINTS)}]}].
 
 to_string(V) when is_atom(V) -> atom_to_list(V);
 to_string(V) when is_integer(V) -> integer_to_list(V).
@@ -94,6 +106,8 @@ init_metrics() ->
     lists:map(fun create_endpoint_min_metric/1, ?ENDPOINTS),
     lists:map(fun create_resp_code_metric/1, ?STATUS_CODES),
 
+    exometer:new(?METRIC_AUTH_ERROR, spiral, [{time_span, 60000}]),
+    exometer:new(?METRIC_AUTH_SUCCESS, spiral, [{time_span, 60000}]),
     exometer:new(?METRIC_HTTP_ACTIVE_REQS, counter, []).
 
 cowboy_response_hook(Code, _Headers, _Body, Req) ->

@@ -101,8 +101,10 @@ authenticate(Req, State=#state{info=Info, access=Access}) ->
 
     case ioriol_access:authenticate(Access, Info, Username, Password) of
         {ok, Info1} ->
+            iorio_stats:auth_success(),
             {true, Req1, State#state{info=Info1}};
         _Error ->
+            iorio_stats:auth_error(),
             {{false, <<"jwt">>}, iorio_http:unauthorized(Req1), State}
     end.
 
