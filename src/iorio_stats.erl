@@ -6,7 +6,8 @@
 -export([core_ping/0, core_put/0, core_get/0,
          core_subscribe/0, core_unsubscribe/0,
          core_list_buckets/0, core_list_streams/0,
-         core_truncate/0]).
+         core_truncate/0,
+         core_msg_size/1]).
 
 -behaviour(cowboy_middleware).
 -export([execute/2]).
@@ -26,6 +27,8 @@
 -define(METRIC_CORE_LIST_BUCKETS, [iorio, core, list, buckets]).
 -define(METRIC_CORE_LIST_STREAMS, [iorio, core, list, streams]).
 -define(METRIC_CORE_TRUNCATE, [iorio, core, truncate]).
+
+-define(METRIC_CORE_MSG_SIZE, [iorio, core, msg, size]).
 
 -define(ENDPOINTS, [<<"listen">>, <<"streams">>, <<"buckets">>, <<"access">>,
                     <<"sessions">>, <<"users">>, <<"stats">>, <<"ping">>,
@@ -82,6 +85,8 @@ core_list_buckets() -> exometer:update(?METRIC_CORE_LIST_BUCKETS, 1).
 core_list_streams() -> exometer:update(?METRIC_CORE_LIST_STREAMS, 1).
 core_truncate()     -> exometer:update(?METRIC_CORE_TRUNCATE, 1).
 
+core_msg_size(Size) -> exometer:update(?METRIC_CORE_MSG_SIZE, Size).
+
 endpoint_key(Type, EndPoint) ->
     [iorio, api, http, Type, EndPoint].
 
@@ -137,7 +142,8 @@ core_stats() ->
      {unsubscribe, unwrap_metric_value(?METRIC_CORE_UNSUBSCRIBE)},
      {list_buckets, unwrap_metric_value(?METRIC_CORE_LIST_BUCKETS)},
      {list_streams, unwrap_metric_value(?METRIC_CORE_LIST_STREAMS)},
-     {truncate, unwrap_metric_value(?METRIC_CORE_TRUNCATE)}].
+     {truncate, unwrap_metric_value(?METRIC_CORE_TRUNCATE)},
+     {msg_size, unwrap_metric_value(?METRIC_CORE_MSG_SIZE)}].
     
 
 to_string(V) when is_atom(V) -> atom_to_list(V);
@@ -163,7 +169,9 @@ init_metrics() ->
     exometer:new(?METRIC_CORE_UNSUBSCRIBE, spiral, [{time_span, 60000}]),
     exometer:new(?METRIC_CORE_LIST_BUCKETS, spiral, [{time_span, 60000}]),
     exometer:new(?METRIC_CORE_LIST_STREAMS, spiral, [{time_span, 60000}]),
-    exometer:new(?METRIC_CORE_TRUNCATE, spiral, [{time_span, 60000}]).
+    exometer:new(?METRIC_CORE_TRUNCATE, spiral, [{time_span, 60000}]),
+
+    exometer:new(?METRIC_CORE_MSG_SIZE, histogram, []).
 
 cowboy_response_hook(Code, _Headers, _Body, Req) ->
     EndTs = now_fast(),

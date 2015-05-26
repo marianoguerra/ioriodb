@@ -34,6 +34,7 @@ put(Bucket, Stream, Data) ->
 
 put(Bucket, Stream, Data, N, W, Timeout) ->
     iorio_stats:core_put(),
+    iorio_stats:core_msg_size(size(Data)),
     IndexNode = get_index_node(Bucket, Stream),
     Pid = self(),
     Args = {coord_put, N, W, Bucket, Stream, Data, Pid},
