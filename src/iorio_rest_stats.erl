@@ -28,7 +28,8 @@ init({ssl, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
 rest_init(Req, [{access, Access}]) ->
     Bucket = ?PERM_MAGIC_BUCKET,
-    {ok, Info} = ioriol_access:new_req([{bucket, Bucket}]),
+    Stream = ?PERM_VIEW_STATS,
+    {ok, Info} = ioriol_access:new_req([{bucket, Bucket}, {stream, Stream}]),
     {ok, Req1, Info1} = iorio_session:fill_session(Req, Access, Info),
     {ok, Req1, #state{access=Access, info=Info1}}.
 
@@ -40,7 +41,7 @@ content_types_provided(Req, State) ->
 is_authorized(Req, State=#state{access=Access, info=Info}) ->
     Action = ?PERM_ADMIN_USERS,
 
-    case ioriol_access:is_authorized_for_bucket(Access, Info, Action) of
+    case ioriol_access:is_authorized_for_stream(Access, Info, Action) of
         {ok, Info1} ->
             {true, Req, State#state{info=Info1}};
         {error, Reason} ->
