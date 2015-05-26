@@ -95,10 +95,13 @@ start(_StartType, _StartArgs) ->
     HttpEnabled = envd(http_enabled, true),
     ApiPort = envd(http_port, 8080),
     ApiAcceptors = envd(http_acceptors, 100),
+    CowboyOpts = [{env, [{dispatch, Dispatch}]},
+                  {onresponse, fun iorio_stats:cowboy_response_hook/4},
+                  {middlewares, [cowboy_router, iorio_stats, cowboy_handler]}],
+
     if HttpEnabled ->
             lager:info("http api enabled, starting"),
-           {ok, _} = cowboy:start_http(http, ApiAcceptors, [{port, ApiPort}],
-                                       [{env, [{dispatch, Dispatch}]}]);
+           {ok, _} = cowboy:start_http(http, ApiAcceptors, [{port, ApiPort}], CowboyOpts);
        true ->
            lager:info("http api disabled"),
            ok
@@ -121,8 +124,7 @@ start(_StartType, _StartArgs) ->
                          true -> [{cacertfile, SSLCACertPath}|BaseSSLOpts]
                       end,
 
-            {ok, _} = cowboy:start_https(https, ApiAcceptors, SSLOpts,
-                                         [{env, [{dispatch, Dispatch}]}]);
+            {ok, _} = cowboy:start_https(https, ApiAcceptors, SSLOpts, CowboyOpts);
         true ->
             lager:info("https api disabled"),
             ok
@@ -139,6 +141,8 @@ start(_StartType, _StartArgs) ->
            lager:warning("Some extension's Config failed to load. This may"
                          " cause unexpected behaviour on those extensions")
     end,
+
+    iorio_stats:init_metrics(),
 
     case iorio_sup:start_link() of
         {ok, Pid} ->
