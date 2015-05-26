@@ -3,6 +3,11 @@
 
 -export([auth_error/0, auth_success/0, listen_connect/1, listen_disconnect/1]).
 
+-export([core_ping/0, core_put/0, core_get/0,
+         core_subscribe/0, core_unsubscribe/0,
+         core_list_buckets/0, core_list_streams/0,
+         core_truncate/0]).
+
 -behaviour(cowboy_middleware).
 -export([execute/2]).
 
@@ -12,6 +17,15 @@
 -define(METRIC_LISTEN_ACTIVE, [iorio, listen, active, active]).
 -define(METRIC_HTTP_ACTIVE_REQS, [iorio, api, http, active_requests]).
 -define(METRIC_HTTP_REQ_TIME, [iorio, api, http, req_time]).
+
+-define(METRIC_CORE_PING, [iorio, core, ping]).
+-define(METRIC_CORE_PUT, [iorio, core, put]).
+-define(METRIC_CORE_GET, [iorio, core, get]).
+-define(METRIC_CORE_SUBSCRIBE, [iorio, core, subscribe]).
+-define(METRIC_CORE_UNSUBSCRIBE, [iorio, core, unsubscribe]).
+-define(METRIC_CORE_LIST_BUCKETS, [iorio, core, list, buckets]).
+-define(METRIC_CORE_LIST_STREAMS, [iorio, core, list, streams]).
+-define(METRIC_CORE_TRUNCATE, [iorio, core, truncate]).
 
 -define(ENDPOINTS, [<<"listen">>, <<"streams">>, <<"buckets">>, <<"access">>,
                     <<"sessions">>, <<"users">>, <<"stats">>, <<"ping">>,
@@ -30,7 +44,8 @@ all_stats() ->
  [{node, node_stats()},
   {riak_core, riak_core_stats()},
   {file, file_stats()},
-  {http, http_stats()}].
+  {http, http_stats()},
+  {core, core_stats()}].
 
 node_stats() ->
  [{Abs1, Inc1}] = recon:node_stats_list(1, 0),
@@ -49,21 +64,23 @@ riak_core_stats() ->
                   end,
     lists:map(KeyToString, Stats).
 
-auth_error() ->
-    exometer:update(?METRIC_AUTH_ERROR, 1).
+auth_error()    -> exometer:update(?METRIC_AUTH_ERROR, 1).
+auth_success() -> exometer:update(?METRIC_AUTH_SUCCESS, 1).
 
-auth_success() ->
-    exometer:update(?METRIC_AUTH_SUCCESS, 1).
+listen_connect(once) -> exometer:update(?METRIC_LISTEN_ONCE, 1);
+listen_connect(true) -> exometer:update(?METRIC_LISTEN_ACTIVE, 1).
 
-listen_connect(once) ->
-    exometer:update(?METRIC_LISTEN_ONCE, 1);
-listen_connect(true) ->
-    exometer:update(?METRIC_LISTEN_ACTIVE, 1).
+listen_disconnect(once) -> exometer:update(?METRIC_LISTEN_ONCE, -1);
+listen_disconnect(true) -> exometer:update(?METRIC_LISTEN_ACTIVE, -1).
 
-listen_disconnect(once) ->
-    exometer:update(?METRIC_LISTEN_ONCE, -1);
-listen_disconnect(true) ->
-    exometer:update(?METRIC_LISTEN_ACTIVE, -1).
+core_ping()         -> exometer:update(?METRIC_CORE_PING, 1).
+core_put()          -> exometer:update(?METRIC_CORE_PUT, 1).
+core_get()          -> exometer:update(?METRIC_CORE_GET, 1).
+core_subscribe()    -> exometer:update(?METRIC_CORE_SUBSCRIBE, 1).
+core_unsubscribe()  -> exometer:update(?METRIC_CORE_UNSUBSCRIBE, 1).
+core_list_buckets() -> exometer:update(?METRIC_CORE_LIST_BUCKETS, 1).
+core_list_streams() -> exometer:update(?METRIC_CORE_LIST_STREAMS, 1).
+core_truncate()     -> exometer:update(?METRIC_CORE_TRUNCATE, 1).
 
 endpoint_key(Type, EndPoint) ->
     [iorio, api, http, Type, EndPoint].
@@ -112,6 +129,17 @@ http_stats() ->
             {active, unwrap_metric_value(?METRIC_HTTP_ACTIVE_REQS)},
             {count, lists:map(fun get_endpoint_min_value/1, ?ENDPOINTS)}]}].
 
+core_stats() ->
+    [{ping, unwrap_metric_value(?METRIC_CORE_PING)},
+     {put, unwrap_metric_value(?METRIC_CORE_PUT)},
+     {get, unwrap_metric_value(?METRIC_CORE_GET)},
+     {subscribe, unwrap_metric_value(?METRIC_CORE_SUBSCRIBE)},
+     {unsubscribe, unwrap_metric_value(?METRIC_CORE_UNSUBSCRIBE)},
+     {list_buckets, unwrap_metric_value(?METRIC_CORE_LIST_BUCKETS)},
+     {list_streams, unwrap_metric_value(?METRIC_CORE_LIST_STREAMS)},
+     {truncate, unwrap_metric_value(?METRIC_CORE_TRUNCATE)}].
+    
+
 to_string(V) when is_atom(V) -> atom_to_list(V);
 to_string(V) when is_integer(V) -> integer_to_list(V).
 
@@ -125,7 +153,17 @@ init_metrics() ->
     exometer:new(?METRIC_HTTP_ACTIVE_REQS, counter, []),
 
     exometer:new(?METRIC_LISTEN_ONCE, counter, []),
-    exometer:new(?METRIC_LISTEN_ACTIVE, counter, []).
+    exometer:new(?METRIC_LISTEN_ACTIVE, counter, []),
+
+
+    exometer:new(?METRIC_CORE_PING, spiral, [{time_span, 60000}]),
+    exometer:new(?METRIC_CORE_PUT, spiral, [{time_span, 60000}]),
+    exometer:new(?METRIC_CORE_GET, spiral, [{time_span, 60000}]),
+    exometer:new(?METRIC_CORE_SUBSCRIBE, spiral, [{time_span, 60000}]),
+    exometer:new(?METRIC_CORE_UNSUBSCRIBE, spiral, [{time_span, 60000}]),
+    exometer:new(?METRIC_CORE_LIST_BUCKETS, spiral, [{time_span, 60000}]),
+    exometer:new(?METRIC_CORE_LIST_STREAMS, spiral, [{time_span, 60000}]),
+    exometer:new(?METRIC_CORE_TRUNCATE, spiral, [{time_span, 60000}]).
 
 cowboy_response_hook(Code, _Headers, _Body, Req) ->
     EndTs = now_fast(),

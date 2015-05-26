@@ -23,6 +23,7 @@ get_index_node(Bucket, Stream) ->
 
 %% @doc Pings a random vnode to make sure communication is functional
 ping() ->
+    iorio_stats:core_ping(),
     DocIdx = riak_core_util:chash_key({<<"ping">>, term_to_binary(now())}),
     PrefList = riak_core_apl:get_primary_apl(DocIdx, 1, iorio),
     [{IndexNode, _Type}] = PrefList,
@@ -32,6 +33,7 @@ put(Bucket, Stream, Data) ->
     put(Bucket, Stream, Data, ?DEFAULT_N, ?DEFAULT_W, ?DEFAULT_TIMEOUT_MS).
 
 put(Bucket, Stream, Data, N, W, Timeout) ->
+    iorio_stats:core_put(),
     IndexNode = get_index_node(Bucket, Stream),
     Pid = self(),
     Args = {coord_put, N, W, Bucket, Stream, Data, Pid},
@@ -55,6 +57,7 @@ get(Bucket, Stream, From) ->
     get(Bucket, Stream, From, 1).
 
 get(Bucket, Stream, From, Count) ->
+    iorio_stats:core_get(),
     IndexNode = get_index_node(Bucket, Stream),
     riak_core_vnode_master:sync_spawn_command(IndexNode,
                                               {get, Bucket, Stream, From, Count},
@@ -64,18 +67,21 @@ subscribe(Bucket, Stream, Pid) ->
     subscribe(Bucket, Stream, nil, Pid).
 
 subscribe(Bucket, Stream, FromSeqNum, Pid) ->
+    iorio_stats:core_subscribe(),
     IndexNode = get_index_node(Bucket, Stream),
     riak_core_vnode_master:sync_spawn_command(IndexNode,
                                               {subscribe, Bucket, Stream, FromSeqNum, Pid},
                                               iorio_vnode_master).
 
 unsubscribe(Bucket, Stream, Pid) ->
+    iorio_stats:core_unsubscribe(),
     IndexNode = get_index_node(Bucket, Stream),
     riak_core_vnode_master:sync_spawn_command(IndexNode,
                                               {unsubscribe, Bucket, Stream, Pid},
                                               iorio_vnode_master).
 
 list() ->
+    iorio_stats:core_list_buckets(),
     Timeout = 5000,
     iorio_coverage_fsm:start({list_buckets}, Timeout).
 
@@ -83,6 +89,7 @@ list(Bucket) ->
     list(Bucket, ?DEFAULT_TIMEOUT_MS).
 
 list(Bucket, Timeout) ->
+    iorio_stats:core_list_streams(),
     iorio_coverage_fsm:start({list_streams, Bucket}, Timeout).
 
 bucket_size(Bucket) ->
@@ -119,6 +126,7 @@ bucket_size(Bucket, Timeout) ->
     {TotalSize, StreamSizes}.
 
 truncate_percentage(Bucket, Percentage) ->
+    iorio_stats:core_truncate(),
     Timeout = ?DEFAULT_TIMEOUT_MS,
     lager:info("truncating bucket ~s to ~p%", [Bucket, Percentage * 100]),
     Result = iorio_coverage_fsm:start({truncate_percentage, Bucket, Percentage},

@@ -76,7 +76,7 @@ start(_StartType, _StartArgs) ->
                 [{access, AccessLogic}, {algorithm, ApiAlgorithm},
                  {session_duration_secs, SessionDurationSecs}]},
                {"/users/", iorio_rest_user, [{access, AccessLogic}]},
-               {"/stats/", iorio_rest_stats, [{access, AccessLogic}]},
+               {"/stats/all", iorio_rest_stats, [{access, AccessLogic}]},
                {"/ping", iorio_rest_ping, []},
 
                {"/x/:handler/[...]", iorio_rest_custom, [{access, AccessLogic}]}
@@ -97,7 +97,7 @@ start(_StartType, _StartArgs) ->
     ApiAcceptors = envd(http_acceptors, 100),
     CowboyOpts = [{env, [{dispatch, Dispatch}]},
                   {onresponse, fun iorio_stats:cowboy_response_hook/4},
-                  {middlewares, [cowboy_router, iorio_stats, cowboy_handler]}],
+                  {middlewares, [iorio_stats, cowboy_router, cowboy_handler]}],
 
     if HttpEnabled ->
             lager:info("http api enabled, starting"),
