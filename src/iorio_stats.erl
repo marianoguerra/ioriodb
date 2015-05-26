@@ -1,13 +1,15 @@
 -module(iorio_stats).
 -export([all_stats/0, cowboy_response_hook/4, init_metrics/0]).
 
--export([auth_error/0, auth_success/0]).
+-export([auth_error/0, auth_success/0, listen_connect/1, listen_disconnect/1]).
 
 -behaviour(cowboy_middleware).
 -export([execute/2]).
 
 -define(METRIC_AUTH_ERROR, [iorio, auth, error]).
 -define(METRIC_AUTH_SUCCESS, [iorio, auth, success]).
+-define(METRIC_LISTEN_ONCE, [iorio, listen, active, once]).
+-define(METRIC_LISTEN_ACTIVE, [iorio, listen, active, active]).
 -define(METRIC_HTTP_ACTIVE_REQS, [iorio, api, http, active_requests]).
 -define(METRIC_HTTP_REQ_TIME, [iorio, api, http, req_time]).
 
@@ -53,6 +55,16 @@ auth_error() ->
 auth_success() ->
     exometer:update(?METRIC_AUTH_SUCCESS, 1).
 
+listen_connect(once) ->
+    exometer:update(?METRIC_LISTEN_ONCE, 1);
+listen_connect(true) ->
+    exometer:update(?METRIC_LISTEN_ACTIVE, 1).
+
+listen_disconnect(once) ->
+    exometer:update(?METRIC_LISTEN_ONCE, -1);
+listen_disconnect(true) ->
+    exometer:update(?METRIC_LISTEN_ACTIVE, -1).
+
 endpoint_key(Type, EndPoint) ->
     [iorio, api, http, Type, EndPoint].
 
@@ -91,11 +103,13 @@ create_resp_code_metric(Code) ->
     exometer:new(resp_code_key(Code), spiral, [{time_span, 60000}]).
 
 http_stats() ->
-    [{active_reqs, unwrap_metric_value(?METRIC_HTTP_ACTIVE_REQS)},
+    [{listen, [{active, unwrap_metric_value(?METRIC_LISTEN_ACTIVE)},
+               {once, unwrap_metric_value(?METRIC_LISTEN_ONCE)}]},
      {auth, [{error, unwrap_metric_value(?METRIC_AUTH_ERROR)},
              {success, unwrap_metric_value(?METRIC_AUTH_SUCCESS)}]},
      {resp, [{by_code, lists:map(fun get_resp_code_value/1, ?STATUS_CODES)}]},
      {req, [{time, lists:map(fun get_endpoint_time_value/1, ?ENDPOINTS)},
+            {active, unwrap_metric_value(?METRIC_HTTP_ACTIVE_REQS)},
             {count, lists:map(fun get_endpoint_min_value/1, ?ENDPOINTS)}]}].
 
 to_string(V) when is_atom(V) -> atom_to_list(V);
@@ -108,7 +122,10 @@ init_metrics() ->
 
     exometer:new(?METRIC_AUTH_ERROR, spiral, [{time_span, 60000}]),
     exometer:new(?METRIC_AUTH_SUCCESS, spiral, [{time_span, 60000}]),
-    exometer:new(?METRIC_HTTP_ACTIVE_REQS, counter, []).
+    exometer:new(?METRIC_HTTP_ACTIVE_REQS, counter, []),
+
+    exometer:new(?METRIC_LISTEN_ONCE, counter, []),
+    exometer:new(?METRIC_LISTEN_ACTIVE, counter, []).
 
 cowboy_response_hook(Code, _Headers, _Body, Req) ->
     EndTs = now_fast(),

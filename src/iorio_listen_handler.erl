@@ -7,7 +7,7 @@
 -include_lib("sblob/include/sblob.hrl").
 -include("include/iorio.hrl").
 
--record(state, {channels=[], iorio, token, info, access}).
+-record(state, {channels=[], iorio, token, info, access, active}).
 
 init(_Transport, Req, [_, {access, Access}|_]=Opts, Active) ->
     Iorio = proplists:get_value(iorio, Opts, iorio),
@@ -19,8 +19,9 @@ init(_Transport, Req, [_, {access, Access}|_]=Opts, Active) ->
     {ok, Info} = ioriol_access:new_req([]),
     case iorio_session:fill_session_from_token(Access, Info, Token) of
         {ok, Info1} ->
+            iorio_stats:listen_connect(Active),
             State = #state{channels=[], iorio=Iorio, access=Access,
-                           token=Token, info=Info1},
+                           token=Token, info=Info1, active=Active},
 
             State1 = subscribe_all(Subs, State),
             Req3 = if Active == once -> set_json_response(Req3);
@@ -62,12 +63,13 @@ info(Entries, Req, State) when is_list(Entries) ->
     lager:debug("entries received~n"),
     reply_entries_json(Entries, Req, State).
 
-terminate(_Req, #state{channels=Channels, iorio=Iorio}) ->
+terminate(_Req, #state{channels=Channels, iorio=Iorio, active=Active}) ->
     Pid = self(),
     lists:foreach(fun ({Bucket, Stream}) ->
                           lager:debug("unsubscribing from ~s/~s~n", [Bucket, Stream]),
                           Iorio:unsubscribe(Bucket, Stream, Pid)
                   end, Channels),
+    iorio_stats:listen_connect(Active),
     ok.
 
 % private
