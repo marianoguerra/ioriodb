@@ -24,10 +24,10 @@ init(_Transport, Req, [_, {access, Access}|_]=Opts, Active) ->
                            token=Token, info=Info1, active=Active},
 
             State1 = subscribe_all(Subs, State),
-            Req3 = if Active == once -> set_json_response(Req3);
+            Req4 = if Active == once -> set_json_response(Req3);
                       true -> Req3
                    end,
-            {ok, Req3, State1};
+            {ok, Req4, State1};
         {error, Reason} ->
             lager:warning("shutdown listen ~p", [Reason]),
             {shutdown, Req3, #state{}}
