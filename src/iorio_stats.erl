@@ -61,8 +61,8 @@ file_stats() ->
 riak_core_stats() ->
     Stats = riak_core_stat:get_stats(),
     KeyToString = fun ({K, V}) ->
-                          StrKeyTokens = lists:map(fun to_string/1, K),
-                          StrKey = string:join(StrKeyTokens, "."),
+                          StrKeyTokens = lists:map(fun to_string/1, tl(tl(K))),
+                          StrKey = string:join(StrKeyTokens, "_"),
                           BinKey = list_to_binary(StrKey),
                           {BinKey, V}
                   end,
