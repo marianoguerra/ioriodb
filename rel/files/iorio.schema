@@ -156,6 +156,34 @@
   {default, "50MB"}
 ]}.
 
+%% @doc interval in seconds to send metrics
+{mapping, "metrics.interval_s", "iorio.metrics_interval_ms", [
+  {datatype, {duration, ms}},
+  {default, "60s"}
+]}.
+
+%% @doc bucket to send metrics to
+{mapping, "metrics.bucket", "iorio.metrics_bucket", [
+  {default, "$sys"}
+]}.
+
+{translation, "iorio.metrics_bucket",
+ fun(Conf) ->
+         Setting = cuttlefish:conf_get("metrics.bucket", Conf),
+         list_to_binary(Setting)
+ end}.
+
+%% @doc stream to send metrics to
+{mapping, "metrics.stream", "iorio.metrics_stream", [
+  {default, "metrics"}
+]}.
+
+{translation, "iorio.metrics_stream",
+ fun(Conf) ->
+         Setting = cuttlefish:conf_get("metrics.stream", Conf),
+         list_to_binary(Setting)
+ end}.
+
 %% @doc backend to use for authentication
 {mapping, "auth.backend.module", "iorio.auth_mod", [
   {datatype, {enum, [ldap, riak_core]}},

@@ -143,6 +143,11 @@ start(_StartType, _StartArgs) ->
     end,
 
     iorio_stats:init_metrics(),
+    MetricsBucket = envd(metrics_bucket, <<"$sys">>),
+    MetricsStream = envd(metrics_stream, <<"metrics">>),
+    MetricsInterval = envd(metrics_interval_ms, 60000),
+    {ok, _Tref} = iorio_stats:start_metric_sender(MetricsBucket, MetricsStream,
+                                                  MetricsInterval),
 
     case iorio_sup:start_link() of
         {ok, Pid} ->
@@ -175,10 +180,11 @@ create_user(Access, Username, Password, Groups, OnUserCreated) ->
 
 setup_initial_permissions(AccessLogic, AdminUsername) ->
     PublicReadBucket = <<"public">>,
-    R1 = ioriol_access:grant(AccessLogic, <<"*">>, PublicReadBucket, any,
-                             "iorio.get"),
-    lager:info("set read permissions to ~s to all: ~p",
-               [PublicReadBucket, R1]),
+    SysBucket = <<"$sys">>,
+    R0 = ioriol_access:grant(AccessLogic, <<"*">>, SysBucket, any, "iorio.get"),
+    lager:info("set read permissions to ~s to all: ~p", [SysBucket, R0]),
+    R1 = ioriol_access:grant(AccessLogic, <<"*">>, PublicReadBucket, any, "iorio.get"),
+    lager:info("set read permissions to ~s to all: ~p", [PublicReadBucket, R1]),
     R2 = ioriol_access:grant(AccessLogic, list_to_binary(AdminUsername),
                              PublicReadBucket, any, "iorio.put"),
     lager:info("set write permissions to ~s to ~p: ~p",

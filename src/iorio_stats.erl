@@ -1,5 +1,6 @@
 -module(iorio_stats).
 -export([all_stats/0, cowboy_response_hook/4, init_metrics/0]).
+-export([start_metric_sender/3, send_metrics/2]).
 
 -export([auth_error/0, auth_success/0, listen_connect/1, listen_disconnect/1]).
 
@@ -172,6 +173,20 @@ init_metrics() ->
     exometer:new(?METRIC_CORE_TRUNCATE, spiral, [{time_span, 60000}]),
 
     exometer:new(?METRIC_CORE_MSG_SIZE, histogram, []).
+
+send_metrics(Bucket, Stream) ->
+    Metrics = all_stats(),
+    Node = erlang:node(),
+    FullMetrics = [{node, Node}, {metrics, Metrics}],
+    FullMetricsJson = iorio_json:encode(FullMetrics),
+    case iorio:put(Bucket, Stream, FullMetricsJson) of
+        {ok, _Entry} -> ok;
+        Other ->
+            lager:error("Sending Metrics: ~p", [Other])
+    end.
+
+start_metric_sender(Bucket, Stream, IntervalMs) ->
+    timer:apply_interval(IntervalMs, ?MODULE, send_metrics, [Bucket, Stream]).
 
 cowboy_response_hook(Code, _Headers, _Body, Req) ->
     EndTs = now_fast(),
