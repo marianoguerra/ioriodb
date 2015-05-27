@@ -17,6 +17,7 @@
 -define(METRIC_AUTH_SUCCESS, [iorio, auth, success]).
 -define(METRIC_LISTEN_ONCE, [iorio, listen, active, once]).
 -define(METRIC_LISTEN_ACTIVE, [iorio, listen, active, active]).
+-define(METRIC_LISTEN_FALSE, [iorio, listen, active, not_active]).
 -define(METRIC_HTTP_ACTIVE_REQS, [iorio, api, http, active_requests]).
 -define(METRIC_HTTP_REQ_TIME, [iorio, api, http, req_time]).
 
@@ -71,11 +72,13 @@ riak_core_stats() ->
 auth_error()    -> exometer:update(?METRIC_AUTH_ERROR, 1).
 auth_success() -> exometer:update(?METRIC_AUTH_SUCCESS, 1).
 
-listen_connect(once) -> exometer:update(?METRIC_LISTEN_ONCE, 1);
-listen_connect(true) -> exometer:update(?METRIC_LISTEN_ACTIVE, 1).
+listen_connect(once)  -> exometer:update(?METRIC_LISTEN_ONCE, 1);
+listen_connect(true)  -> exometer:update(?METRIC_LISTEN_ACTIVE, 1);
+listen_connect(false) -> exometer:update(?METRIC_LISTEN_FALSE, 1).
 
 listen_disconnect(once) -> exometer:update(?METRIC_LISTEN_ONCE, -1);
-listen_disconnect(true) -> exometer:update(?METRIC_LISTEN_ACTIVE, -1).
+listen_disconnect(true) -> exometer:update(?METRIC_LISTEN_ACTIVE, -1);
+listen_disconnect(false) -> exometer:update(?METRIC_LISTEN_FALSE, -1).
 
 core_ping()         -> exometer:update(?METRIC_CORE_PING, 1).
 core_put()          -> exometer:update(?METRIC_CORE_PUT, 1).
@@ -127,6 +130,7 @@ create_resp_code_metric(Code) ->
 
 http_stats() ->
     [{listen, [{active, unwrap_metric_value(?METRIC_LISTEN_ACTIVE)},
+               {not_active, unwrap_metric_value(?METRIC_LISTEN_FALSE)},
                {once, unwrap_metric_value(?METRIC_LISTEN_ONCE)}]},
      {auth, [{error, unwrap_metric_value(?METRIC_AUTH_ERROR)},
              {success, unwrap_metric_value(?METRIC_AUTH_SUCCESS)}]},
@@ -145,7 +149,6 @@ core_stats() ->
      {list_streams, unwrap_metric_value(?METRIC_CORE_LIST_STREAMS)},
      {truncate, unwrap_metric_value(?METRIC_CORE_TRUNCATE)},
      {msg_size, unwrap_metric_value(?METRIC_CORE_MSG_SIZE)}].
-    
 
 to_string(V) when is_atom(V) -> atom_to_list(V);
 to_string(V) when is_integer(V) -> integer_to_list(V).
@@ -161,7 +164,7 @@ init_metrics() ->
 
     exometer:new(?METRIC_LISTEN_ONCE, counter, []),
     exometer:new(?METRIC_LISTEN_ACTIVE, counter, []),
-
+    exometer:new(?METRIC_LISTEN_FALSE, counter, []),
 
     exometer:new(?METRIC_CORE_PING, spiral, [{time_span, 60000}]),
     exometer:new(?METRIC_CORE_PUT, spiral, [{time_span, 60000}]),
