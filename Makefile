@@ -10,7 +10,6 @@ deps:
 	$(REBAR) get-deps
 
 refetchdeps: distclean deps
-	./tools/fix_deps.sh
 
 clean:
 	$(REBAR) clean
