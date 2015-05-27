@@ -76,7 +76,6 @@ start(_StartType, _StartArgs) ->
                 [{access, AccessLogic}, {algorithm, ApiAlgorithm},
                  {session_duration_secs, SessionDurationSecs}]},
                {"/users/", iorio_rest_user, [{access, AccessLogic}]},
-               {"/stats/all", iorio_rest_stats, [{access, AccessLogic}]},
                {"/ping", iorio_rest_ping, []},
 
                {"/x/:handler/[...]", iorio_rest_custom, [{access, AccessLogic}]}
