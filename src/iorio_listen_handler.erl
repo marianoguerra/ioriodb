@@ -69,7 +69,7 @@ terminate(_Req, #state{channels=Channels, iorio=Iorio, active=Active}) ->
                           lager:debug("unsubscribing from ~s/~s~n", [Bucket, Stream]),
                           Iorio:unsubscribe(Bucket, Stream, Pid)
                   end, Channels),
-    iorio_stats:listen_connect(Active),
+    iorio_stats:listen_disconnect(Active),
     ok.
 
 % private
