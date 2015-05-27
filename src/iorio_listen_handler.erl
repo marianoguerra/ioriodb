@@ -11,28 +11,13 @@
 
 init(_Transport, Req, [_, {access, Access}|_]=Opts, Active) ->
     Iorio = proplists:get_value(iorio, Opts, iorio),
-    {Token, Req1} = cowboy_req:qs_val(<<"jwt">>, Req, nil),
-    {Params, Req2} = cowboy_req:qs_vals(Req1),
-    Req3 = cowboy_req:compact(Req2),
-    RawSubs = proplists:get_all_values(<<"s">>, Params),
-    Subs = iorio_parse:subscriptions(RawSubs),
-    {ok, Info} = ioriol_access:new_req([]),
-    case iorio_session:fill_session_from_token(Access, Info, Token) of
-        {ok, Info1} ->
-            iorio_stats:listen_connect(Active),
-            State = #state{channels=[], iorio=Iorio, access=Access,
-                           token=Token, info=Info1, active=Active},
-
-            State1 = subscribe_all(Subs, State),
-            Req4 = if Active == once -> set_json_response(Req3);
-                      true -> Req3
-                   end,
-            {ok, Req4, State1};
-        {error, Reason} ->
-            lager:warning("shutdown listen ~p", [Reason]),
-            {shutdown, Req3, #state{}}
+    {Method, Req1} = cowboy_req:method(Req),
+    case Method of
+        <<"GET">> -> do_init(Req1, Access, Iorio, Active);
+        Other ->
+            lager:warning("got ~p request on listen, closing connection", [Other]),
+            {shutdown, Req1, #state{}}
     end.
-
 
 stream(Data, Req, State) ->
     lager:debug("msg received ~p~n", [Data]),
@@ -63,6 +48,8 @@ info(Entries, Req, State) when is_list(Entries) ->
     lager:debug("entries received~n"),
     reply_entries_json(Entries, Req, State).
 
+% in case someone sends some weird request and we do a shutdown
+terminate(_Req, #state{active=undefined}) -> ok;
 terminate(_Req, #state{channels=Channels, iorio=Iorio, active=Active}) ->
     Pid = self(),
     lists:foreach(fun ({Bucket, Stream}) ->
@@ -195,3 +182,26 @@ encode_error(Reason, Id) ->
 
 set_json_response(Req) ->
     cowboy_req:set_resp_header(<<"Content-Type">>, <<"application/json">>, Req).
+
+do_init(Req, Access, Iorio, Active) ->
+    {Token, Req1} = cowboy_req:qs_val(<<"jwt">>, Req, nil),
+    {Params, Req2} = cowboy_req:qs_vals(Req1),
+    Req3 = cowboy_req:compact(Req2),
+    RawSubs = proplists:get_all_values(<<"s">>, Params),
+    Subs = iorio_parse:subscriptions(RawSubs),
+    {ok, Info} = ioriol_access:new_req([]),
+    case iorio_session:fill_session_from_token(Access, Info, Token) of
+        {ok, Info1} ->
+            iorio_stats:listen_connect(Active),
+            State = #state{channels=[], iorio=Iorio, access=Access,
+                           token=Token, info=Info1, active=Active},
+
+            State1 = subscribe_all(Subs, State),
+            Req4 = if Active == once -> set_json_response(Req3);
+                      true -> Req3
+                   end,
+            {ok, Req4, State1};
+        {error, Reason} ->
+            lager:warning("shutdown listen ~p", [Reason]),
+            {shutdown, Req3, #state{}}
+    end.
