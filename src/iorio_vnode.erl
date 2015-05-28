@@ -47,26 +47,19 @@ handle_command({put, ReqId, BucketName, Stream, Data}, _Sender, State) ->
 handle_command({coord_put_conditionally, N, W, Bucket, Stream, Data, LastSeqNum, Pid},
                _Sender, State) ->
     Writer = iorio_anode:writer(State),
-    ReqID = iorio_util:reqid(),
-    Task = fun () ->
-                   iorio_write_fsm:write_conditionally(N, W, Bucket, Stream,
-                                                       Data, LastSeqNum,
-                                                       Writer, ReqID),
-
-                   receive {ReqID, _Val}=Result -> Pid ! Result end
-           end,
-    Writer ! Task,
-    {reply, ReqID, State};
+    ReqId = iorio_util:reqid(),
+    iorio_vnode_writer:reply_to(Writer, Pid, ReqId,
+                                iorio_write_fsm, write_conditionally,
+                                [N, W, Bucket, Stream, Data, LastSeqNum,
+                                 Writer, ReqId]),
+    {reply, ReqId, State};
 
 handle_command({coord_put, N, W, Bucket, Stream, Data, Pid}, _Sender, State) ->
     Writer = iorio_anode:writer(State),
-    ReqID = iorio_util:reqid(),
-    Task = fun () ->
-                   iorio_write_fsm:write(N, W, Bucket, Stream, Data, Writer, ReqID),
-                   receive {ReqID, _Val}=Result -> Pid ! Result end
-           end,
-    Writer ! Task,
-    {reply, ReqID, State};
+    ReqId = iorio_util:reqid(),
+    iorio_vnode_writer:reply_to(Writer, Pid, ReqId, iorio_write_fsm, write,
+                                [N, W, Bucket, Stream, Data, Writer, ReqId]),
+    {reply, ReqId, State};
 
 handle_command({put_conditionally, ReqId, BucketName, Stream, Data, LastSeqNum},
                _Sender, State) ->
