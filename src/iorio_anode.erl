@@ -5,7 +5,7 @@
 
 -export([writer/1, partition/1, is_empty/1, base_path/0, path/1,
         free_resources/1, have_bucket/2, foldl_gblobs/3, get_bucket/2,
-        maybe_evict/2, remove_channel/2]).
+        maybe_evict/2, remove_channel/2, task_queue_runner/0]).
 
 -record(state, {partition,
                 path,
@@ -31,7 +31,7 @@ new(Opts) ->
     {ok, ChannelsSup} = smc_channels_sup:start_link(),
 
     % TODO: use a real process here and have a supervisor
-    WriterPid = spawn(fun task_queue_runner/0),
+    WriterPid = spawn(?MODULE, task_queue_runner, []),
 
     % TODO: calculate based on number of buckets
     BucketEvictTimeInterval = application:get_env(iorio, bucket_evict_time_ms, 60000),
@@ -207,6 +207,8 @@ task_queue_runner() ->
                 catch T:E -> lager:warning("error running task ~p ~p", [T, E])
                 after task_queue_runner()
                 end
+    after 5000 ->
+              proc_lib:hibernate(?MODULE, task_queue_runner, [])
     end.
 
 list_dir(Path) ->
