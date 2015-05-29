@@ -14,6 +14,11 @@
 %% OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 %% NOTE: this is a copy of cowboy_static.erl with minimal modifications
+%% to make dir without path redirect we need to make the REST state machine
+%% reach the moved_temporarily callback, for that we need to return false on
+%% resource_exists and true on previously_existed, also we need to return
+%% false in forbidden when it's a dir without trailing slash
+%% http://ninenines.eu/docs/en/cowboy/HEAD/guide/rest_flowcharts/
 
 -module(iorio_cowboy_static).
 
@@ -25,6 +30,8 @@
 -export([resource_exists/2]).
 -export([last_modified/2]).
 -export([generate_etag/2]).
+-export([moved_temporarily/2]).
+-export([previously_existed/2]).
 -export([get_file/2]).
 
 -ignore_xref([init/3, rest_init/2, malformed_request/2, forbidden/2,
@@ -123,11 +130,12 @@ fullpath([<<"..">>|Tail], [_|Acc]) ->
 fullpath([Segment|Tail], Acc) ->
 	fullpath(Tail, [Segment|Acc]).
 
-rest_init_info(Req, Path, Extra) ->
+rest_init_info(Req0, Path, Extra) ->
 	Info = file:read_file_info(Path, [{time, universal}]),
+    {HasTrailingSlash, _ReqPath, Req} = has_trailing_slash(Req0),
 
-    case Info of
-        {ok, #file_info{type=directory}} ->
+    case {HasTrailingSlash, Info} of
+        {true, {ok, #file_info{type=directory}}} ->
             DirIndexPath = filename:join(Path, "index.html"),
             case file:read_file_info(DirIndexPath) of
                 {ok, #file_info{type=regular}}=DirIndexInfo ->
@@ -138,6 +146,25 @@ rest_init_info(Req, Path, Extra) ->
         _ ->
             {ok, Req, {Path, Info, Extra}}
     end.
+
+has_trailing_slash(Req0) ->
+    {ReqPathBin, Req} = cowboy_req:path(Req0),
+    ReqPath = binary_to_list(ReqPathBin),
+    LastChar = lists:last(ReqPath),
+    if LastChar == $/-> {true, ReqPath, Req};
+       true -> {false, ReqPath, Req}
+    end.
+
+moved_temporarily(Req0, State={_, {ok, #file_info{type=directory}}, _}) ->
+    {HasTrailingSlash, ReqPath, Req} = has_trailing_slash(Req0),
+
+    if HasTrailingSlash ->
+           {false, Req, State};
+       true ->
+           {{true, list_to_binary(ReqPath ++ [$/])}, Req, State}
+    end;
+moved_temporarily(Req, State) ->
+    {false, Req, State}.
 
 -ifdef(TEST).
 fullpath_test_() ->
@@ -233,12 +260,19 @@ malformed_request(Req, State) ->
 
 %% Directories, files that can't be accessed at all and
 %% files with no read flag are forbidden.
+%% Directories that have no trailing slash aren't forbidden since later
+%% will be redirected to the same path with a trailing slash
 
 -spec forbidden(Req, State)
 	-> {boolean(), Req, State}
 	when State::state().
-forbidden(Req, State={_, {ok, #file_info{type=directory}}, _}) ->
-	{true, Req, State};
+forbidden(Req0, State={_, {ok, #file_info{type=directory}}, _}) ->
+    {HasTrailingSlash, _ReqPath, Req} = has_trailing_slash(Req0),
+    if HasTrailingSlash ->
+           {true, Req, State};
+       true ->
+           {false, Req, State}
+    end;
 forbidden(Req, State={_, {error, eacces}, _}) ->
 	{true, Req, State};
 forbidden(Req, State={_, {ok, #file_info{access=Access}}, _})
@@ -261,6 +295,16 @@ content_types_provided(Req, State={Path, _, Extra}) ->
 		{mimetypes, Type} ->
 			{[{Type, get_file}], Req, State}
 	end.
+
+previously_existed(Req0, State={_, {ok, #file_info{type=directory}}, _}) ->
+    {HasTrailingSlash, _ReqPath, Req} = has_trailing_slash(Req0),
+    if HasTrailingSlash ->
+           {false, Req, State};
+       true ->
+           {true, Req, State}
+    end;
+previously_existed(Req, State) ->
+	{false, Req, State}.
 
 %% Assume the resource doesn't exist if it's not a regular file.
 
