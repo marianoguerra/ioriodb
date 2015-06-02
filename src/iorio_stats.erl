@@ -197,7 +197,8 @@ cowboy_response_hook(Code, _Headers, _Body, Req) ->
     {Path, _Req1} = cowboy_req:path(Req),
     EndPoint = case binary:split(Path, <<"/">>, [global]) of
                    [<<>>, EndPoint0|_] -> EndPoint0;
-                   [<<>>] -> <<"">>
+                   [<<>>] -> <<"">>;
+                   [EndPoint0] -> EndPoint0
                end,
     {_Method, _Req2} = cowboy_req:method(Req),
     {StartTs, _Req3} = cowboy_req:meta(iorio_req_start, Req),
