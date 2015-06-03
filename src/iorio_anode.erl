@@ -105,18 +105,23 @@ subscribe(State=#state{partition=Partition}, BucketName, Stream, FromSeqNum, Pid
 
 unsubscribe(State=#state{partition=Partition}, BucketName, Stream, Pid) ->
     lager:debug("unsubscribe ~s ~s at ~p", [BucketName, Stream, Partition]),
-    {NewState, Channel} = get_channel(State, BucketName, Stream),
-    check_channel(Channel),
+    case get_existing_channel(State, BucketName, Stream) of
+        {some, Channel} ->
+            check_channel(Channel),
 
-    try
-        % TODO: don't create it if it doesn't exist
-        Result = smc_hist_channel:unsubscribe(Channel, Pid),
-        {Result, NewState}
-    catch T:E ->
-              lager:error("Error unsubscribing to channel ~p/~p ~p ~p",
-                          [BucketName, Stream, T, error_info(E),
-                           erlang:is_process_alive(Channel)]),
-              {error, NewState}
+            try
+                Result = smc_hist_channel:unsubscribe(Channel, Pid),
+                {Result, State}
+            catch T:E ->
+                      lager:error("Error unsubscribing to channel ~p/~p ~p ~p",
+                                  [BucketName, Stream, T, error_info(E),
+                                   erlang:is_process_alive(Channel)]),
+                      {{error, {T, E}}, State}
+            end;
+        none ->
+            lager:warning("unsubscribing for inexistent channel ~p/~p",
+                          [BucketName, Stream]),
+            {{error, {no_channel, {BucketName, Stream}}}, State}
     end.
 
 writer(#state{writer=Writer}) -> Writer.
@@ -215,6 +220,13 @@ list_gblobs_for_bucket(#state{path=Path}, BucketName) ->
     list_dir(BucketPath).
 
 get_seqnum({entry, _Bucket, _Stream, #sblob_entry{seqnum=SeqNum}}) -> SeqNum.
+
+get_existing_channel(State=#state{channels=Channels, channels_sup=ChannelsSup}, BucketName, Key) ->
+    ChannelKey = {BucketName, Key},
+    case sblob_preg:get(Channels, ChannelKey) of
+        none -> none;
+        {value, Channel} -> {some, Channel}
+    end.
 
 get_channel(State=#state{channels=Channels, channels_sup=ChannelsSup}, BucketName, Key) ->
     ChannelKey = {BucketName, Key},
