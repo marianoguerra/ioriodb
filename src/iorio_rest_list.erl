@@ -8,6 +8,7 @@
          rest_terminate/2,
          allowed_methods/2,
          content_types_provided/2,
+         options/2,
          is_authorized/2,
          to_json/2]).
 
@@ -15,21 +16,26 @@
          rest_terminate/2,
          allowed_methods/2,
          content_types_provided/2,
+         options/2,
          is_authorized/2,
          to_json/2]).
 
--record(state, {access, info, bucket}).
+-record(state, {access, info, bucket, cors}).
 -include("include/iorio.hrl").
 
 init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest};
 init({ssl, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
-rest_init(Req, [{access, Access}]) ->
+rest_init(Req, [{access, Access}, {cors, Cors}]) ->
     {Bucket, Req1} = cowboy_req:binding(bucket, Req, any),
     {ok, Info} = ioriol_access:new_req([{bucket, Bucket}]),
-	{ok, Req1, #state{access=Access, info=Info, bucket=Bucket}}.
+	{ok, Req1, #state{access=Access, info=Info, bucket=Bucket, cors=Cors}}.
 
-allowed_methods(Req, State) -> {[<<"GET">>], Req, State}.
+options(Req, State=#state{cors=Cors}) ->
+    Req1 = iorio_cors:handle_options(Req, list, Cors),
+    {ok, Req1, State}.
+
+allowed_methods(Req, State) -> {[<<"OPTIONS">>, <<"GET">>], Req, State}.
 
 content_types_provided(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, to_json}], Req, State}.

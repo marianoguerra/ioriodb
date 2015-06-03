@@ -1,4 +1,5 @@
 -module(iorio_rest_custom).
+% XXX: for now we don't enable cors on custom handlers until they are stabilized
 
 -export([init/3, terminate/3]).
 
@@ -37,7 +38,7 @@
 
 -include("include/iorio.hrl").
 
--record(state, {access, handler_name, handler_state, handler}).
+-record(state, {access, handler_name, handler_state, handler, cors}).
 
 behaviour_info(callbacks) ->
     [{init_req, 2},
@@ -56,9 +57,9 @@ behaviour_info(_Other) ->
 init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest};
 init({ssl, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
-rest_init(Req, [{access, Access}]) ->
+rest_init(Req, [{access, Access}, {cors, Cors}]) ->
     {HandlerName, Req1} = cowboy_req:binding(handler, Req),
-	{ok, Req1, #state{access=Access, handler_name=HandlerName}}.
+	{ok, Req1, #state{access=Access, handler_name=HandlerName, cors=Cors}}.
 
 known_methods(Req, State=#state{handler_name=HandlerName, access=Access}) ->
     case iorio_x:name_to_module(HandlerName) of

@@ -9,6 +9,7 @@
 
 -record(state, {channels=[], iorio, token, info, access, active}).
 
+% TODO: handle CORS in COMET on bullet?
 init(_Transport, Req, [_, {access, Access}|_]=Opts, Active) ->
     Iorio = proplists:get_value(iorio, Opts, iorio),
     {Method, Req1} = cowboy_req:method(Req),

@@ -18,3 +18,9 @@
 -define(ADMIN_GROUP, "g-admin").
 
 -define(ALL_GROUPS, ["g-authenticated", "g-admin"]).
+
+-record(iorio_cors, {origins=[] :: list(binary()),
+                     headers=[] :: list(binary()),
+                     max_age_secs = <<"60">> :: binary(),
+                     csv_headers = <<"">> :: binary(),
+                     enabled=false :: boolean()}).

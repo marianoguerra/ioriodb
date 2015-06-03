@@ -11,6 +11,7 @@
          resource_exists/2,
          content_types_accepted/2,
          content_types_provided/2,
+         options/2,
          to_json/2,
          from_json/2]).
 
@@ -21,17 +22,18 @@
          resource_exists/2,
          content_types_accepted/2,
          content_types_provided/2,
+         options/2,
          to_json/2,
          from_json/2]).
 
 -include("include/iorio.hrl").
 
--record(state, {access, info, method, body_set=false, username, password}).
+-record(state, {access, info, method, body_set=false, username, password, cors}).
 
 init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest};
 init({ssl, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
-rest_init(Req, [{access, Access}]) ->
+rest_init(Req, [{access, Access}, {cors, Cors}]) ->
     Bucket = ?PERM_MAGIC_BUCKET,
     {ok, Info} = ioriol_access:new_req([{bucket, Bucket}]),
     {Method, Req1} = cowboy_req:method(Req),
@@ -40,9 +42,13 @@ rest_init(Req, [{access, Access}]) ->
                   <<"GET">> -> get;
                   <<"PUT">> -> put
               end,
-	{ok, Req1, #state{access=Access, info=Info, method=AMethod}}.
+	{ok, Req1, #state{access=Access, info=Info, method=AMethod, cors=Cors}}.
 
-allowed_methods(Req, State) -> {[<<"POST">>, <<"PUT">>, <<"GET">>], Req, State}.
+options(Req, State=#state{cors=Cors}) ->
+    Req1 = iorio_cors:handle_options(Req, user, Cors),
+    {ok, Req1, State}.
+
+allowed_methods(Req, State) -> {[<<"OPTIONS">>, <<"POST">>, <<"PUT">>, <<"GET">>], Req, State}.
 
 resource_exists(Req, State=#state{method=post}) ->
     {false, Req, State};

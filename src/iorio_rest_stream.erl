@@ -11,6 +11,7 @@
          content_types_provided/2,
          is_authorized/2,
          resource_exists/2,
+         options/2,
          from_json/2,
          from_json_patch/2,
          to_json/2
@@ -23,13 +24,14 @@
          content_types_provided/2,
          is_authorized/2,
          resource_exists/2,
+         options/2,
          from_json/2,
          from_json_patch/2,
          to_json/2
         ]).
 
 -record(state, {bucket, stream, from_sn, limit, access, info, filename,
-                n=3, w=3, timeout=5000}).
+                n=3, w=3, timeout=5000, cors}).
 
 -include_lib("sblob/include/sblob.hrl").
 -include("include/iorio.hrl").
@@ -44,7 +46,7 @@ to_int_or(Bin, Default) ->
 init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest};
 init({ssl, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
-rest_init(Req, [{access, Access}, {n, N}, {w, W}, {timeout, Timeout}]) ->
+rest_init(Req, [{access, Access}, {n, N}, {w, W}, {timeout, Timeout}, {cors, Cors}]) ->
     {Bucket, Req1} = cowboy_req:binding(bucket, Req),
     {Stream, Req2} = cowboy_req:binding(stream, Req1),
     {FromSNStr, Req3} = cowboy_req:qs_val(<<"from">>, Req2, <<"">>),
@@ -58,9 +60,13 @@ rest_init(Req, [{access, Access}, {n, N}, {w, W}, {timeout, Timeout}]) ->
 
     {ok, Req5, #state{bucket=Bucket, stream=Stream, from_sn=FromSN,
                       limit=Limit, filename=Filename, n=N, w=W, access=Access,
-                      info=Info, timeout=Timeout}}.
+                      info=Info, timeout=Timeout, cors=Cors}}.
 
-allowed_methods(Req, State) -> {[<<"GET">>, <<"POST">>, <<"PATCH">>], Req, State}.
+options(Req, State=#state{cors=Cors}) ->
+    Req1 = iorio_cors:handle_options(Req, stream, Cors),
+    {ok, Req1, State}.
+
+allowed_methods(Req, State) -> {[<<"OPTIONS">>, <<"GET">>, <<"POST">>, <<"PATCH">>], Req, State}.
 
 resource_exists(Req, State) ->
     {Method, Req1} = cowboy_req:method(Req),
@@ -75,26 +81,33 @@ action_for_method(<<"POST">>) ->
 action_for_method(<<"PATCH">>) ->
     ?PERM_STREAM_PUT;
 action_for_method(<<"GET">>) ->
+    ?PERM_STREAM_GET;
+action_for_method(<<"OPTIONS">>) ->
     ?PERM_STREAM_GET.
 
 action_for_request(Req) ->
     {Method, Req1} = cowboy_req:method(Req),
     Action = action_for_method(Method),
-    {Req1, Action}.
+    IsOptions = (Method == <<"OPTIONS">>),
+    {Req1, Action, IsOptions}.
 
 is_authorized(Req, State=#state{access=Access, info=Info}) ->
-    {Req1, Action} = action_for_request(Req),
-    case iorio_session:fill_session(Req1, Access, Info) of
-        {ok, Req2, Info1} ->
-            State1 = State#state{info=Info1},
-            case ioriol_access:is_authorized_for_stream(Access, Info1, Action) of
-                {ok, Info2} ->
-                    {true, Req2, State1#state{info=Info2}};
-                {error, Reason} ->
-                    unauthorized_response(Req2, State1, Info1, Reason, Action)
-            end;
-        {error, Reason, Req1} ->
-            unauthorized_response(Req1, State, Info, Reason, Action)
+    {Req1, Action, IsOptions} = action_for_request(Req),
+    if IsOptions ->
+           {true, Req1, State};
+       true ->
+           case iorio_session:fill_session(Req1, Access, Info) of
+               {ok, Req2, Info1} ->
+                   State1 = State#state{info=Info1},
+                   case ioriol_access:is_authorized_for_stream(Access, Info1, Action) of
+                       {ok, Info2} ->
+                           {true, Req2, State1#state{info=Info2}};
+                       {error, Reason} ->
+                           unauthorized_response(Req2, State1, Info1, Reason, Action)
+                   end;
+               {error, Reason, Req1} ->
+                   unauthorized_response(Req1, State, Info, Reason, Action)
+           end
     end.
 
 

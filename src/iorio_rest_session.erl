@@ -9,6 +9,7 @@
          allowed_methods/2,
          content_types_accepted/2,
          content_types_provided/2,
+         options/2,
          is_authorized/2,
          resource_exists/2,
          from_json/2,
@@ -20,6 +21,7 @@
          allowed_methods/2,
          content_types_accepted/2,
          content_types_provided/2,
+         options/2,
          is_authorized/2,
          resource_exists/2,
          from_json/2,
@@ -28,20 +30,24 @@
 
 -include_lib("jwt/include/jwt.hrl").
 
--record(state, {access, info, algorithm, session_duration_secs}).
+-record(state, {access, info, algorithm, session_duration_secs, cors}).
 
 init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest};
 init({ssl, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
 rest_init(Req, [{access, Access}, {algorithm, Algorithm},
-                {session_duration_secs, SessionDurationSecs}]) ->
+                {session_duration_secs, SessionDurationSecs}, {cors, Cors}]) ->
 
     {ok, Info} = ioriol_access:new_req([]),
 	{ok, Req, #state{access=Access, info=Info, algorithm=Algorithm,
-                     session_duration_secs=SessionDurationSecs}}.
+                     session_duration_secs=SessionDurationSecs, cors=Cors}}.
+
+options(Req, State=#state{cors=Cors}) ->
+    Req1 = iorio_cors:handle_options(Req, session, Cors),
+    {ok, Req1, State}.
 
 allowed_methods(Req, State) ->
-    {[<<"GET">>, <<"POST">>], Req, State}.
+    {[<<"OPTIONS">>, <<"GET">>, <<"POST">>], Req, State}.
 
 resource_exists(Req, State) ->
     {Method, Req1} = cowboy_req:method(Req),

@@ -37,6 +37,56 @@
   {default, 100}
 ]}.
 
+%% @doc Enable/Disable HTTP CORS API
+{mapping, "http.cors.enabled", "iorio.cors_enabled", [
+  {datatype, {flag, yes, no}},
+  {default, no}
+]}.
+
+%% @doc HTTP CORS API allowed origins, it can be a comma separated list of
+%% origins to accept or * to accept all
+{mapping, "http.cors.origins", "iorio.cors_origins", [
+  {default, "*"}
+]}.
+
+{translation, "iorio.cors_origins",
+ fun(Conf) ->
+         Setting = cuttlefish:conf_get("http.cors.origins", Conf),
+         case Setting of
+             "*" -> any;
+             CSVs ->
+                 Tokens = string:tokens(CSVs, ","),
+                 Cleanup = fun (Token) ->
+                                   CleanToken = string:strip(Token),
+                                   list_to_binary(CleanToken)
+                           end,
+                 FilterEmptyStr = fun ("") -> false; (_) -> true end,
+                 lists:filter(FilterEmptyStr, lists:map(Cleanup, Tokens))
+         end
+ end}.
+
+%% @doc HTTP CORS API a comma separated list of allowed headers to accept
+{mapping, "http.cors.headers", "iorio.cors_headers", []}.
+
+{translation, "iorio.cors_headers",
+ fun(Conf) ->
+         CSVs = cuttlefish:conf_get("http.cors.headers", Conf),
+         Tokens = string:tokens(CSVs, ","),
+         Cleanup = fun (Token) ->
+                           CleanToken = string:strip(Token),
+                           list_to_binary(CleanToken)
+                   end,
+         FilterEmptyStr = fun ("") -> false; (_) -> true end,
+         lists:filter(FilterEmptyStr, lists:map(Cleanup, Tokens))
+ end}.
+
+%% @doc HTTP CORS API indicates how long the results of a preflight request can
+%% be cached
+{mapping, "http.cors.maxage", "iorio.cors_max_age_secs", [
+  {datatype, {duration, s}},
+  {default, "60s"}
+]}.
+
 %% @doc Enable/Disable MQTT protocol
 {mapping, "mqtt.enabled", "iorio.mqtt_enabled", [
   {datatype, {flag, yes, no}},
@@ -67,7 +117,7 @@
   {default, "changeme"}
 ]}.
 
-{translation, "auth.secret",
+{translation, "iorio.auth_secret",
  fun(Conf) ->
          Setting = cuttlefish:conf_get("auth.secret", Conf),
          list_to_binary(Setting)

@@ -8,6 +8,7 @@
          rest_terminate/2,
          allowed_methods/2,
          content_types_provided/2,
+         options/2,
          to_json/2
         ]).
 
@@ -15,17 +16,22 @@
          rest_terminate/2,
          allowed_methods/2,
          content_types_provided/2,
+         options/2,
          to_json/2
         ]).
 
--record(state, {}).
+-record(state, {cors}).
 
 init({tcp, http}, _Req, []) -> {upgrade, protocol, cowboy_rest};
 init({ssl, http}, _Req, []) -> {upgrade, protocol, cowboy_rest}.
 
-rest_init(Req, []) -> {ok, Req, #state{}}.
+rest_init(Req, [{cors, Cors}]) -> {ok, Req, #state{cors=Cors}}.
 
-allowed_methods(Req, State) -> {[<<"GET">>], Req, State}.
+options(Req, State=#state{cors=Cors}) ->
+    Req1 = iorio_cors:handle_options(Req, ping, Cors),
+    {ok, Req1, State}.
+
+allowed_methods(Req, State) -> {[<<"OPTIONS">>, <<"GET">>], Req, State}.
 
 content_types_provided(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, to_json}], Req, State}.

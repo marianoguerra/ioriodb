@@ -27,6 +27,8 @@ start(_StartType, _StartArgs) ->
 
     SessionDurationSecs = envd(session_duration_secs, 3600),
 
+    CorsInfo = init_cors_info(),
+
     N = envd(req_n, 3),
     W = envd(req_w, 3),
     Timeout = envd(req_timeout, 5000),
@@ -62,22 +64,32 @@ start(_StartType, _StartArgs) ->
     setup_initial_permissions(AccessLogic, AdminUsername),
 
     BaseDispatchRoutes = [
-               {"/listen", bullet_handler, [{handler, iorio_listen_handler},
-                                            {access, AccessLogic}]},
-               {"/streams/:bucket", iorio_rest_list, [{access, AccessLogic}]},
+               {"/listen", bullet_handler,
+                [{handler, iorio_listen_handler}, {access, AccessLogic},
+                 {cors, CorsInfo}]},
+               {"/streams/:bucket", iorio_rest_list,
+                [{access, AccessLogic},
+                 {cors, CorsInfo}]},
                {"/streams/:bucket/:stream", iorio_rest_stream,
-                [{access, AccessLogic}, {n, N}, {w, W}, {timeout, Timeout}]},
-               {"/buckets/", iorio_rest_list, [{access, AccessLogic}]},
-               {"/access/:bucket/", iorio_rest_access, [{access, AccessLogic}]},
-               {"/access/:bucket/:stream", iorio_rest_access, [{access, AccessLogic}]},
+                [{access, AccessLogic}, {n, N}, {w, W}, {timeout, Timeout},
+                 {cors, CorsInfo}]},
+               {"/buckets/", iorio_rest_list,
+                [{access, AccessLogic}, {cors, CorsInfo}]},
+               {"/access/:bucket/", iorio_rest_access,
+                [{access, AccessLogic}, {cors, CorsInfo}]},
+               {"/access/:bucket/:stream", iorio_rest_access,
+                [{access, AccessLogic}, {cors, CorsInfo}]},
 
                {"/sessions", iorio_rest_session,
                 [{access, AccessLogic}, {algorithm, ApiAlgorithm},
-                 {session_duration_secs, SessionDurationSecs}]},
-               {"/users/", iorio_rest_user, [{access, AccessLogic}]},
-               {"/ping", iorio_rest_ping, []},
+                 {session_duration_secs, SessionDurationSecs},
+                 {cors, CorsInfo}]},
+               {"/users/", iorio_rest_user,
+                [{access, AccessLogic}, {cors, CorsInfo}]},
+               {"/ping", iorio_rest_ping, [{cors, CorsInfo}]},
 
-               {"/x/:handler/[...]", iorio_rest_custom, [{access, AccessLogic}]}
+               {"/x/:handler/[...]", iorio_rest_custom,
+                [{access, AccessLogic}, {cors, CorsInfo}]}
     ],
 
     UserDispatchRoutes = envd(api_handlers,
@@ -222,6 +234,19 @@ start_mqtt(Access) ->
                                      [{handler, iorio_mqtt_handler},
                                       {user_handler_opts, UserHandlerOpts}]}]),
     mqttl_sup:start_link().
+
+init_cors_info() ->
+    {ok, Origins} = env(cors_origins),
+    BaseHeaders = envd(cors_headers, []),
+    {ok, MaxAge}  = env(cors_max_age_secs),
+    {ok, Enabled} = env(cors_enabled),
+
+    Headers = [<<"X-Session">>, <<"x-session">>, <<"Content-Type">>, <<"Origin">>|BaseHeaders],
+
+    Opts = [{origins, Origins}, {headers, Headers}, {max_age, MaxAge},
+            {enabled, Enabled}],
+
+    iorio_cors:new(Opts).
 
 env(Par) -> env(iorio, Par).
 envd(Par, Def) -> env(iorio, Par, Def).

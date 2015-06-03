@@ -9,6 +9,7 @@
          allowed_methods/2,
          content_types_accepted/2,
          content_types_provided/2,
+         options/2,
          is_authorized/2,
          to_json/2,
          from_json/2]).
@@ -18,11 +19,12 @@
          allowed_methods/2,
          content_types_accepted/2,
          content_types_provided/2,
+         options/2,
          is_authorized/2,
          to_json/2,
          from_json/2]).
 
--record(state, {access, info, role, action, permission}).
+-record(state, {access, info, role, action, permission, cors}).
 
 -include_lib("permiso/include/permiso.hrl").
 
@@ -33,13 +35,17 @@
 init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest};
 init({ssl, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
-rest_init(Req, [{access, Access}]) ->
+rest_init(Req, [{access, Access}, {cors, Cors}]) ->
     {Bucket, Req1} = cowboy_req:binding(bucket, Req),
     {Stream, Req2} = cowboy_req:binding(stream, Req1, any),
     {ok, Info} = ioriol_access:new_req([{bucket, Bucket}, {stream, Stream}]),
-	{ok, Req2, #state{access=Access, info=Info}}.
+	{ok, Req2, #state{access=Access, info=Info, cors=Cors}}.
 
-allowed_methods(Req, State) -> {[<<"POST">>, <<"GET">>], Req, State}.
+options(Req, State=#state{cors=Cors}) ->
+    Req1 = iorio_cors:handle_options(Req, access, Cors),
+    {ok, Req1, State}.
+
+allowed_methods(Req, State) -> {[<<"OPTIONS">>, <<"POST">>, <<"GET">>], Req, State}.
 
 content_types_accepted(Req, State) ->
     {[{{<<"application">>, <<"json">>, '*'}, from_json}], Req, State}.
