@@ -76,7 +76,6 @@ allowed_methods(Req, State=#state{handler_state=HState, handler=Handler}) ->
 content_types_accepted(Req, State=#state{handler=Handler}) ->
     Json = {{<<"application">>, <<"json">>, '*'}, from_json},
     SupportsRaw = erlang:function_exported(Handler, handle_raw, 6),
-    lager:info("supports raw ~p ~p", [Handler, SupportsRaw]),
     if SupportsRaw -> {[Json, {'*', from_raw}, {[], from_raw}],
                        Req, State};
        true -> {[Json], Req, State}
