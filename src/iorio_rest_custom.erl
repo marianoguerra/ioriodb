@@ -89,16 +89,19 @@ content_types_provided(Req, State=#state{handler=Handler}) ->
        true -> {[Json], Req, State}
     end.
 
-% TODO
 is_authorized(Req, State=#state{handler_state=HState, handler=Handler}) ->
     {Ok, Req1} = Handler:is_authorized(HState, Req),
     {Ok, Req1, State}.
 
 from_json(Req, State) ->
     {Req1, Method, BodyRaw, PathInfo, Qs} = get_body_req_info(Req),
-    % TODO: validate that it's json
-    Body = iorio_json:decode(BodyRaw),
-    handle(State, handle, Req1, Method, Body, PathInfo, Qs).
+    try
+        Body = iorio_json:decode(BodyRaw),
+        handle(State, handle, Req1, Method, Body, PathInfo, Qs)
+    catch
+        error:badarg ->
+            reply_error(Req1, State, <<"invalid-json">>)
+    end.
 
 to_json(Req, State) ->
     {Req1, Method, PathInfo, Qs} = get_req_info(Req),
@@ -134,6 +137,10 @@ get_body_req_info(Req) ->
     {ok, BodyRaw, Req2} = cowboy_req:body(Req1),
     {Req2, Method, BodyRaw, PathInfo, Qs}.
 
+reply_error(Req, State, Reason) ->
+    ResponseJson = iorio_json:encode([{type, <<"error">>}, {reason, Reason}]),
+    {ok, Req1} = cowboy_req:reply(400, [], ResponseJson, Req),
+    {halt, Req1, State}.
 
 handle(State=#state{handler_state=HState, handler=Handler},
        FunName, Req, Method, PathInfo, Qs) ->
@@ -145,10 +152,7 @@ handle(State=#state{handler_state=HState, handler=Handler},
             Req3 = iorio_http:set_content_type(Req2, ContentType),
             {Response, Req3, State};
         {error, Reason, Req2} ->
-            ResponseJson = iorio_json:encode([{type, <<"error">>},
-                                              {reason, Reason}]),
-            {ok, Req3} = cowboy_req:reply(400, [], ResponseJson, Req2),
-            {halt, Req3, State}
+            reply_error(Req2, State, Reason)
     end.
 
 handle(State=#state{handler_state=HState, handler=Handler},
