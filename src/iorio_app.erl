@@ -15,7 +15,6 @@
 start(_StartType, _StartArgs) ->
     % TODO: see where to start it
     file_handle_cache:start_link(),
-    % TODO: check here that secret is binary and algorigthm is a valid one
     {ok, ApiSecret} = env(auth_secret),
     {ok, ApiAlgorithm} = env(auth_algorithm),
 
