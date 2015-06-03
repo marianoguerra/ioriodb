@@ -44,8 +44,8 @@ info({entry, BucketName, Stream, _Entry}=FullEntry, Req, State) ->
     lager:debug("entry received ~s/~s~n", [BucketName, Stream]),
     reply_entries_json([FullEntry], Req, State);
 
-info(Entries, Req, State) when is_list(Entries) ->
-    lager:debug("entries received~n"),
+info({replay, Entries}, Req, State) when is_list(Entries) ->
+    lager:debug("replay entries received~n"),
     reply_entries_json(Entries, Req, State).
 
 % in case someone sends some weird request and we do a shutdown

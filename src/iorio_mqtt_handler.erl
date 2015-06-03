@@ -77,15 +77,19 @@ timeout(State=#state{}, InactiveMs) ->
     lager:info("session was inactive for ~p ms", [InactiveMs]),
     {ok, State}.
 
-info(State=#state{send=Send, bucket_separator=BucketSeparator},
-     {entry, Bucket, Stream, #sblob_entry{timestamp=_Timestamp,
-                                          seqnum=_SeqNum, data=Data}}) ->
-    % XXX: generate a msg id
-    Topic = topic_from_bucket_and_stream(Bucket, Stream, BucketSeparator),
-    MsgId = 1,
-    Send(MsgId, Topic, Data),
+info(State=#state{}, Entry={entry, _Bucket, _Stream, #sblob_entry{}}) ->
+    send(State, Entry),
     {ok, State};
-
+info(State=#state{}, {replay, Entries}) ->
+    SendEntry = fun (Entry) -> send(State, Entry) end,
+    lists:foreach(SendEntry, Entries),
+    {ok, State};
+info(State=#state{}, {smc, {heartbeat, Props}}) ->
+    lager:info("smc heartbeat ~p", [Props]),
+    {ok, State};
+info(State=#state{}, {smc, Info}) ->
+    lager:info("channel update for ~p: ~p", [self(), Info]),
+    {ok, State};
 info(State=#state{}, Msg) ->
     lager:info("received unknown info message '~p'", [Msg]),
     {ok, State}.
@@ -168,3 +172,10 @@ subscribe(State=#state{username=Username, bucket_separator=BucketSeparator,
     R = lists:foldl(Fun, {[], State}, Topics),
     {QoSList, NewState} = R,
     {ok, QoSList, NewState}.
+
+send(#state{send=Send, bucket_separator=BucketSeparator},
+     {entry, Bucket, Stream, #sblob_entry{seqnum=_SeqNum, data=Data}}) ->
+    Topic = topic_from_bucket_and_stream(Bucket, Stream, BucketSeparator),
+    % XXX: generate a msg id
+    MsgId = 1,
+    Send(MsgId, Topic, Data).
