@@ -221,7 +221,7 @@ list_gblobs_for_bucket(#state{path=Path}, BucketName) ->
 
 get_seqnum({entry, _Bucket, _Stream, #sblob_entry{seqnum=SeqNum}}) -> SeqNum.
 
-get_existing_channel(State=#state{channels=Channels, channels_sup=ChannelsSup}, BucketName, Key) ->
+get_existing_channel(#state{channels=Channels}, BucketName, Key) ->
     ChannelKey = {BucketName, Key},
     case sblob_preg:get(Channels, ChannelKey) of
         none -> none;
