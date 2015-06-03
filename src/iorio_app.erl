@@ -241,7 +241,7 @@ init_cors_info() ->
     {ok, MaxAge}  = env(cors_max_age_secs),
     {ok, Enabled} = env(cors_enabled),
 
-    Headers = [<<"X-Session">>, <<"x-session">>, <<"Content-Type">>, <<"Origin">>|BaseHeaders],
+    Headers = [<<"X-Session">>, <<"Content-Type">>|BaseHeaders],
 
     Opts = [{origins, Origins}, {headers, Headers}, {max_age, MaxAge},
             {enabled, Enabled}],
