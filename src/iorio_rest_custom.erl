@@ -8,9 +8,9 @@
          rest_terminate/2,
          allowed_methods/2,
          is_authorized/2,
-         resource_exists/2,
          content_types_accepted/2,
          content_types_provided/2,
+         known_methods/2,
          to_json/2,
          from_json/2,
          to_raw/2,
@@ -20,9 +20,9 @@
          rest_terminate/2,
          allowed_methods/2,
          is_authorized/2,
-         resource_exists/2,
          content_types_accepted/2,
          content_types_provided/2,
+         known_methods/2,
          to_json/2,
          from_json/2,
          to_raw/2,
@@ -31,6 +31,9 @@
 -export([behaviour_info/1]).
 
 -ignore_xref([behaviour_info/1]).
+
+-define(KNOWN_METHODS, [<<"GET">>, <<"HEAD">>, <<"POST">>, <<"PUT">>,
+                        <<"PATCH">>, <<"DELETE">>, <<"OPTIONS">>]).
 
 -include("include/iorio.hrl").
 
@@ -55,20 +58,20 @@ init({ssl, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
 rest_init(Req, [{access, Access}]) ->
     {HandlerName, Req1} = cowboy_req:binding(handler, Req),
-    % TODO: return 404 on error
-    {ok, Handler} = iorio_x:name_to_module(HandlerName),
-    {HandlerState, Req2} = Handler:init_req(Req1, Access),
-	{ok, Req2, #state{access=Access, handler=Handler,
-                      handler_name=HandlerName,
-                      handler_state=HandlerState}}.
+	{ok, Req1, #state{access=Access, handler_name=HandlerName}}.
+
+known_methods(Req, State=#state{handler_name=HandlerName, access=Access}) ->
+    case iorio_x:name_to_module(HandlerName) of
+        {ok, Handler} ->
+            {HandlerState, Req1} = Handler:init_req(Req, Access),
+            {?KNOWN_METHODS, Req1, State#state{handler=Handler, handler_state=HandlerState}};
+        {error, {invalid_module, _Name}} ->
+            {[], Req, State}
+    end.
 
 allowed_methods(Req, State=#state{handler_state=HState, handler=Handler}) ->
     {AllowedMethods, Req1} = Handler:allowed_methods(HState, Req),
     {AllowedMethods, Req1, State}.
-
-% TODO
-resource_exists(Req, State) ->
-    {true, Req, State}.
 
 content_types_accepted(Req, State=#state{handler=Handler}) ->
     Json = {{<<"application">>, <<"json">>, '*'}, from_json},
@@ -109,6 +112,8 @@ to_raw(Req, State) ->
     {Req1, Method, PathInfo, Qs} = get_req_info(Req),
     handle(State, handle_raw, Req1, Method, PathInfo, Qs).
 
+rest_terminate(_Req, #state{handler=undefined}) ->
+    ok;
 rest_terminate(Req, #state{handler_state=HState, handler=Handler}) ->
     Handler:stop_req(HState, Req).
 

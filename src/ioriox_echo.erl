@@ -17,11 +17,11 @@ is_authorized(_State, Req) -> {true, Req}.
 
 handle(_State, Req, Method, PathInfo, Query) ->
     Response = [{method, Method}, {path, PathInfo}, {query, Query}],
-    {ok, Response, Req}.
+    {ok, {json, Response}, Req}.
 
 handle(_State, Req, Method, PathInfo, Query, Body) ->
     Response = [{method, Method}, {path, PathInfo}, {query, Query}, {body, Body}],
-    {true, Response, Req}.
+    {ok, {json, Response}, Req}.
 
 stop_req(_State, _Req) -> ok.
 terminate_req(_State, _Req) -> ok.
