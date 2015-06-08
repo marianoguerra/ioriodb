@@ -1,5 +1,5 @@
 -module(iorio_cors).
--export([new/1, handle_options/3]).
+-export([new/1, handle_options/3, is_enabled/1]).
 
 -define(HEADER_ORIGIN, <<"Access-Control-Allow-Origin">>).
 -define(HEADER_HEADERS, <<"Access-Control-Allow-Headers">>).
@@ -52,3 +52,5 @@ handle_options(Req, _EndpointId,
 execute(Req, Env) ->
     Req1 = cowboy_req:set_resp_header(<<"Access-Control-Allow-Origin">>, <<"*">>, Req),
     {ok, Req1, Env}.
+
+is_enabled(#iorio_cors{enabled=Enabled}) -> Enabled.

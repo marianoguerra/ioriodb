@@ -102,12 +102,20 @@ start(_StartType, _StartArgs) ->
 
     Dispatch = cowboy_router:compile([{'_', DispatchRoutes}]),
 
+    CorsEnabled = iorio_cors:is_enabled(CorsInfo),
     HttpEnabled = envd(http_enabled, true),
     ApiPort = envd(http_port, 8080),
     ApiAcceptors = envd(http_acceptors, 100),
+    ApiMiddlewares = if CorsEnabled ->
+                            lager:info("CORS enabled, adding middleware"),
+                            [iorio_stats, cowboy_router, iorio_cors, cowboy_handler];
+                        true ->
+                            lager:info("CORS disabled, not adding middleware"),
+                            [iorio_stats, cowboy_router, cowboy_handler]
+                     end,
     CowboyOpts = [{env, [{dispatch, Dispatch}]},
                   {onresponse, fun iorio_stats:cowboy_response_hook/4},
-                  {middlewares, [iorio_stats, cowboy_router, iorio_cors, cowboy_handler]}],
+                  {middlewares, ApiMiddlewares}],
 
     if HttpEnabled ->
             lager:info("http api enabled, starting"),
