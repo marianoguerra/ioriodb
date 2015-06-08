@@ -8,6 +8,9 @@
 
 -include("include/iorio.hrl").
 
+-behaviour(cowboy_middleware).
+-export([execute/2]).
+
 new(Opts) ->
     Origins = proplists:get_value(origins, Opts, []),
     Headers = proplists:get_value(headers, Opts, []),
@@ -45,3 +48,7 @@ handle_options(Req, _EndpointId,
        true ->
            Req1
     end.
+
+execute(Req, Env) ->
+    Req1 = cowboy_req:set_resp_header(<<"Access-Control-Allow-Origin">>, <<"*">>, Req),
+    {ok, Req1, Env}.

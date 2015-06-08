@@ -219,8 +219,7 @@ now_fast() ->
 execute(Req, Env) ->
     Now = now_fast(),
     Req1 = cowboy_req:set_meta(iorio_req_start, Now, Req),
-    Req2 = cowboy_req:set_resp_header(<<"Access-Control-Allow-Origin">>, <<"*">>, Req1),
 
     exometer:update(?METRIC_HTTP_ACTIVE_REQS, 1),
 
-    {ok, Req2, Env}.
+    {ok, Req1, Env}.

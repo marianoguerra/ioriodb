@@ -107,7 +107,7 @@ start(_StartType, _StartArgs) ->
     ApiAcceptors = envd(http_acceptors, 100),
     CowboyOpts = [{env, [{dispatch, Dispatch}]},
                   {onresponse, fun iorio_stats:cowboy_response_hook/4},
-                  {middlewares, [iorio_stats, cowboy_router, cowboy_handler]}],
+                  {middlewares, [iorio_stats, cowboy_router, iorio_cors, cowboy_handler]}],
 
     if HttpEnabled ->
             lager:info("http api enabled, starting"),
