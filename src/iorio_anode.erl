@@ -228,19 +228,31 @@ get_existing_channel(#state{channels=Channels}, BucketName, Key) ->
         {value, Channel} -> {some, Channel}
     end.
 
-get_channel(State=#state{channels=Channels, channels_sup=ChannelsSup}, BucketName, Key) ->
-    ChannelKey = {BucketName, Key},
+new_channel_opts(Bucket, Stream) ->
+    % TODO: make it per channel configurable
+    BufferSize = application:get_env(iorio, channel_items_count, 50),
+    ChName = <<Bucket/binary, <<"/">>/binary, Stream/binary>>,
+    GetSeqNum = fun get_seqnum/1,
+    [{buffer_size, BufferSize}, {get_seqnum, GetSeqNum}, {name, ChName}].
+
+new_channel(ChannelsSup, Bucket, Stream) ->
+    ChOpts = new_channel_opts(Bucket, Stream),
+    smc_channels_sup:start_child(ChannelsSup, ChOpts).
+
+create_and_monitor_channel(ChannelsSup, Channels, ChannelKey={Bucket, Stream}) ->
+    {ok, Channel} = new_channel(ChannelsSup, Bucket, Stream),
+    erlang:monitor(process, Channel),
+    NewChannels = sblob_preg:put(Channels, ChannelKey, Channel),
+    {NewChannels, Channel}.
+
+get_channel(State=#state{channels=Channels, channels_sup=ChannelsSup}, BucketName, Stream) ->
+    ChannelKey = {BucketName, Stream},
     case sblob_preg:get(Channels, ChannelKey) of
         none ->
-            % TODO: make it configurable
-            BufferSize = 50,
-            GetSeqNum = fun get_seqnum/1,
-            ChOpts = [{buffer_size, BufferSize}, {get_seqnum, GetSeqNum}],
-            {ok, Channel} = smc_channels_sup:start_child(ChannelsSup, ChOpts),
-            erlang:monitor(process, Channel),
-            NewChannels= sblob_preg:put(Channels, ChannelKey, Channel),
+            {NewChannels, Channel} = create_and_monitor_channel(ChannelsSup,
+                                                                Channels,
+                                                                ChannelKey),
             NewState = State#state{channels=NewChannels},
-
             {NewState, Channel};
         {value, Channel} ->
             {State, Channel}

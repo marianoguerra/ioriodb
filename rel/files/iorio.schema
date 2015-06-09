@@ -188,6 +188,18 @@
   {default, "0.5s"}
 ]}.
 
+%% @doc max amount of events to keep in memory for a channel
+{mapping, "channel.max_items", "iorio.channel_items_count", [
+  {datatype, integer},
+  {default, 50}
+]}.
+
+%% @doc max size for events to keep in memory for a channel
+{mapping, "channel.max_items_size", "iorio.channel_items_size", [
+  {datatype, bytesize},
+  {default, "2MB"}
+]}.
+
 %% @doc folder where bucket/streams are stored
 {mapping, "paths.data", "iorio.data_path", [
   {datatype, directory},
