@@ -72,13 +72,12 @@ handle_command({get, BucketName, Stream, From, Count}, Sender, State) ->
     {noreply, NewState};
 
 handle_command({subscribe, BucketName, Stream, FromSeqNum, Pid}, _Sender, State) ->
-    {_, NewState} = iorio_anode:subscribe(State, BucketName, Stream,
-                                          FromSeqNum, Pid),
-    {reply, ok, NewState};
+    {_, NewState} = iorio_anode:subscribe(State, BucketName, Stream, FromSeqNum, Pid),
+    {reply, ok, check(NewState, sub)};
 
 handle_command({unsubscribe, BucketName, Stream, Pid}, _Sender, State) ->
     {_, NewState} = iorio_anode:unsubscribe(State, BucketName, Stream, Pid),
-    {reply, ok, NewState};
+    {reply, ok, check(NewState, unsub)};
 
 handle_command(Message, _Sender, State) ->
     ?PRINT({unhandled_command, Message}),
@@ -134,7 +133,7 @@ handle_handoff_data(BinData, State) ->
     TermData = binary_to_term(BinData),
     lager:debug("handoff data received ~p", [TermData]),
     {{BucketName, StreamName}, {SeqNum, Ts, Data}} = TermData,
-    {State1, Entry} = iorio_anode:raw_put(State, BucketName, StreamName, Ts, Data),
+    {Entry, State1} = iorio_anode:raw_put(State, BucketName, StreamName, Ts, Data),
     GotSeqNum = Entry#sblob_entry.seqnum,
     if SeqNum =/= GotSeqNum ->
            lager:warning("seqnum mismatch on entry handoff expected ~p but got ~p",
@@ -204,7 +203,7 @@ handle_info(evict_bucket, State) ->
     {ok, NewState};
 
 handle_info({'DOWN', _MonitorRef, process, Pid, _Info}, State) ->
-    NewState = iorio_anode:remove_channel(State, Pid),
+    NewState = iorio_anode:remove_bucket(State, Pid),
     {ok, NewState}.
 
 terminate(Reason, State) ->
@@ -256,5 +255,14 @@ evict_bucket(BucketName, Partition, MaxSizeBytes, MaxTimeMsNoEviction) ->
            {ok, noaction}
     end.
 
+check(State=undefined, Place) ->
+    lager:error("state is undefined! ~p", [Place]),
+    State;
+check(State, _Place) ->
+    State.
+
+to_reply({Result, NewState=undefined}) ->
+    lager:error("state is undefined! ~p", [Result]),
+    {reply, Result, NewState};
 to_reply({Result, NewState}) ->
     {reply, Result, NewState}.

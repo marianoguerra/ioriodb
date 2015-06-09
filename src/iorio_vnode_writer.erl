@@ -22,7 +22,7 @@ init([]) ->
     {ok, State}.
 
 handle_call(Msg, _From, State) ->
-    lager:warning("Unexpected handle call message: ~p~n",[Msg]),
+    lager:warning("Unexpected handle call message: ~p",[Msg]),
     {reply, ok, State}.
 
 handle_cast({reply_to, Pid, ReqId, {M, F, A}},
@@ -44,15 +44,15 @@ handle_cast({reply_to, Pid, ReqId, {M, F, A}},
     {noreply, State};
 
 handle_cast(Msg, State) ->
-    lager:warning("Unexpected handle cast message: ~p~n",[Msg]),
+    lager:warning("Unexpected handle cast message: ~p",[Msg]),
     {noreply, State}.
 
 handle_info(Msg, State) ->
-    lageer:warning("Unexpected handle info message: ~p~n",[Msg]),
+    lageer:warning("Unexpected handle info message: ~p",[Msg]),
     {noreply, State}.
 
 
-terminate(_Reason, _Gblob) ->
+terminate(_Reason, _State) ->
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

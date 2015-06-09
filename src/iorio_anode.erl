@@ -5,7 +5,7 @@
 
 -export([writer/1, partition/1, is_empty/1, base_path/0, path/1,
         free_resources/1, have_bucket/2, foldl_gblobs/3, get_bucket/2,
-        maybe_evict/2, remove_channel/2]).
+        maybe_evict/2, remove_bucket/2]).
 
 -record(state, {partition,
                 path,
@@ -15,20 +15,16 @@
                 max_bucket_size_bytes=52428800,
                 buckets_sup,
                 buckets,
-                channels_sup,
                 channels}).
-
--include_lib("sblob/include/sblob.hrl").
 
 new(Opts) ->
     {path, Path} = proplists:lookup(path, Opts),
     {partition, Partition} = proplists:lookup(partition, Opts),
 
     Buckets = sblob_preg:new(),
-    Channels = sblob_preg:new(),
+    {ok, Channels} = iorio_vnode_channels:start_link(),
 
     {ok, BucketsSup} = gblob_buckets_sup:start_link(),
-    {ok, ChannelsSup} = smc_channels_sup:start_link(),
 
     % XXX: have a supervisor?
     {ok, WriterPid} = iorio_vnode_writer:start_link(),
@@ -51,9 +47,7 @@ new(Opts) ->
           end),
 
     {ok, #state{partition=Partition, path=Path, buckets=Buckets,
-                channels=Channels, buckets_sup=BucketsSup,
-                channels_sup=ChannelsSup,
-                writer=WriterPid,
+                channels=Channels, buckets_sup=BucketsSup, writer=WriterPid,
                 max_bucket_size_bytes=MaxBucketSizeBytes}}.
 
 base_path() ->
@@ -67,18 +61,17 @@ ping(State) ->
 put(State, ReqId, BucketName, Stream, Data) ->
     put(State, ReqId, BucketName, Stream, Data, nil).
 
-put(State, ReqId, BucketName, Stream, Data, LastSeqNum) ->
+put(State=#state{channels=Channels}, ReqId, BucketName, Stream, Data, LastSeqNum) ->
     lager:debug("put ~p", [{ReqId, BucketName, Stream}]),
-    Info = get_put_info(State, BucketName, Stream),
-    {Timestamp, Bucket, Channel, NewState} = Info,
-    Reply = do_put(Bucket, BucketName, Stream, Timestamp, Data, ReqId, Channel,
-                   LastSeqNum),
+    Timestamp = sblob_util:now(),
+    {NewState, Bucket} = get_bucket(State, BucketName),
+    Reply = do_put(Channels, Bucket, BucketName, Stream, Timestamp, Data, ReqId, LastSeqNum),
     {Reply, NewState}.
 
 raw_put(State, BucketName, Stream, Timestamp, Data) ->
     {NewState, Bucket} = get_bucket(State, BucketName),
     Entry = gblob_bucket:put(Bucket, Stream, Timestamp, Data),
-    {NewState, Entry}.
+    {Entry, NewState}.
 
 get(State=#state{partition=Partition}, BucketName, Stream, From, Count, Callback) ->
     lager:debug("get ~s ~s ~p ~p at ~p",
@@ -87,45 +80,9 @@ get(State=#state{partition=Partition}, BucketName, Stream, From, Count, Callback
     Result = gblob_bucket:get_cb(Bucket, Stream, From, Count, Callback),
     {Result, NewState}.
 
-subscribe(State=#state{partition=Partition}, BucketName, Stream, FromSeqNum, Pid) ->
-    lager:debug("subscribe ~s ~s at ~p", [BucketName, Stream, Partition]),
-    {NewState, Channel} = get_channel(State, BucketName, Stream),
-    check_channel(Channel),
-
-    try
-        smc_hist_channel:replay(Channel, Pid, FromSeqNum),
-        Result = smc_hist_channel:subscribe(Channel, Pid),
-        {Result, NewState}
-    catch T:E ->
-              lager:error("Error subscribing to channel ~p/~p ~p ~p",
-                          [BucketName, Stream, T, error_info(E),
-                           erlang:is_process_alive(Channel)]),
-        {error, NewState}
-    end.
-
-unsubscribe(State=#state{partition=Partition}, BucketName, Stream, Pid) ->
-    lager:debug("unsubscribe ~s ~s at ~p", [BucketName, Stream, Partition]),
-    case get_existing_channel(State, BucketName, Stream) of
-        {some, Channel} ->
-            check_channel(Channel),
-
-            try
-                Result = smc_hist_channel:unsubscribe(Channel, Pid),
-                {Result, State}
-            catch T:E ->
-                      lager:error("Error unsubscribing to channel ~p/~p ~p ~p",
-                                  [BucketName, Stream, T, error_info(E),
-                                   erlang:is_process_alive(Channel)]),
-                      {{error, {T, E}}, State}
-            end;
-        none ->
-            lager:warning("unsubscribing for inexistent channel ~p/~p",
-                          [BucketName, Stream]),
-            {{error, {no_channel, {BucketName, Stream}}}, State}
-    end.
-
 writer(#state{writer=Writer}) -> Writer.
-partition(#state{partition=Partition}) -> Partition.
+partition(#state{partition=Partition}) -> Partition;
+partition(undefined) -> -1.
 path(#state{path=Path}) -> Path.
 
 is_empty(State=#state{path=Path}) ->
@@ -150,7 +107,7 @@ free_resources(State=#state{buckets=Buckets}) ->
                                 end),
     State#state{buckets=EmptyBuckets}.
 
-get_bucket(State=#state{buckets=Buckets, path=Path, buckets_sup=BucketsSup}, BucketName) ->
+get_bucket(State=#state{buckets=Buckets, path=Path, partition=Partition, buckets_sup=BucketsSup}, BucketName) ->
 
     case sblob_preg:get(Buckets, BucketName) of
         none ->
@@ -161,11 +118,13 @@ get_bucket(State=#state{buckets=Buckets, path=Path, buckets_sup=BucketsSup}, Buc
             {ok, Bucket} = gblob_buckets_sup:start_child(BucketsSup,
                                                          [BucketPath, GblobOpts, BucketOpts]),
             NewBuckets = sblob_preg:put(Buckets, BucketName, Bucket),
+            lager:info("~p bucket created ~p ~p", [Partition, BucketName, Bucket]),
             erlang:monitor(process, Bucket),
             NewState = State#state{buckets=NewBuckets},
 
             {NewState, Bucket};
         {value, Bucket} ->
+            lager:info("~p bucket found ~p ~p", [Partition, BucketName, Bucket]),
             {State, Bucket}
     end.
 
@@ -197,12 +156,19 @@ maybe_evict(State=#state{partition=Partition,
     NewState = State#state{next_bucket_index=NewNextIndex},
     {Result, NewState}.
 
-remove_channel(State=#state{buckets=Buckets, channels=Channels}, Pid) ->
-    % TODO: don't do it like this, create one process for each to handle the
-    % DOWN events
+remove_bucket(State=#state{buckets=Buckets}, Pid) ->
     NewBuckets = sblob_preg:remove_reverse(Buckets, Pid),
-    NewChannels = sblob_preg:remove_reverse(Channels, Pid),
-    State#state{buckets=NewBuckets, channels=NewChannels}.
+    State#state{buckets=NewBuckets}.
+
+subscribe(State=#state{partition=Partition, channels=Channels}, BucketName, Stream, FromSeqNum, Pid) ->
+    lager:debug("subscribe ~s ~s at ~p", [BucketName, Stream, Partition]),
+    iorio_vnode_channels:subscribe(Channels, BucketName, Stream, FromSeqNum, Pid),
+    {ok, State}.
+
+unsubscribe(State=#state{partition=Partition, channels=Channels}, BucketName, Stream, Pid) ->
+    lager:debug("unsubscribe ~s ~s at ~p", [BucketName, Stream, Partition]),
+    iorio_vnode_channels:unsubscribe(Channels, BucketName, Stream, Pid),
+    {ok, State}.
 
 %% Private
 
@@ -219,53 +185,7 @@ list_gblobs_for_bucket(#state{path=Path}, BucketName) ->
     BucketPath = filename:join([Path, BucketName]),
     list_dir(BucketPath).
 
-get_seqnum({entry, _Bucket, _Stream, #sblob_entry{seqnum=SeqNum}}) -> SeqNum.
-
-get_existing_channel(#state{channels=Channels}, BucketName, Key) ->
-    ChannelKey = {BucketName, Key},
-    case sblob_preg:get(Channels, ChannelKey) of
-        none -> none;
-        {value, Channel} -> {some, Channel}
-    end.
-
-new_channel_opts(Bucket, Stream) ->
-    % TODO: make it per channel configurable
-    BufferSize = application:get_env(iorio, channel_items_count, 50),
-    ChName = <<Bucket/binary, <<"/">>/binary, Stream/binary>>,
-    GetSeqNum = fun get_seqnum/1,
-    [{buffer_size, BufferSize}, {get_seqnum, GetSeqNum}, {name, ChName}].
-
-new_channel(ChannelsSup, Bucket, Stream) ->
-    ChOpts = new_channel_opts(Bucket, Stream),
-    smc_channels_sup:start_child(ChannelsSup, ChOpts).
-
-create_and_monitor_channel(ChannelsSup, Channels, ChannelKey={Bucket, Stream}) ->
-    {ok, Channel} = new_channel(ChannelsSup, Bucket, Stream),
-    erlang:monitor(process, Channel),
-    NewChannels = sblob_preg:put(Channels, ChannelKey, Channel),
-    {NewChannels, Channel}.
-
-get_channel(State=#state{channels=Channels, channels_sup=ChannelsSup}, BucketName, Stream) ->
-    ChannelKey = {BucketName, Stream},
-    case sblob_preg:get(Channels, ChannelKey) of
-        none ->
-            {NewChannels, Channel} = create_and_monitor_channel(ChannelsSup,
-                                                                Channels,
-                                                                ChannelKey),
-            NewState = State#state{channels=NewChannels},
-            {NewState, Channel};
-        {value, Channel} ->
-            {State, Channel}
-    end.
-
-get_put_info(State, BucketName, Stream) ->
-    Timestamp = sblob_util:now(),
-    {State1, Bucket} = get_bucket(State, BucketName),
-    {NewState, Channel} = get_channel(State1, BucketName, Stream),
-    check_channel(Channel),
-    {Timestamp, Bucket, Channel, NewState}.
-
-do_put(Bucket, BucketName, Stream, Timestamp, Data, ReqId, Channel, LastSeqNum) ->
+do_put(Channels, Bucket, BucketName, Stream, Timestamp, Data, ReqId, LastSeqNum) ->
 
     Result = if
         LastSeqNum == nil ->
@@ -278,27 +198,9 @@ do_put(Bucket, BucketName, Stream, Timestamp, Data, ReqId, Channel, LastSeqNum) 
         {error, _Reason}=Error ->
             {ReqId, Error};
         Entry ->
-            WasAlive = erlang:is_process_alive(Channel),
-
-            if WasAlive -> ok;
-               true -> lager:warning("Channel is dead ~p ~p", [Channel, WasAlive])
-            end,
-
-            try
-                smc_hist_channel:send(Channel, {entry, BucketName, Stream, Entry})
-            catch T:E ->
-                IsAlive = erlang:is_process_alive(Channel),
-                lager:error("Error sending event to channel ~p/~p ~p ~p ~p alive: ~p/~p",
-                            [BucketName, Stream, T, error_info(E), Channel, WasAlive, IsAlive])
-            end,
+            iorio_vnode_channels:send(Channels, BucketName, Stream, Entry),
             {ReqId, Entry}
     end.
-
-error_info({noproc, {gen_server, call, _}}) ->
-    {noproc, {gen_server, call}};
-error_info(Other) ->
-    Other.
-
 
 have_bucket(#state{path=Path}, Bucket) ->
     BucketPath = filename:join([Path, Bucket]),
@@ -327,11 +229,4 @@ foldl_gblobs(State, Fun, Acc0) ->
 
                         AccOut
                 end, Acc0, GblobNames).
-
-check_channel(Channel) ->
-    IsAlive = erlang:is_process_alive(Channel),
-
-    if IsAlive -> ok;
-       true -> lager:warning("got dead channel ~p: ~p", [Channel, IsAlive])
-    end.
 
