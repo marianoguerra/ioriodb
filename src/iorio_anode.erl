@@ -100,11 +100,12 @@ list_buckets(State) ->
     Buckets = list_bucket_names(State),
     {Buckets, State}.
 
-free_resources(State=#state{buckets=Buckets}) ->
+free_resources(State=#state{buckets=Buckets, channels=Chans}) ->
     EmptyBuckets = sblob_preg:new(),
     sblob_preg:foreach(Buckets, fun (_Key, Bucket) ->
                                         gblob_bucket:stop(Bucket)
                                 end),
+    iorio_vnode_channels:clean(Chans),
     State#state{buckets=EmptyBuckets}.
 
 get_bucket(State=#state{buckets=Buckets, path=Path, partition=Partition, buckets_sup=BucketsSup}, BucketName) ->

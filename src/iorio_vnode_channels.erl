@@ -1,7 +1,7 @@
 -module(iorio_vnode_channels).
 -behaviour(gen_server).
 
--export([start_link/0, send/4, subscribe/5, unsubscribe/4]).
+-export([start_link/0, send/4, subscribe/5, unsubscribe/4, clean/1]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
@@ -14,6 +14,9 @@
 
 start_link() ->
     gen_server:start_link(?MODULE, [], []).
+
+clean(Pid) ->
+    gen_server:call(Pid, clean).
 
 send(Pid, Bucket, Stream, Entry) ->
     gen_server:cast(Pid, {send, Bucket, Stream, Entry}).
@@ -32,9 +35,14 @@ init([]) ->
     State = #state{channels=Channels},
     {ok, State}.
 
+handle_call(clean, _From, State=#state{channels=Chans}) ->
+    {ok, NewChans} = rscbag:clean(Chans),
+    {reply, ok, State#state{channels=NewChans}};
+
 handle_call(Msg, _From, State) ->
     lager:warning("Unexpected handle call message: ~p",[Msg]),
     {reply, ok, State}.
+
 
 handle_cast({send, Bucket, Stream, Entry}, State=#state{channels=Chans}) ->
     NewChans = do_send(Chans, Bucket, Stream, Entry),
@@ -43,6 +51,7 @@ handle_cast({send, Bucket, Stream, Entry}, State=#state{channels=Chans}) ->
 handle_cast({subscribe, Bucket, Stream, FromSeqNum, Subscriber}, State=#state{channels=Chans}) ->
     NewChans = do_subscribe(Chans, Bucket, Stream, FromSeqNum, Subscriber),
     {noreply, State#state{channels=NewChans}};
+
 handle_cast({unsubscribe, Bucket, Stream, Subscriber}, State=#state{channels=Channels}) ->
     NewChans = do_unsubscribe(Channels, Bucket, Stream, Subscriber),
     {noreply, State#state{channels=NewChans}};
@@ -51,6 +60,7 @@ handle_cast(Msg, State) ->
     lager:warning("Unexpected handle cast message: ~p",[Msg]),
     {noreply, State}.
 
+
 handle_info({'DOWN', _MonitorRef, process, Pid, _Info}, State=#state{channels=Chans}) ->
     NewChans = remove_channel(Chans, Pid),
     {noreply, State#state{channels=NewChans}};
@@ -58,6 +68,7 @@ handle_info({'DOWN', _MonitorRef, process, Pid, _Info}, State=#state{channels=Ch
 handle_info(Msg, State) ->
     lageer:warning("Unexpected handle info message: ~p",[Msg]),
     {noreply, State}.
+
 
 terminate(_Reason, _State) ->
     ok.
