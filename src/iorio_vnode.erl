@@ -24,6 +24,8 @@
 
 -ignore_xref([start_vnode/1, handle_info/2]).
 
+-record(state, {path, partition, writer, buckets, channels}).
+
 %% API
 start_vnode(I) ->
     riak_core_vnode_master:get_vnode_pid(I, ?MODULE).
@@ -31,22 +33,46 @@ start_vnode(I) ->
 init([Partition]) ->
     lager:debug("partition init ~p", [Partition]),
 
-    BasePath = iorio_anode:base_path(),
+    BasePath = iorio_bucket:base_path(),
+    {ok, WriterPid} = iorio_vnode_writer:start_link(),
 
     PartitionStr = integer_to_list(Partition),
     Path = filename:join([BasePath, PartitionStr]),
-    iorio_anode:new([{path, Path}, {partition, Partition}]).
 
-%% Sample command: respond to a ping
-handle_command(ping, _Sender, State) ->
-    to_reply(iorio_anode:ping(State));
+    BucketsOpts = [{path, Path}, {partition, Partition}],
 
-handle_command({put, ReqId, BucketName, Stream, Data}, _Sender, State) ->
-    to_reply(iorio_anode:put(State, ReqId, BucketName, Stream, Data));
+    {ok, Channels} = iorio_vnode_channels:start_link(),
+    {ok, Buckets}  = iorio_vnode_buckets:start_link(BucketsOpts),
+
+    % TODO: calculate based on number of buckets
+    BucketEvictTimeInterval = application:get_env(iorio, bucket_evict_time_ms, 60000),
+
+    Pid = self(),
+    spawn(fun () ->
+                  % distribute intervals to avoid calling all of them at once
+                  % on the same node
+                  {RandomSleep, _} = random:uniform_s(BucketEvictTimeInterval, now()),
+                  timer:sleep(RandomSleep),
+                  {ok, _TimerRef} = timer:send_interval(BucketEvictTimeInterval,
+                                                        Pid, evict_bucket)
+          end),
+
+
+    State = #state{partition=Partition, path=Path, writer=WriterPid,
+                   buckets=Buckets, channels=Channels},
+    {ok, State}.
+
+handle_command(ping, _Sender, State=#state{partition=Partition}) ->
+    {reply, {pong, Partition}, State};
+
+handle_command({put, ReqId, BucketName, Stream, Data},
+               _Sender, State=#state{buckets=Buckets, channels=Channels}) ->
+    Reply = iorio_vnode_buckets:put(Buckets, ReqId, BucketName, Stream, Data),
+    send_to_channel(Reply, Channels, BucketName, Stream),
+    {reply, Reply, State};
 
 handle_command({coord_put_conditionally, N, W, Bucket, Stream, Data, LastSeqNum, Pid},
-               _Sender, State) ->
-    Writer = iorio_anode:writer(State),
+               _Sender, State=#state{writer=Writer}) ->
     ReqId = iorio_util:reqid(),
     iorio_vnode_writer:reply_to(Writer, Pid, ReqId,
                                 iorio_write_fsm, write_conditionally,
@@ -54,37 +80,41 @@ handle_command({coord_put_conditionally, N, W, Bucket, Stream, Data, LastSeqNum,
                                  Writer, ReqId]),
     {reply, ReqId, State};
 
-handle_command({coord_put, N, W, Bucket, Stream, Data, Pid}, _Sender, State) ->
-    Writer = iorio_anode:writer(State),
+handle_command({coord_put, N, W, Bucket, Stream, Data, Pid},
+               _Sender, State=#state{writer=Writer}) ->
     ReqId = iorio_util:reqid(),
     iorio_vnode_writer:reply_to(Writer, Pid, ReqId, iorio_write_fsm, write,
                                 [N, W, Bucket, Stream, Data, Writer, ReqId]),
     {reply, ReqId, State};
 
 handle_command({put_conditionally, ReqId, BucketName, Stream, Data, LastSeqNum},
-               _Sender, State) ->
-    to_reply(iorio_anode:put(State, ReqId, BucketName, Stream, Data, LastSeqNum));
+               _Sender, State=#state{buckets=Buckets, channels=Channels}) ->
+    Reply = iorio_vnode_buckets:put(Buckets, ReqId, BucketName, Stream, Data, LastSeqNum),
+    send_to_channel(Reply, Channels, BucketName, Stream),
+    {reply, Reply, State};
 
-handle_command({get, BucketName, Stream, From, Count}, Sender, State) ->
+handle_command({get, BucketName, Stream, From, Count},
+               Sender, State=#state{buckets=Buckets}) ->
     Callback = fun (Entries) -> riak_core_vnode:reply(Sender, Entries) end,
-    {_, NewState} = iorio_anode:get(State, BucketName, Stream, From, Count,
-                                    Callback),
-    {noreply, NewState};
+    iorio_vnode_buckets:get(Buckets, BucketName, Stream, From, Count, Callback),
+    {noreply, State};
 
-handle_command({subscribe, BucketName, Stream, FromSeqNum, Pid}, _Sender, State) ->
-    {_, NewState} = iorio_anode:subscribe(State, BucketName, Stream, FromSeqNum, Pid),
-    {reply, ok, check(NewState, sub)};
+handle_command({subscribe, BucketName, Stream, FromSeqNum, Pid},
+               _Sender, State=#state{channels=Channels}) ->
+    iorio_vnode_channels:subscribe(Channels, BucketName, Stream, FromSeqNum, Pid),
+    {reply, ok, State};
 
-handle_command({unsubscribe, BucketName, Stream, Pid}, _Sender, State) ->
-    {_, NewState} = iorio_anode:unsubscribe(State, BucketName, Stream, Pid),
-    {reply, ok, check(NewState, unsub)};
+handle_command({unsubscribe, BucketName, Stream, Pid}, _Sender,
+               State=#state{channels=Channels}) ->
+    iorio_vnode_channels:unsubscribe(Channels, BucketName, Stream, Pid),
+    {reply, ok, State};
 
 handle_command(Message, _Sender, State) ->
-    ?PRINT({unhandled_command, Message}),
+    lager:warning("unknown command ~p", [Message]),
     {noreply, State}.
 
-handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender, State) ->
-    Partition = iorio_anode:partition(State),
+handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender,
+                       State=#state{partition=Partition, path=Path}) ->
     lager:info("fold req ~p", [Partition]),
     Opts = [],
     GblobFoldFun = fun ({BucketName, StreamName,
@@ -105,111 +135,92 @@ handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender, State) ->
                   {_StopReason, AccLOut} = Resp,
                   AccLOut
           end,
-    Acc = iorio_anode:foldl_gblobs(State, Fun, Acc0),
-     {reply, Acc, State};
+    Acc = iorio_bucket:foldl_gblobs(Path, Fun, Acc0),
+    {reply, Acc, State};
 
-handle_handoff_command(Message, Sender, State) ->
-    Partition = iorio_anode:partition(State),
+handle_handoff_command(Message, Sender, State=#state{partition=Partition}) ->
     lager:warning("handling command during handoff, state may diverge ~p",
                   [Partition]),
     handle_command(Message, Sender, State).
 
-handoff_starting(_TargetNode, State) ->
-    Partition = iorio_anode:partition(State),
+handoff_starting(_TargetNode, State=#state{partition=Partition}) ->
     lager:info("handoff starting ~p", [Partition]),
     {true, State}.
 
-handoff_cancelled(State) ->
-    Partition = iorio_anode:partition(State),
+handoff_cancelled(State=#state{partition=Partition}) ->
     lager:info("handoff cancelled ~p", [Partition]),
     {ok, State}.
 
-handoff_finished(_TargetNode, State) ->
-    Partition = iorio_anode:partition(State),
+handoff_finished(_TargetNode, State=#state{partition=Partition}) ->
     lager:info("handoff finished ~p", [Partition]),
     {ok, State}.
 
-handle_handoff_data(BinData, State) ->
+handle_handoff_data(BinData, State=#state{buckets=Buckets}) ->
     TermData = binary_to_term(BinData),
     lager:debug("handoff data received ~p", [TermData]),
     {{BucketName, StreamName}, {SeqNum, Ts, Data}} = TermData,
-    {Entry, State1} = iorio_anode:raw_put(State, BucketName, StreamName, Ts, Data),
+    Entry = iorio_vnode_buckets:raw_put(Buckets, BucketName, StreamName, Ts, Data),
     GotSeqNum = Entry#sblob_entry.seqnum,
     if SeqNum =/= GotSeqNum ->
            lager:warning("seqnum mismatch on entry handoff expected ~p but got ~p",
                          [SeqNum, GotSeqNum]);
-           true -> ok
+       true -> ok
     end,
-    {reply, ok, State1}.
+    {reply, ok, State}.
 
 encode_handoff_item(Key, Value) ->
     term_to_binary({Key, Value}).
 
-is_empty(State) ->
-    IsEmpty = iorio_anode:is_empty(State),
-    Partition = iorio_anode:partition(State),
+is_empty(State=#state{path=Path, partition=Partition}) ->
+    IsEmpty = iorio_bucket:is_empty(Path),
     lager:info("handoff is empty? ~p ~p", [IsEmpty, Partition]),
     {IsEmpty, State}.
 
-delete(State) ->
-    Partition = iorio_anode:partition(State),
-    iorio_anode:delete(State),
+delete(State=#state{path=Path, partition=Partition}) ->
+    iorio_bucket:delete(Path),
     lager:info("handoff delete ~p", [Partition]),
     {ok, State}.
 
-handle_coverage({list_streams, Bucket}, _KeySpaces, {_, RefId, _}, State) ->
-    {Streams, NewState} = iorio_anode:list_streams(State, Bucket),
-    {reply, {RefId, Streams}, NewState};
+handle_coverage({list_streams, Bucket}, _KeySpaces, {_, RefId, _}, State=#state{path=Path}) ->
+    Streams = iorio_bucket:list_streams(Path, Bucket),
+    {reply, {RefId, Streams}, State};
 
-handle_coverage({list_buckets}, _KeySpaces, {_, RefId, _}, State) ->
-    {Buckets, NewState} = iorio_anode:list_buckets(State),
-    {reply, {RefId, Buckets}, NewState};
+handle_coverage({list_buckets}, _KeySpaces, {_, RefId, _}, State=#state{path=Path}) ->
+    Buckets = iorio_bucket:list_buckets(Path),
+    {reply, {RefId, Buckets}, State};
 
-handle_coverage({size, BucketName}, _KeySpaces, {_, RefId, _}, State) ->
-    HaveBucket = iorio_anode:have_bucket(State, BucketName),
-    {NewState, Result} = if HaveBucket ->
-                                {State1, Bucket} = iorio_anode:get_bucket(State, BucketName),
-                                SizeData = gblob_bucket:size(Bucket),
-                                {State1, SizeData};
-                            true -> {State, notfound}
-                         end,
-    {reply, {RefId, Result}, NewState};
+handle_coverage({size, BucketName}, _KeySpaces, {_, RefId, _},
+                State=#state{buckets=Buckets}) ->
+    Result = iorio_vnode_buckets:bucket_size(Buckets, BucketName),
+    {reply, {RefId, Result}, State};
 
 handle_coverage({truncate_percentage, BucketName, Percentage}, _KeySpaces,
-                {_, RefId, _}, State) ->
-    HaveBucket = iorio_anode:have_bucket(State, BucketName),
-    {NewState, Result} = if HaveBucket ->
-                                {State1, Bucket} = iorio_anode:get_bucket(State, BucketName),
-                                TResult = gblob_bucket:truncate_percentage(Bucket, Percentage),
-                                {State1, TResult};
-                            true -> {State, notfound}
-                         end,
-    {reply, {RefId, Result}, NewState};
+                {_, RefId, _}, State=#state{buckets=Buckets}) ->
+    Result = iorio_vnode_buckets:truncate_percentage(Buckets, BucketName, Percentage),
+    {reply, {RefId, Result}, State};
 
 
 handle_coverage(Req, _KeySpaces, _Sender, State) ->
     lager:warning("unknown coverage received ~p", [Req]),
     {noreply, State}.
 
-handle_exit(_Pid, _Reason, State) ->
-    Partition = iorio_anode:partition(State),
+handle_exit(_Pid, _Reason, State=#state{partition=Partition}) ->
     lager:info("handle exit ~p", [Partition]),
-    State1 = iorio_anode:free_resources(State),
-    {noreply, State1}.
+    free_resources(State),
+    {noreply, State}.
 
-handle_info(evict_bucket, State) ->
+handle_info(evict_bucket, State=#state{buckets=Buckets}) ->
     EvictFun = fun evict_bucket/4,
-    {_, NewState} = iorio_anode:maybe_evict(State, EvictFun),
-    {ok, NewState};
+    iorio_vnode_buckets:check_evict(Buckets, EvictFun),
+    {ok, State};
 
-handle_info({'DOWN', _MonitorRef, process, Pid, _Info}, State) ->
-    NewState = iorio_anode:remove_bucket(State, Pid),
-    {ok, NewState}.
+handle_info(Msg, State=#state{partition=Partition}) ->
+    lager:warning("Unexpected handle info msg: ~p ~p", [Partition, Msg]),
+    {ok, State}.
 
-terminate(Reason, State) ->
-    Partition = iorio_anode:partition(State),
+terminate(Reason, State=#state{partition=Partition}) ->
     lager:info("terminate ~p ~p", [Partition, Reason]),
-    _State1 = iorio_anode:free_resources(State),
+    free_resources(State),
     ok.
 
 %% private api
@@ -249,20 +260,17 @@ evict_bucket(BucketName, Partition, MaxSizeBytes, MaxTimeMsNoEviction) ->
 
     if ShouldEvict ->
            spawn(DoEvict),
-        {ok, evicting};
+           {ok, evicting};
        true ->
            lager:debug("no bucket eviction needed ~s ~p", [BucketName, Partition]),
            {ok, noaction}
     end.
 
-check(State=undefined, Place) ->
-    lager:error("state is undefined! ~p", [Place]),
-    State;
-check(State, _Place) ->
-    State.
+free_resources(#state{buckets=Buckets, channels=Chans}) ->
+    iorio_vnode_channels:clean(Chans),
+    iorio_vnode_buckets:clean(Buckets).
 
-to_reply({Result, NewState=undefined}) ->
-    lager:error("state is undefined! ~p", [Result]),
-    {reply, Result, NewState};
-to_reply({Result, NewState}) ->
-    {reply, Result, NewState}.
+send_to_channel({_ReqId, {error, _Reason}}, _Channels, _BucketName, _Stream) ->
+    ok;
+send_to_channel({_ReqId, Entry=#sblob_entry{}}, Channels, BucketName, Stream) ->
+    iorio_vnode_channels:send(Channels, BucketName, Stream, Entry).

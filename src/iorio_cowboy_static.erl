@@ -35,8 +35,9 @@
 -export([get_file/2]).
 
 -ignore_xref([init/3, rest_init/2, malformed_request/2, forbidden/2,
-         content_types_provided/2, resource_exists/2, last_modified/2,
-         generate_etag/2, get_file/2]).
+              content_types_provided/2, resource_exists/2, last_modified/2,
+              generate_etag/2, get_file/2, moved_temporarily/2,
+              previously_existed/2]).
 
 -type extra_etag() :: {etag, module(), function()} | {etag, false}.
 -type extra_mimetypes() :: {mimetypes, module(), function()}

@@ -1,5 +1,6 @@
 -module(iorio_x).
 -export([name_to_module/1, load_configs/1, get_config/1]).
+-ignore_xref([get_config/1]).
 
 name_to_module(Name) ->
     CompleteHandlerName = << <<"ioriox_">>/binary, Name/binary >>,

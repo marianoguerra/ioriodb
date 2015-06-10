@@ -13,6 +13,8 @@
 -behaviour(cowboy_middleware).
 -export([execute/2]).
 
+-ignore_xref([all_stats/0, send_metrics/2]).
+
 -define(METRIC_AUTH_ERROR, [iorio, auth, error]).
 -define(METRIC_AUTH_SUCCESS, [iorio, auth, success]).
 -define(METRIC_LISTEN_ONCE, [iorio, listen, active, once]).

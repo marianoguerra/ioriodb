@@ -3,7 +3,7 @@
          stop_req/2, terminate_req/2]).
 
 -ignore_xref([init_req/2, allowed_methods/2, is_authorized/2, handle/5,
-              handle/6, stop/2, terminate/2]).
+              handle/6, stop/2, terminate/2, stop_req/2, terminate_req/2]).
 
 -record(state, {access}).
 

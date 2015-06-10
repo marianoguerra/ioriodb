@@ -10,7 +10,7 @@
          handle_sync_event/4, terminate/3]).
 
 -ignore_xref([start_link/8, init/1, code_change/4, handle_event/3, handle_info/3,
-         handle_sync_event/4, terminate/3]).
+         handle_sync_event/4, terminate/3, write/7, write_conditionally/8]).
 
 %% States
 -export([prepare/2, execute/2, waiting/2]).

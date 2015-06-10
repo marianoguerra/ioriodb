@@ -66,7 +66,7 @@ handle_info({'DOWN', _MonitorRef, process, Pid, _Info}, State=#state{channels=Ch
     {noreply, State#state{channels=NewChans}};
 
 handle_info(Msg, State) ->
-    lageer:warning("Unexpected handle info message: ~p",[Msg]),
+    lager:warning("Unexpected handle info message: ~p", [Msg]),
     {noreply, State}.
 
 
@@ -93,7 +93,7 @@ do_send(Chans, Bucket, Stream, Entry) ->
               IsAlive = erlang:is_process_alive(Channel),
               lager:error("Error sending event to channel ~p/~p ~p ~p ~p alive: ~p/~p",
                           [Bucket, Stream, T, error_info(E), Channel, WasAlive, IsAlive]),
-        NewChans
+              NewChans
     end.
 
 error_info({noproc, {gen_server, call, _}}) ->
@@ -113,7 +113,7 @@ do_subscribe(Chans, Bucket, Stream, FromSeqNum, Pid) ->
               lager:error("Error subscribing to channel ~p/~p ~p ~p",
                           [Bucket, Stream, T, error_info(E),
                            erlang:is_process_alive(Channel)]),
-        NewChans
+              NewChans
     end.
 
 do_unsubscribe(Chans, Bucket, Stream, Pid) ->
@@ -133,7 +133,7 @@ do_unsubscribe(Chans, Bucket, Stream, Pid) ->
                       lager:error("Error unsubscribing to channel ~p/~p ~p ~p",
                                   [Bucket, Stream, T, error_info(E),
                                    erlang:is_process_alive(Channel)]),
-                Chans1
+                      Chans1
             end
     end.
 
