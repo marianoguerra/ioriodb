@@ -55,7 +55,7 @@ init(Opts) ->
     {ok, Gblobs} = rscbag:init(GBlobsOpts),
 
     GblobConfigFun = proplists:get_value(gblob_config_fun, Opts,
-                                         fun empty_gblob_config/4),
+                                         fun default_gblob_config/4),
 
     State = #state{max_bucket_size_bytes=MaxBucketSizeBytes, path=Path,
                    partition=Partition,
@@ -224,12 +224,8 @@ make_get_gblob_opts(PartitionStr, BucketName, Stream, GblobConfigFun) ->
             GblobConfigFun(PartitionStr, BucketName, Stream, Path)
     end.
 
-empty_gblob_config(_PartitionStr, _Bucket, _Stream, Path) ->
-    GblobOpts = [],
-    GblobServerOpts = [],
-    [{path, Path},
-     {gblob_opts, GblobOpts},
-     {gblob_server_opts, GblobServerOpts}].
+default_gblob_config(_PartitionStr, Bucket, Stream, Path) ->
+    iorio_config:stream_config(Path, Bucket, Stream).
 
 get_gblob(State=#state{gblobs=GBlobs, path=Path,
                        gblob_config_fun=GblobConfigFun}, BucketName, Stream) ->

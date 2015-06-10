@@ -6,8 +6,6 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
 
--include_lib("sblob/include/sblob.hrl").
-
 -record(state, {channels}).
 
 %% Public API
@@ -164,12 +162,6 @@ remove_channel(Channels, Pid) ->
             NewChannels
     end.
 
-get_seqnum({entry, _Bucket, _Stream, #sblob_entry{seqnum=SeqNum}}) -> SeqNum.
-
 new_channel_opts(Bucket, Stream) ->
-    % TODO: make it per channel configurable
-    BufferSize = application:get_env(iorio, channel_items_count, 50),
-    ChName = <<Bucket/binary, <<"/">>/binary, Stream/binary>>,
-    GetSeqNum = fun get_seqnum/1,
-    [{buffer_size, BufferSize}, {get_seqnum, GetSeqNum}, {name, ChName}].
+    iorio_config:channel_config(Bucket, Stream).
 
