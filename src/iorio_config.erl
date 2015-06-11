@@ -10,8 +10,10 @@ stream_config(Path, _Bucket, _Stream) ->
 
 channel_config(Bucket, Stream) ->
     BufferSize = application:get_env(iorio, channel_items_count, 50),
+    MaxSizeBytes = application:get_env(iorio, channel_items_size, 1048576),
     ChName = <<Bucket/binary, <<"/">>/binary, Stream/binary>>,
     GetSeqNum = fun get_seqnum/1,
-    [{buffer_size, BufferSize}, {get_seqnum, GetSeqNum}, {name, ChName}].
+    [{buffer_size, BufferSize}, {get_seqnum, GetSeqNum}, {name, ChName},
+     {buffer_max_size_bytes, MaxSizeBytes}].
 
 get_seqnum({entry, _Bucket, _Stream, #sblob_entry{seqnum=SeqNum}}) -> SeqNum.
