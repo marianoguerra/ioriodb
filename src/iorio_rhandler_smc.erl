@@ -7,4 +7,4 @@ init(Opts) ->
     smc_hist_channel:start_link(Opts).
 
 stop(Smc) ->
-    smc:stop(Smc).
+    smc_hist_channel:stop(Smc).
