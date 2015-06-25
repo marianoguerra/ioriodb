@@ -90,7 +90,7 @@ handle_ping(_Msg, Id, Req, State) ->
 fail(Msg, Id, State) ->
     {encode_error(Msg, Id), State}.
 
-with_stream(Fn, Msg, Id, Req, State=#state{access=Access, info=Info}) ->
+with_stream(Fn, Msg, Id, Req, State) ->
     {Body, NewState} = case get_channel_args(Msg) of
                {undefined, undefined} ->
                                fail(<<"missing bucket and stream">>, Id, State);
@@ -99,19 +99,21 @@ with_stream(Fn, Msg, Id, Req, State=#state{access=Access, info=Info}) ->
                {_, undefined} ->
                                fail(<<"missing stream">>, Id, State);
                {Bucket, Stream} ->
-                               Action = ?PERM_STREAM_GET,
-                               {ok, Info1} = ioriol_access:update_req(Info,
-                                        [{bucket, Bucket}, {stream, Stream}]),
-                               case ioriol_access:is_authorized_for_stream(Access, Info1, Action) of
-                                   {ok, Info2} ->
-                                       {FBody, State1} = Fn(Bucket, Stream),
-                                       State2 = State1#state{info=Info2},
-                                       {FBody, State2};
-                                   _Other -> fail(<<"unauthorized">>, Id, State)
-                               end
+                               Fn(Bucket, Stream)
            end,
 
     {reply, Body, Req, NewState}.
+
+if_has_permission(Bucket, Stream, Action, Id, Fn, State=#state{access=Access, info=Info}) ->
+    {ok, Info1} = ioriol_access:update_req(Info,
+                                           [{bucket, Bucket}, {stream, Stream}]),
+    case ioriol_access:is_authorized_for_stream(Access, Info1, Action) of
+        {ok, Info2} ->
+            {FBody, State1} = Fn(Bucket, Stream),
+            State2 = State1#state{info=Info2},
+            {FBody, State2};
+        _Other -> fail(<<"unauthorized">>, Id, State)
+    end.
 
 contains(_, []) -> false;
 contains(H, [H|_]) -> true;
@@ -124,14 +126,28 @@ remove(V, [V|T], Accum) -> remove(V, T, Accum);
 remove(V, [H|T], Accum) -> remove(V, T, [H|Accum]).
 
 subscribe_all(Subs, State) ->
-    lists:foldl(fun ({Bucket, Stream}, State0) ->
-                        subscribe(Bucket, Stream, nil, State0);
-                    ({Bucket, Stream, FromSeqNum}, State0) ->
-                        subscribe(Bucket, Stream, FromSeqNum, State0);
-                    (Sub, State0) ->
-                        lager:warning("malformed sub? ~p", [Sub]),
-                        State0
-                end, State, Subs).
+    Action = ?PERM_STREAM_GET,
+    Fun = fun ({Bucket, Stream}, State0) ->
+                  Fn = fun (B, S) ->
+                               State1 = subscribe(B, S, nil, State0),
+                               {nil, State1}
+                       end,
+                  {_, FState} = if_has_permission(Bucket, Stream, Action, 0,
+                                                  Fn, State),
+                  FState;
+              ({Bucket, Stream, FromSeqNum}, State0) ->
+                  Fn = fun (B, S) ->
+                               State1 = subscribe(B, S, FromSeqNum, State0),
+                               {nil, State1}
+                       end,
+                  {_, FState} = if_has_permission(Bucket, Stream, Action, 0,
+                                                  Fn, State),
+                  FState;
+              (Sub, State0) ->
+                  lager:warning("malformed sub? ~p", [Sub]),
+                  State0
+          end,
+    lists:foldl(Fun, State, Subs).
 
 subscribe(Bucket, Stream, FromSeqNum, State=#state{channels=Channels, iorio=Iorio}) ->
     Key = {Bucket, Stream},
