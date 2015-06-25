@@ -205,9 +205,12 @@ cowboy_response_hook(Code, _Headers, _Body, Req) ->
     {_Method, _Req2} = cowboy_req:method(Req),
     {StartTs, _Req3} = cowboy_req:meta(iorio_req_start, Req),
 
-    ReqTime = EndTs - StartTs,
+    if is_integer(StartTs) ->
+        ReqTime = EndTs - StartTs,
+        exometer:update(endpoint_key(req_time, EndPoint), ReqTime);
+       true -> ok
+    end,
 
-    exometer:update(endpoint_key(req_time, EndPoint), ReqTime),
     exometer:update(endpoint_key(req_min, EndPoint), 1),
     exometer:update(resp_code_key(Code), 1),
     exometer:update(?METRIC_HTTP_ACTIVE_REQS, -1),
