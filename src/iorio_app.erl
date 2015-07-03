@@ -197,8 +197,8 @@ create_user(Access, Username, Password, Groups, OnUserCreated) ->
     end.
 
 setup_initial_permissions(AccessLogic, AdminUsername) ->
-    PublicReadBucket = <<"public">>,
-    SysBucket = <<"$sys">>,
+    PublicReadBucket = envd(public_bucket, <<"public">>),
+    SysBucket = envd(metrics_bucket, <<"$sys">>),
     R0 = ioriol_access:grant(AccessLogic, <<"*">>, SysBucket, any, "iorio.get"),
     lager:info("set read permissions to ~s to all: ~p", [SysBucket, R0]),
     R1 = ioriol_access:grant(AccessLogic, <<"*">>, PublicReadBucket, any, "iorio.get"),
