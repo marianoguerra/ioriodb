@@ -15,8 +15,35 @@
 start(_StartType, _StartArgs) ->
     % TODO: see where to start it
     file_handle_cache:start_link(),
+
+    AccessLogic = init_auth(),
+    init_web(AccessLogic),
+    init_mqtt(AccessLogic),
+    init_extensions(),
+    init_metrics(),
+    init_iorio().
+
+stop(_State) ->
+    ok.
+
+%% private api
+
+init_iorio() ->
+    case iorio_sup:start_link() of
+        {ok, Pid} ->
+            ok = riak_core:register([{vnode_module, iorio_vnode}]),
+
+            ok = riak_core_ring_events:add_guarded_handler(iorio_ring_event_handler, []),
+            ok = riak_core_node_watcher_events:add_guarded_handler(iorio_node_event_handler, []),
+            ok = riak_core_node_watcher:service_up(iorio, self()),
+
+            {ok, Pid};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+init_auth() ->
     {ok, ApiSecret} = env(auth_secret),
-    {ok, ApiAlgorithm} = env(auth_algorithm),
 
     AdminUsername = envd(admin_username, "admin"),
     {ok, AdminPassword} = env(admin_password),
@@ -24,14 +51,6 @@ start(_StartType, _StartArgs) ->
     AnonUsername = envd(anon_username, "anonymous"),
     % default password since login in as anonymous is not that useful
     AnonPassword = envd(anon_password, <<"secret">>),
-
-    SessionDurationSecs = envd(session_duration_secs, 3600),
-
-    CorsInfo = init_cors_info(),
-
-    N = envd(req_n, 3),
-    W = envd(req_w, 3),
-    Timeout = envd(req_timeout, 5000),
 
     AuthMod = envd(auth_mod, permiso_rcore),
     AuthModOpts0 = envd(auth_mod_opts, []),
@@ -62,60 +81,83 @@ start(_StartType, _StartArgs) ->
                 fun (_) -> ok end),
 
     setup_initial_permissions(AccessLogic, AdminUsername),
+    AccessLogic.
 
-    BaseDispatchRoutes = [
-               {"/listen", bullet_handler,
-                [{handler, iorio_listen_handler}, {access, AccessLogic},
-                 {cors, CorsInfo}]},
-               {"/streams/:bucket", iorio_rest_list,
-                [{access, AccessLogic},
-                 {cors, CorsInfo}]},
-               {"/streams/:bucket/:stream", iorio_rest_stream,
-                [{access, AccessLogic}, {n, N}, {w, W}, {timeout, Timeout},
-                 {cors, CorsInfo}]},
-               {"/buckets/", iorio_rest_list,
-                [{access, AccessLogic}, {cors, CorsInfo}]},
-               {"/access/:bucket/", iorio_rest_access,
-                [{access, AccessLogic}, {cors, CorsInfo}]},
-               {"/access/:bucket/:stream", iorio_rest_access,
-                [{access, AccessLogic}, {cors, CorsInfo}]},
+base_routes(AccessLogic, CorsInfo) ->
+    N = envd(req_n, 3),
+    W = envd(req_w, 3),
+    Timeout = envd(req_timeout, 5000),
+    {ok, ApiAlgorithm} = env(auth_algorithm),
+    SessionDurationSecs = envd(session_duration_secs, 3600),
 
-               {"/sessions", iorio_rest_session,
-                [{access, AccessLogic}, {algorithm, ApiAlgorithm},
-                 {session_duration_secs, SessionDurationSecs},
-                 {cors, CorsInfo}]},
-               {"/users/", iorio_rest_user,
-                [{access, AccessLogic}, {cors, CorsInfo}]},
-               {"/ping", iorio_rest_ping, [{cors, CorsInfo}]},
+    [
+     {"/listen", bullet_handler,
+      [{handler, iorio_listen_handler}, {access, AccessLogic},
+       {cors, CorsInfo}]},
+     {"/streams/:bucket", iorio_rest_list,
+      [{access, AccessLogic},
+       {cors, CorsInfo}]},
+     {"/streams/:bucket/:stream", iorio_rest_stream,
+      [{access, AccessLogic}, {n, N}, {w, W}, {timeout, Timeout},
+       {cors, CorsInfo}]},
+     {"/buckets/", iorio_rest_list,
+      [{access, AccessLogic}, {cors, CorsInfo}]},
+     {"/access/:bucket/", iorio_rest_access,
+      [{access, AccessLogic}, {cors, CorsInfo}]},
+     {"/access/:bucket/:stream", iorio_rest_access,
+      [{access, AccessLogic}, {cors, CorsInfo}]},
 
-               {"/x/:handler/[...]", iorio_rest_custom,
-                [{access, AccessLogic}, {cors, CorsInfo}]}
-    ],
+     {"/sessions", iorio_rest_session,
+      [{access, AccessLogic}, {algorithm, ApiAlgorithm},
+       {session_duration_secs, SessionDurationSecs},
+       {cors, CorsInfo}]},
+     {"/users/", iorio_rest_user,
+      [{access, AccessLogic}, {cors, CorsInfo}]},
+     {"/ping", iorio_rest_ping, [{cors, CorsInfo}]},
 
-    UserDispatchRoutes = envd(api_handlers,
-                             [{"/ui/[...]", iorio_cowboy_static,
-                               {priv_dir, iorio, "assets",
-                                [{mimetypes, cow_mimetypes, all}]}}]),
+     {"/x/:handler/[...]", iorio_rest_custom,
+      [{access, AccessLogic}, {cors, CorsInfo}]}
+    ].
+
+user_routes() ->
+    envd(api_handlers,
+         [{"/ui/[...]", iorio_cowboy_static,
+           {priv_dir, iorio, "assets",
+            [{mimetypes, cow_mimetypes, all}]}}]).
+
+api_middlewares(CorsInfo) ->
+    CorsEnabled = iorio_cors:is_enabled(CorsInfo),
+    if CorsEnabled ->
+           lager:info("CORS enabled, adding middleware"),
+           [iorio_stats, cowboy_router, iorio_cors, cowboy_handler];
+       true ->
+           lager:info("CORS disabled, not adding middleware"),
+           [iorio_stats, cowboy_router, cowboy_handler]
+    end.
+
+web_routes(AccessLogic, CorsInfo) ->
+    BaseDispatchRoutes = base_routes(AccessLogic, CorsInfo),
+    UserDispatchRoutes = user_routes(),
     lager:info("configuring routes with following user provided routes: ~p",
                UserDispatchRoutes),
     DispatchRoutes = BaseDispatchRoutes ++ UserDispatchRoutes,
+    cowboy_router:compile([{'_', DispatchRoutes}]).
 
-    Dispatch = cowboy_router:compile([{'_', DispatchRoutes}]),
-
-    CorsEnabled = iorio_cors:is_enabled(CorsInfo),
-    HttpEnabled = envd(http_enabled, true),
-    ApiPort = envd(http_port, 8080),
-    ApiAcceptors = envd(http_acceptors, 100),
-    ApiMiddlewares = if CorsEnabled ->
-                            lager:info("CORS enabled, adding middleware"),
-                            [iorio_stats, cowboy_router, iorio_cors, cowboy_handler];
-                        true ->
-                            lager:info("CORS disabled, not adding middleware"),
-                            [iorio_stats, cowboy_router, cowboy_handler]
-                     end,
+init_web(AccessLogic) ->
+    CorsInfo = init_cors_info(),
+    Dispatch = web_routes(AccessLogic, CorsInfo),
+    ApiMiddlewares = api_middlewares(CorsInfo),
     CowboyOpts = [{env, [{dispatch, Dispatch}]},
                   {onresponse, fun iorio_stats:cowboy_response_hook/4},
                   {middlewares, ApiMiddlewares}],
+
+    init_http(CowboyOpts),
+    init_https(CowboyOpts).
+
+init_http(CowboyOpts) ->
+    ApiAcceptors = envd(http_acceptors, 100),
+    HttpEnabled = envd(http_enabled, true),
+    ApiPort = envd(http_port, 8080),
 
     if HttpEnabled ->
             lager:info("http api enabled, starting"),
@@ -123,10 +165,12 @@ start(_StartType, _StartArgs) ->
        true ->
            lager:info("http api disabled"),
            ok
-    end,
+    end.
 
+init_https(CowboyOpts) ->
     SecureEnabled = envd(https_enabled, false),
     SecureApiPort = envd(https_port, 8443),
+    ApiAcceptors = envd(http_acceptors, 100),
 
     if
         SecureEnabled ->
@@ -146,44 +190,30 @@ start(_StartType, _StartArgs) ->
         true ->
             lager:info("https api disabled"),
             ok
-    end,
+    end.
 
+init_mqtt(AccessLogic) ->
     MqttEnabled = envd(mqtt_enabled, false),
     if MqttEnabled -> {ok, _MqttSupPid} = start_mqtt(AccessLogic);
        true -> lager:info("mqtt disabled"), ok
-    end,
+    end.
 
+init_extensions() ->
     ExtensionsLoadOk = load_extensions_configs(),
     if ExtensionsLoadOk -> ok;
        true ->
            lager:warning("Some extension's Config failed to load. This may"
                          " cause unexpected behaviour on those extensions")
-    end,
+    end.
 
+init_metrics() ->
     iorio_stats:init_metrics(),
     MetricsBucket = envd(metrics_bucket, <<"$sys">>),
     MetricsStream = envd(metrics_stream, <<"metrics">>),
     MetricsInterval = envd(metrics_interval_ms, 60000),
     {ok, _Tref} = iorio_stats:start_metric_sender(MetricsBucket, MetricsStream,
-                                                  MetricsInterval),
+                                                  MetricsInterval).
 
-    case iorio_sup:start_link() of
-        {ok, Pid} ->
-            ok = riak_core:register([{vnode_module, iorio_vnode}]),
-
-            ok = riak_core_ring_events:add_guarded_handler(iorio_ring_event_handler, []),
-            ok = riak_core_node_watcher_events:add_guarded_handler(iorio_node_event_handler, []),
-            ok = riak_core_node_watcher:service_up(iorio, self()),
-
-            {ok, Pid};
-        {error, Reason} ->
-            {error, Reason}
-    end.
-
-stop(_State) ->
-    ok.
-
-%% private api
 
 create_user(Access, Username, Password, Groups, OnUserCreated) ->
     case ioriol_access:create_user(Access, Username, Password, Groups) of
