@@ -7,14 +7,16 @@
 -include_lib("sblob/include/sblob.hrl").
 -include("include/iorio.hrl").
 
--record(state, {channels=[], iorio, token, info, access, active}).
+-record(state, {channels=[], iorio_mod, iorio_state, token, info, access, active}).
 
 % TODO: handle CORS in COMET on bullet?
-init(_Transport, Req, [_, {access, Access}|_]=Opts, Active) ->
-    Iorio = proplists:get_value(iorio, Opts, iorio),
+init(_Transport, Req, Opts, Active) ->
+    {access, Access} = proplists:lookup(access, Opts),
+    {iorio_mod, Iorio} = proplists:lookup(iorio_mod, Opts),
+    {iorio_state, IorioState} = proplists:lookup(iorio_state, Opts),
     {Method, Req1} = cowboy_req:method(Req),
     case Method of
-        <<"GET">> -> do_init(Req1, Access, Iorio, Active);
+        <<"GET">> -> do_init(Req1, Access, Iorio, IorioState, Active);
         Other ->
             lager:warning("got ~p request on listen, closing connection", [Other]),
             {shutdown, Req1, #state{}}
@@ -51,11 +53,11 @@ info({replay, Entries}, Req, State) when is_list(Entries) ->
 
 % in case someone sends some weird request and we do a shutdown
 terminate(_Req, #state{active=undefined}) -> ok;
-terminate(_Req, #state{channels=Channels, iorio=Iorio, active=Active}) ->
+terminate(_Req, #state{channels=Channels, iorio_mod=Iorio, iorio_state=IorioState, active=Active}) ->
     Pid = self(),
     lists:foreach(fun ({Bucket, Stream}) ->
                           lager:debug("unsubscribing from ~s/~s~n", [Bucket, Stream]),
-                          Iorio:unsubscribe(Bucket, Stream, Pid)
+                          Iorio:unsubscribe(IorioState, Bucket, Stream, Pid)
                   end, Channels),
     iorio_stats:listen_disconnect(Active),
     ok.
@@ -149,10 +151,12 @@ subscribe_all(Subs, State) ->
           end,
     lists:foldl(Fun, State, Subs).
 
-subscribe(Bucket, Stream, FromSeqNum, State=#state{channels=Channels, iorio=Iorio}) ->
+subscribe(Bucket, Stream, FromSeqNum, State=#state{channels=Channels,
+                                                   iorio_mod=Iorio,
+                                                   iorio_state=IorioState}) ->
     Key = {Bucket, Stream},
     lager:debug("subscribing: ~s/~s~n", [Bucket, Stream]),
-    Iorio:subscribe(Bucket, Stream, FromSeqNum, self()),
+    Iorio:subscribe(IorioState, Bucket, Stream, FromSeqNum, self()),
     NewChannels = [Key|Channels],
     State#state{channels=NewChannels}.
 
@@ -173,14 +177,17 @@ handle_subscribe(Msg, Id, Req, State=#state{channels=Channels}) ->
                 end, Msg, Id, Req, State).
 
 
-handle_unsubscribe(Msg, Id, Req, State=#state{channels=Channels, iorio=Iorio}) ->
+handle_unsubscribe(Msg, Id, Req, State=#state{channels=Channels,
+                                              iorio_mod=Iorio,
+                                              iorio_state=IorioState})
+->
     with_stream(fun (Bucket, Stream) ->
                         Key = {Bucket, Stream},
                         IsSubscribed = contains(Key, Channels),
                         if
                             IsSubscribed ->
                                 lager:debug("unsubscribing ~s/~s~n", [Bucket, Stream]),
-                                Iorio:unsubscribe(Bucket, Stream, self()),
+                                Iorio:unsubscribe(IorioState, Bucket, Stream, self()),
                                 NewChannels = remove(Key, Channels),
                                 State1 = State#state{channels=NewChannels},
                                 {encode_ok(Id, <<"unsubscribe">>), State1};
@@ -200,7 +207,7 @@ encode_error(Reason, Id) ->
 set_json_response(Req) ->
     cowboy_req:set_resp_header(<<"Content-Type">>, <<"application/json">>, Req).
 
-do_init(Req, Access, Iorio, Active) ->
+do_init(Req, Access, Iorio, IorioState, Active) ->
     {Token, Req1} = cowboy_req:qs_val(<<"jwt">>, Req, nil),
     {Params, Req2} = cowboy_req:qs_vals(Req1),
     Req3 = cowboy_req:compact(Req2),
@@ -210,8 +217,8 @@ do_init(Req, Access, Iorio, Active) ->
     case iorio_session:fill_session_from_token(Access, Info, Token) of
         {ok, Info1} ->
             iorio_stats:listen_connect(Active),
-            State = #state{channels=[], iorio=Iorio, access=Access,
-                           token=Token, info=Info1, active=Active},
+            State = #state{channels=[], iorio_mod=Iorio, iorio_state=IorioState,
+                           access=Access, token=Token, info=Info1, active=Active},
 
             State1 = subscribe_all(Subs, State),
             Req4 = if Active == once -> set_json_response(Req3);

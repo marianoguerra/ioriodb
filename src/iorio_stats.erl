@@ -1,6 +1,6 @@
 -module(iorio_stats).
--export([all_stats/0, cowboy_response_hook/4, init_metrics/0]).
--export([start_metric_sender/3, send_metrics/2]).
+-export([all_stats/2, cowboy_response_hook/4, init_metrics/0]).
+-export([start_metric_sender/5, send_metrics/4]).
 
 -export([auth_error/0, auth_success/0, listen_connect/1, listen_disconnect/1]).
 
@@ -13,7 +13,7 @@
 -behaviour(cowboy_middleware).
 -export([execute/2]).
 
--ignore_xref([all_stats/0, send_metrics/2]).
+-ignore_xref([all_stats/2, send_metrics/2]).
 
 -define(METRIC_AUTH_ERROR, [iorio, auth, error]).
 -define(METRIC_AUTH_SUCCESS, [iorio, auth, success]).
@@ -47,9 +47,9 @@
 
                        500, 501, 502, 503, 504, 505, 506, 511]).
 
-all_stats() ->
+all_stats(Iorio, IorioState) ->
  [{node, node_stats()},
-  {iorio, iorio:stats()},
+  {iorio, Iorio:stats(IorioState)},
   {file, file_stats()},
   {http, http_stats()},
   {core, core_stats()}].
@@ -166,19 +166,20 @@ init_metrics() ->
 
     exometer:new(?METRIC_CORE_MSG_SIZE, histogram, []).
 
-send_metrics(Bucket, Stream) ->
-    Metrics = all_stats(),
+send_metrics(Iorio, IorioState, Bucket, Stream) ->
+    Metrics = all_stats(Iorio, IorioState),
     Node = erlang:node(),
     FullMetrics = [{node, Node}, {metrics, Metrics}],
     FullMetricsJson = iorio_json:encode(FullMetrics),
-    case iorio:put(Bucket, Stream, FullMetricsJson) of
+    case Iorio:put(IorioState, Bucket, Stream, FullMetricsJson) of
         {ok, _Entry} -> ok;
         Other ->
             lager:error("Sending Metrics: ~p", [Other])
     end.
 
-start_metric_sender(Bucket, Stream, IntervalMs) ->
-    timer:apply_interval(IntervalMs, ?MODULE, send_metrics, [Bucket, Stream]).
+start_metric_sender(IorioMod, IorioState, Bucket, Stream, IntervalMs) ->
+    timer:apply_interval(IntervalMs, ?MODULE, send_metrics,
+                         [IorioMod, IorioState, Bucket, Stream]).
 
 cowboy_response_hook(Code, _Headers, _Body, Req) ->
     EndTs = now_fast(),

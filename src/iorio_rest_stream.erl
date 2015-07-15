@@ -31,7 +31,7 @@
         ]).
 
 -record(state, {bucket, stream, from_sn, limit, access, info, filename,
-                n=3, w=3, timeout=5000, cors}).
+                n=3, w=3, timeout=5000, cors, iorio_mod, iorio_state}).
 
 -include_lib("sblob/include/sblob.hrl").
 -include("include/iorio.hrl").
@@ -46,7 +46,8 @@ to_int_or(Bin, Default) ->
 init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest};
 init({ssl, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
-rest_init(Req, [{access, Access}, {n, N}, {w, W}, {timeout, Timeout}, {cors, Cors}]) ->
+rest_init(Req, [{access, Access}, {n, N}, {w, W}, {timeout, Timeout},
+                {cors, Cors}, {iorio_mod, IorioMod}, {iorio_state, IorioState}]) ->
     {Bucket, Req1} = cowboy_req:binding(bucket, Req),
     {Stream, Req2} = cowboy_req:binding(stream, Req1),
     {FromSNStr, Req3} = cowboy_req:qs_val(<<"from">>, Req2, <<"">>),
@@ -60,6 +61,7 @@ rest_init(Req, [{access, Access}, {n, N}, {w, W}, {timeout, Timeout}, {cors, Cor
 
     {ok, Req5, #state{bucket=Bucket, stream=Stream, from_sn=FromSN,
                       limit=Limit, filename=Filename, n=N, w=W, access=Access,
+                      iorio_mod=IorioMod, iorio_state=IorioState,
                       info=Info, timeout=Timeout, cors=Cors}}.
 
 options(Req, State=#state{cors=Cors}) ->
@@ -135,8 +137,9 @@ sblob_to_json_full(#sblob_entry{seqnum=SeqNum, timestamp=Timestamp, data=Data}) 
      integer_to_list(Timestamp), "}, \"data\":", Data, "}"].
 
 to_json(Req, State=#state{bucket=Bucket, stream=Stream, from_sn=From,
-                          limit=Limit, filename=Filename}) ->
-    Blobs = iorio:get(Bucket, Stream, From, Limit),
+                          limit=Limit, filename=Filename,
+                          iorio_mod=Iorio, iorio_state=IorioState}) ->
+    Blobs = Iorio:get(IorioState, Bucket, Stream, From, Limit),
     ItemList = lists:map(fun sblob_to_json_full/1, Blobs),
     ItemsJoined = string:join(ItemList, ","),
     Items = ["[", ItemsJoined, "]"],
@@ -149,11 +152,15 @@ to_json(Req, State=#state{bucket=Bucket, stream=Stream, from_sn=From,
 
     {Items, Req1, State}.
 
-put(Bucket, PatchStream, Data, #state{n=N, w=W, timeout=Timeout}) ->
-    iorio:put(Bucket, PatchStream, Data, N, W, Timeout).
+put(Bucket, PatchStream, Data,
+    #state{n=N, w=W, timeout=Timeout, iorio_mod=Iorio, iorio_state=IorioState}) ->
+    Iorio:put(IorioState, Bucket, PatchStream, Data, N, W, Timeout).
 
-put_conditionally(Bucket, PatchStream, Data, #state{n=N, w=W, timeout=Timeout}, LastSeqNum) ->
-    iorio:put_conditionally(Bucket, PatchStream, Data, LastSeqNum, N, W, Timeout).
+put_conditionally(Bucket, PatchStream, Data, #state{n=N, w=W, timeout=Timeout,
+                                                    iorio_mod=Iorio,
+                                                    iorio_state=IorioState},
+                  LastSeqNum) ->
+    Iorio:put_conditionally(IorioState, Bucket, PatchStream, Data, LastSeqNum, N, W, Timeout).
 
 publish_patch(Bucket, Stream, Data, State) ->
     PatchStream = list_to_binary(io_lib:format("~s-$patch", [Stream])),
@@ -207,13 +214,14 @@ from_json(Req, State=#state{bucket=Bucket, stream=Stream}) ->
             {false, iorio_http:invalid_body(Req1), State}
     end.
 
-from_json_patch(Req, State=#state{bucket=Bucket, stream=Stream}) ->
+from_json_patch(Req, State=#state{bucket=Bucket, stream=Stream,
+                                  iorio_mod=Iorio, iorio_state=IorioState}) ->
     {ok, Body, Req1} = cowboy_req:body(Req),
     case iorio_json:is_json(Body) of
         true ->
             case jsonpatch:parse(Body) of
                 {ok, ParsedPatch} ->
-                    case iorio:get_last(Bucket, Stream) of
+                    case Iorio:get_last(IorioState, Bucket, Stream) of
                         {ok, #sblob_entry{data=Data, seqnum=LastSeqNum}} ->
                             ParsedBlob = iorio_json:decode(Data),
                             case jsonpatch:patch(ParsedPatch, ParsedBlob) of

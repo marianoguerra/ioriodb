@@ -5,7 +5,8 @@
          disconnect/1, error/2, publish/2, subscribe/2, unsubscribe/2,
          login/2]).
 
--record(state, {username, send, bucket_separator, access, session}).
+-record(state, {username, send, bucket_separator, access, session,
+                iorio_mod, iorio_state}).
 
 -include("include/iorio.hrl").
 -include_lib("sblob/include/sblob.hrl").
@@ -13,11 +14,13 @@
 
 init(Opts) ->
     {mqttl_send, Send} = proplists:lookup(mqttl_send, Opts),
+    {iorio_mod, IorioMod} = proplists:lookup(iorio_mod, Opts),
+    {iorio_state, IorioState} = proplists:lookup(iorio_state, Opts),
     BucketSeparator = proplists:get_value(bucket_separator, Opts, <<"!">>),
     DefaultUsername = proplists:get_value(default_username, Opts, <<"mqtt">>),
     {access, Access} = proplists:lookup(access, Opts),
     {ok, #state{send=Send, bucket_separator=BucketSeparator, access=Access,
-                username=DefaultUsername}}.
+                username=DefaultUsername, iorio_mod=IorioMod, iorio_state=IorioState}}.
 
 ping(State=#state{}) -> {ok, State}.
 connect(State=#state{}) -> {ok, State}.
@@ -28,7 +31,7 @@ error(State=#state{}, Error) ->
     {ok, State}.
 
 publish(State=#state{username=Username, bucket_separator=BucketSeparator,
-                     access=Access},
+                     access=Access, iorio_mod=Iorio, iorio_state=IorioState},
         {Topic, Qos, Dup, Retain, MessageId, Payload}) ->
     lager:debug("Publish ~p ~p ~p ~p ~p ~p",
                [Topic, Qos, Dup, Retain, MessageId, Payload]),
@@ -43,7 +46,7 @@ publish(State=#state{username=Username, bucket_separator=BucketSeparator,
                                                                  Stream, Perm),
             case CheckResult of
                 ok ->
-                    iorio:put(Bucket, Stream, Payload),
+                    Iorio:put(IorioState, Bucket, Stream, Payload),
                     {ok, State1};
                 {error, Reason} ->
                     {error, State1, Reason}
@@ -60,14 +63,15 @@ subscribe(State, Topics) ->
             {error, State, Reason}
     end.
 
-unsubscribe(State=#state{username=Username, bucket_separator=BucketSeparator}, Topics) ->
+unsubscribe(State=#state{username=Username, bucket_separator=BucketSeparator,
+                        iorio_mod=Iorio, iorio_state=IorioState}, Topics) ->
     Fun = fun (TopicName, IState) ->
                   OState = IState,
                   {Bucket, Stream} = extract_bucket_and_stream(TopicName,
                                                                Username,
                                                                BucketSeparator),
                   lager:debug("Unsubscribe ~p", [TopicName]),
-                  iorio:unsubscribe(Bucket, Stream, self()),
+                  Iorio:unsubscribe(IorioState, Bucket, Stream, self()),
                   OState
           end,
     NewState = lists:foldl(Fun, State, Topics),
@@ -146,7 +150,8 @@ get_session(State=#state{session=Session}) ->
 
 
 subscribe(State=#state{username=Username, bucket_separator=BucketSeparator,
-                       access=Access}, Session, Topics) ->
+                       access=Access, iorio_mod=Iorio, iorio_state=IorioState},
+          Session, Topics) ->
     Fun = fun ({TopicName, Qos}, {QosList, IState}) ->
                   OState = IState,
                   {Bucket, Stream} = extract_bucket_and_stream(TopicName,
@@ -160,7 +165,7 @@ subscribe(State=#state{username=Username, bucket_separator=BucketSeparator,
                           % TODO
                           QosVal = ?QOS_0,
                           lager:debug("Subscribe ~p ~p", [TopicName, Qos]),
-                          iorio:subscribe(Bucket, Stream, self()),
+                          Iorio:subscribe(IorioState, Bucket, Stream, self()),
                           {[QosVal|QosList], OState};
                       {error, Reason} ->
                           lager:warning("Subscribe error ~p ~p ~p",

@@ -17,11 +17,13 @@ start(_StartType, _StartArgs) ->
     file_handle_cache:start_link(),
 
     AccessLogic = init_auth(),
+    IorioMod = iorio,
+    IorioState = nil,
     init_web(AccessLogic),
-    init_mqtt(AccessLogic),
+    init_mqtt(AccessLogic, IorioMod, IorioState),
     init_extensions(),
-    init_metrics(),
-    iorio:init().
+    init_metrics(IorioMod, IorioState),
+    IorioMod:init().
 
 stop(_State) ->
     ok.
@@ -81,13 +83,13 @@ base_routes(AccessLogic, CorsInfo) ->
     [
      {"/listen", bullet_handler,
       [{handler, iorio_listen_handler}, {access, AccessLogic},
-       {cors, CorsInfo}]},
+       {cors, CorsInfo}, {iorio_mod, IorioMod}, {iorio_state, IorioState}]},
      {"/streams/:bucket", iorio_rest_list,
       [{access, AccessLogic}, {cors, CorsInfo},
        {iorio_mod, IorioMod}, {iorio_state, IorioState}]},
      {"/streams/:bucket/:stream", iorio_rest_stream,
       [{access, AccessLogic}, {n, N}, {w, W}, {timeout, Timeout},
-       {cors, CorsInfo}]},
+       {cors, CorsInfo}, {iorio_mod, IorioMod}, {iorio_state, IorioState}]},
      {"/buckets/", iorio_rest_list,
       [{access, AccessLogic}, {cors, CorsInfo},
        {iorio_mod, IorioMod}, {iorio_state, IorioState}]},
@@ -106,7 +108,8 @@ base_routes(AccessLogic, CorsInfo) ->
                                  {iorio_state, IorioState}]},
 
      {"/x/:handler/[...]", iorio_rest_custom,
-      [{access, AccessLogic}, {cors, CorsInfo}]}
+      [{access, AccessLogic}, {cors, CorsInfo},
+       {iorio_mod, IorioMod}, {iorio_state, IorioState}]}
     ].
 
 user_routes() ->
@@ -182,9 +185,9 @@ init_https(CowboyOpts) ->
             ok
     end.
 
-init_mqtt(AccessLogic) ->
+init_mqtt(AccessLogic, IorioMod, IorioState) ->
     MqttEnabled = envd(mqtt_enabled, false),
-    if MqttEnabled -> {ok, _MqttSupPid} = start_mqtt(AccessLogic);
+    if MqttEnabled -> {ok, _MqttSupPid} = start_mqtt(AccessLogic, IorioMod, IorioState);
        true -> lager:info("mqtt disabled"), ok
     end.
 
@@ -196,12 +199,13 @@ init_extensions() ->
                          " cause unexpected behaviour on those extensions")
     end.
 
-init_metrics() ->
+init_metrics(IorioMod, IorioState) ->
     iorio_stats:init_metrics(),
     MetricsBucket = envd(metrics_bucket, <<"$sys">>),
     MetricsStream = envd(metrics_stream, <<"metrics">>),
     MetricsInterval = envd(metrics_interval_ms, 60000),
-    {ok, _Tref} = iorio_stats:start_metric_sender(MetricsBucket, MetricsStream,
+    {ok, _Tref} = iorio_stats:start_metric_sender(IorioMod, IorioState,
+                                                  MetricsBucket, MetricsStream,
                                                   MetricsInterval).
 
 
@@ -248,12 +252,13 @@ create_groups(AccessLogic) ->
     AdminGroup = list_to_binary(?ADMIN_GROUP),
     riak_core_security:alter_group(AdminGroup, [{"groups", [UserGroup]}]).
 
-start_mqtt(Access) ->
+start_mqtt(Access, IorioMod, IorioState) ->
     lager:info("mqtt enabled, starting"),
     Acceptors = envd(mqtt_acceptors, 100),
     MaxConnections = envd(mqtt_max_connections, 1024),
     Port = envd(mqtt_port, 1883),
-    UserHandlerOpts = [{access, Access}],
+    UserHandlerOpts = [{access, Access},
+                       {iorio_mod, IorioMod}, {iorio_state, IorioState}],
 	{ok, _} = ranch:start_listener(iorio_mqtt, Acceptors, ranch_tcp,
                                    [{port, Port},
                                     {max_connections, MaxConnections}],

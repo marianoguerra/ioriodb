@@ -2,13 +2,13 @@
 -include("iorio.hrl").
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 
--export([ping/1, put/3, put/6, put_conditionally/7, get/3, get/4, get_last/2,
-         subscribe/3, subscribe/4, unsubscribe/3, list/1, list/2, list/3,
+-export([ping/1, put/4, put/7, put_conditionally/8, get/4, get/5, get_last/3,
+         subscribe/4, subscribe/5, unsubscribe/4, list/1, list/2, list/3,
          bucket_size/1, bucket_size/2, truncate/2, truncate_percentage/2,
-         init/0, stats/0]).
+         init/0, stats/1]).
 
--ignore_xref([ping/1, bucket_size/1, bucket_size/2, get/3, list/3, put/3,
-              subscribe/3, subscribe/4, truncate_percentage/2, unsubscribe/3]).
+-ignore_xref([ping/1, bucket_size/1, bucket_size/2, get/4, list/3, put/4,
+              subscribe/4, subscribe/5, truncate_percentage/2, unsubscribe/4]).
 
 get_index_node(Bucket, Stream) ->
     DocIdx = riak_core_util:chash_key({Bucket, Stream}),
@@ -36,7 +36,7 @@ init() ->
             {error, Reason}
     end.
 
-stats() ->
+stats(_State) ->
     Stats = riak_core_stat:get_stats(),
     KeyToString = fun ({K, V}) ->
                           StrKeyTokens = lists:map(fun to_string/1, tl(tl(K))),
@@ -54,10 +54,10 @@ ping(_State) ->
     [{IndexNode, _Type}] = PrefList,
     riak_core_vnode_master:sync_spawn_command(IndexNode, ping, iorio_vnode_master).
 
-put(Bucket, Stream, Data) ->
-    put(Bucket, Stream, Data, ?DEFAULT_N, ?DEFAULT_W, ?DEFAULT_TIMEOUT_MS).
+put(State, Bucket, Stream, Data) ->
+    put(State, Bucket, Stream, Data, ?DEFAULT_N, ?DEFAULT_W, ?DEFAULT_TIMEOUT_MS).
 
-put(Bucket, Stream, Data, N, W, Timeout) ->
+put(_State, Bucket, Stream, Data, N, W, Timeout) ->
     iorio_stats:core_put(),
     iorio_stats:core_msg_size(size(Data)),
     IndexNode = get_index_node(Bucket, Stream),
@@ -66,40 +66,40 @@ put(Bucket, Stream, Data, N, W, Timeout) ->
     ReqID = riak_core_vnode_master:sync_spawn_command(IndexNode, Args, iorio_vnode_master),
     wait_for_reqid(ReqID, Timeout).
 
-put_conditionally(Bucket, Stream, Data, LastSeqNum, N, W, Timeout) ->
+put_conditionally(_State, Bucket, Stream, Data, LastSeqNum, N, W, Timeout) ->
     IndexNode = get_index_node(Bucket, Stream),
     Pid = self(),
     Args = {coord_put_conditionally, N, W, Bucket, Stream, Data, LastSeqNum, Pid},
     ReqID = riak_core_vnode_master:sync_spawn_command(IndexNode, Args, iorio_vnode_master),
     wait_for_reqid(ReqID, Timeout).
 
-get_last(Bucket, Stream) ->
+get_last(_State, Bucket, Stream) ->
     case get(Bucket, Stream, nil, 1) of
         [Blob] -> {ok, Blob};
         [] -> notfound
     end.
 
-get(Bucket, Stream, From) ->
-    get(Bucket, Stream, From, 1).
+get(State, Bucket, Stream, From) ->
+    get(State, Bucket, Stream, From, 1).
 
-get(Bucket, Stream, From, Count) ->
+get(_State, Bucket, Stream, From, Count) ->
     iorio_stats:core_get(),
     IndexNode = get_index_node(Bucket, Stream),
     riak_core_vnode_master:sync_spawn_command(IndexNode,
                                               {get, Bucket, Stream, From, Count},
                                               iorio_vnode_master).
 
-subscribe(Bucket, Stream, Pid) ->
-    subscribe(Bucket, Stream, nil, Pid).
+subscribe(State, Bucket, Stream, Pid) ->
+    subscribe(State, Bucket, Stream, nil, Pid).
 
-subscribe(Bucket, Stream, FromSeqNum, Pid) ->
+subscribe(_State, Bucket, Stream, FromSeqNum, Pid) ->
     iorio_stats:core_subscribe(),
     IndexNode = get_index_node(Bucket, Stream),
     riak_core_vnode_master:sync_spawn_command(IndexNode,
                                               {subscribe, Bucket, Stream, FromSeqNum, Pid},
                                               iorio_vnode_master).
 
-unsubscribe(Bucket, Stream, Pid) ->
+unsubscribe(_State, Bucket, Stream, Pid) ->
     iorio_stats:core_unsubscribe(),
     IndexNode = get_index_node(Bucket, Stream),
     riak_core_vnode_master:sync_spawn_command(IndexNode,
