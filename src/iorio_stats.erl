@@ -49,7 +49,7 @@
 
 all_stats() ->
  [{node, node_stats()},
-  {riak_core, riak_core_stats()},
+  {iorio, iorio:stats()},
   {file, file_stats()},
   {http, http_stats()},
   {core, core_stats()}].
@@ -60,16 +60,6 @@ node_stats() ->
 
 file_stats() ->
     file_handle_cache:info().
-
-riak_core_stats() ->
-    Stats = riak_core_stat:get_stats(),
-    KeyToString = fun ({K, V}) ->
-                          StrKeyTokens = lists:map(fun to_string/1, tl(tl(K))),
-                          StrKey = string:join(StrKeyTokens, "_"),
-                          BinKey = list_to_binary(StrKey),
-                          {BinKey, V}
-                  end,
-    lists:map(KeyToString, Stats).
 
 auth_error()    -> exometer:update(?METRIC_AUTH_ERROR, 1).
 auth_success() -> exometer:update(?METRIC_AUTH_SUCCESS, 1).
@@ -151,9 +141,6 @@ core_stats() ->
      {list_streams, unwrap_metric_value(?METRIC_CORE_LIST_STREAMS)},
      {truncate, unwrap_metric_value(?METRIC_CORE_TRUNCATE)},
      {msg_size, unwrap_metric_value(?METRIC_CORE_MSG_SIZE)}].
-
-to_string(V) when is_atom(V) -> atom_to_list(V);
-to_string(V) when is_integer(V) -> integer_to_list(V).
 
 init_metrics() ->
     lists:map(fun create_endpoint_time_metric/1, ?ENDPOINTS),

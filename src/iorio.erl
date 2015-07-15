@@ -4,7 +4,8 @@
 
 -export([ping/0, put/3, put/6, put_conditionally/7, get/3, get/4, get_last/2,
          subscribe/3, subscribe/4, unsubscribe/3, list/0, list/1, list/2,
-         bucket_size/1, bucket_size/2, truncate/2, truncate_percentage/2]).
+         bucket_size/1, bucket_size/2, truncate/2, truncate_percentage/2,
+         init/0, stats/0]).
 
 -ignore_xref([ping/0, bucket_size/1, bucket_size/2, get/3, list/2, put/3,
               subscribe/3, subscribe/4, truncate_percentage/2, unsubscribe/3]).
@@ -20,6 +21,30 @@ get_index_node(Bucket, Stream) ->
 -define(DEFAULT_W, 3).
 
 %% Public API
+
+init() ->
+    case iorio_sup:start_link() of
+        {ok, Pid} ->
+            ok = riak_core:register([{vnode_module, iorio_vnode}]),
+
+            ok = riak_core_ring_events:add_guarded_handler(iorio_ring_event_handler, []),
+            ok = riak_core_node_watcher_events:add_guarded_handler(iorio_node_event_handler, []),
+            ok = riak_core_node_watcher:service_up(iorio, self()),
+
+            {ok, Pid};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+stats() ->
+    Stats = riak_core_stat:get_stats(),
+    KeyToString = fun ({K, V}) ->
+                          StrKeyTokens = lists:map(fun to_string/1, tl(tl(K))),
+                          StrKey = string:join(StrKeyTokens, "_"),
+                          BinKey = list_to_binary(StrKey),
+                          {BinKey, V}
+                  end,
+    lists:map(KeyToString, Stats).
 
 %% @doc Pings a random vnode to make sure communication is functional
 ping() ->
@@ -159,3 +184,7 @@ filter_notfound(Items) ->
     lists:filter(fun ({_VNode, _Node, notfound}) -> false;
                      (_) -> true
                  end, Items).
+
+to_string(V) when is_atom(V) -> atom_to_list(V);
+to_string(V) when is_integer(V) -> integer_to_list(V).
+

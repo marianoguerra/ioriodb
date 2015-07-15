@@ -21,26 +21,12 @@ start(_StartType, _StartArgs) ->
     init_mqtt(AccessLogic),
     init_extensions(),
     init_metrics(),
-    init_iorio().
+    iorio:init().
 
 stop(_State) ->
     ok.
 
 %% private api
-
-init_iorio() ->
-    case iorio_sup:start_link() of
-        {ok, Pid} ->
-            ok = riak_core:register([{vnode_module, iorio_vnode}]),
-
-            ok = riak_core_ring_events:add_guarded_handler(iorio_ring_event_handler, []),
-            ok = riak_core_node_watcher_events:add_guarded_handler(iorio_node_event_handler, []),
-            ok = riak_core_node_watcher:service_up(iorio, self()),
-
-            {ok, Pid};
-        {error, Reason} ->
-            {error, Reason}
-    end.
 
 init_auth() ->
     {ok, ApiSecret} = env(auth_secret),
