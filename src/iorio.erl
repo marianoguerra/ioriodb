@@ -3,11 +3,11 @@
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 
 -export([ping/0, put/3, put/6, put_conditionally/7, get/3, get/4, get_last/2,
-         subscribe/3, subscribe/4, unsubscribe/3, list/0, list/1, list/2,
+         subscribe/3, subscribe/4, unsubscribe/3, list/1, list/2, list/3,
          bucket_size/1, bucket_size/2, truncate/2, truncate_percentage/2,
          init/0, stats/0]).
 
--ignore_xref([ping/0, bucket_size/1, bucket_size/2, get/3, list/2, put/3,
+-ignore_xref([ping/0, bucket_size/1, bucket_size/2, get/3, list/3, put/3,
               subscribe/3, subscribe/4, truncate_percentage/2, unsubscribe/3]).
 
 get_index_node(Bucket, Stream) ->
@@ -106,15 +106,15 @@ unsubscribe(Bucket, Stream, Pid) ->
                                               {unsubscribe, Bucket, Stream, Pid},
                                               iorio_vnode_master).
 
-list() ->
+list(_State) ->
     iorio_stats:core_list_buckets(),
     Timeout = 5000,
     iorio_coverage_fsm:start({list_buckets}, Timeout).
 
-list(Bucket) ->
-    list(Bucket, ?DEFAULT_TIMEOUT_MS).
+list(State, Bucket) ->
+    list(State, Bucket, ?DEFAULT_TIMEOUT_MS).
 
-list(Bucket, Timeout) ->
+list(_State, Bucket, Timeout) ->
     iorio_stats:core_list_streams(),
     iorio_coverage_fsm:start({list_streams, Bucket}, Timeout).
 
