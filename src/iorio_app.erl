@@ -75,6 +75,8 @@ base_routes(AccessLogic, CorsInfo) ->
     Timeout = envd(req_timeout, 5000),
     {ok, ApiAlgorithm} = env(auth_algorithm),
     SessionDurationSecs = envd(session_duration_secs, 3600),
+    IorioMod = iorio,
+    IorioState = nil,
 
     [
      {"/listen", bullet_handler,
@@ -82,13 +84,13 @@ base_routes(AccessLogic, CorsInfo) ->
        {cors, CorsInfo}]},
      {"/streams/:bucket", iorio_rest_list,
       [{access, AccessLogic}, {cors, CorsInfo},
-       {iorio_mod, iorio}, {iorio_state, nil}]},
+       {iorio_mod, IorioMod}, {iorio_state, IorioState}]},
      {"/streams/:bucket/:stream", iorio_rest_stream,
       [{access, AccessLogic}, {n, N}, {w, W}, {timeout, Timeout},
        {cors, CorsInfo}]},
      {"/buckets/", iorio_rest_list,
       [{access, AccessLogic}, {cors, CorsInfo},
-       {iorio_mod, iorio}, {iorio_state, nil}]},
+       {iorio_mod, IorioMod}, {iorio_state, IorioState}]},
      {"/access/:bucket/", iorio_rest_access,
       [{access, AccessLogic}, {cors, CorsInfo}]},
      {"/access/:bucket/:stream", iorio_rest_access,
@@ -100,7 +102,8 @@ base_routes(AccessLogic, CorsInfo) ->
        {cors, CorsInfo}]},
      {"/users/", iorio_rest_user,
       [{access, AccessLogic}, {cors, CorsInfo}]},
-     {"/ping", iorio_rest_ping, [{cors, CorsInfo}]},
+     {"/ping", iorio_rest_ping, [{cors, CorsInfo}, {iorio_mod, IorioMod},
+                                 {iorio_state, IorioState}]},
 
      {"/x/:handler/[...]", iorio_rest_custom,
       [{access, AccessLogic}, {cors, CorsInfo}]}

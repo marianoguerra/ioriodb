@@ -2,12 +2,12 @@
 -include("iorio.hrl").
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 
--export([ping/0, put/3, put/6, put_conditionally/7, get/3, get/4, get_last/2,
+-export([ping/1, put/3, put/6, put_conditionally/7, get/3, get/4, get_last/2,
          subscribe/3, subscribe/4, unsubscribe/3, list/1, list/2, list/3,
          bucket_size/1, bucket_size/2, truncate/2, truncate_percentage/2,
          init/0, stats/0]).
 
--ignore_xref([ping/0, bucket_size/1, bucket_size/2, get/3, list/3, put/3,
+-ignore_xref([ping/1, bucket_size/1, bucket_size/2, get/3, list/3, put/3,
               subscribe/3, subscribe/4, truncate_percentage/2, unsubscribe/3]).
 
 get_index_node(Bucket, Stream) ->
@@ -47,7 +47,7 @@ stats() ->
     lists:map(KeyToString, Stats).
 
 %% @doc Pings a random vnode to make sure communication is functional
-ping() ->
+ping(_State) ->
     iorio_stats:core_ping(),
     DocIdx = riak_core_util:chash_key({<<"ping">>, term_to_binary(now())}),
     PrefList = riak_core_apl:get_primary_apl(DocIdx, 1, iorio),
