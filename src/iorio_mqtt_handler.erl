@@ -30,7 +30,7 @@ error(State=#state{}, Error) ->
 publish(State=#state{username=Username, bucket_separator=BucketSeparator,
                      access=Access},
         {Topic, Qos, Dup, Retain, MessageId, Payload}) ->
-    lager:info("Publish ~p ~p ~p ~p ~p ~p",
+    lager:debug("Publish ~p ~p ~p ~p ~p ~p",
                [Topic, Qos, Dup, Retain, MessageId, Payload]),
     {Bucket, Stream} = extract_bucket_and_stream(Topic, Username,
                                                  BucketSeparator),
@@ -66,7 +66,7 @@ unsubscribe(State=#state{username=Username, bucket_separator=BucketSeparator}, T
                   {Bucket, Stream} = extract_bucket_and_stream(TopicName,
                                                                Username,
                                                                BucketSeparator),
-                  lager:info("Unsubscribe ~p", [TopicName]),
+                  lager:debug("Unsubscribe ~p", [TopicName]),
                   iorio:unsubscribe(Bucket, Stream, self()),
                   OState
           end,
@@ -74,7 +74,7 @@ unsubscribe(State=#state{username=Username, bucket_separator=BucketSeparator}, T
     {ok, NewState}.
 
 timeout(State=#state{}, InactiveMs) ->
-    lager:info("session was inactive for ~p ms", [InactiveMs]),
+    lager:debug("session was inactive for ~p ms", [InactiveMs]),
     {ok, State}.
 
 info(State=#state{}, Entry={entry, _Bucket, _Stream, #sblob_entry{}}) ->
@@ -85,21 +85,21 @@ info(State=#state{}, {replay, Entries}) ->
     lists:foreach(SendEntry, Entries),
     {ok, State};
 info(State=#state{}, {smc, {heartbeat, Props}}) ->
-    lager:info("smc heartbeat ~p", [Props]),
+    lager:debug("smc heartbeat ~p", [Props]),
     {ok, State};
 info(State=#state{}, {smc, Info}) ->
-    lager:info("channel update for ~p: ~p", [self(), Info]),
+    lager:debug("channel update for ~p: ~p", [self(), Info]),
     {ok, State};
 info(State=#state{}, Msg) ->
-    lager:info("received unknown info message '~p'", [Msg]),
+    lager:warning("received unknown info message '~p'", [Msg]),
     {ok, State}.
 
 stop(State=#state{}) ->
-    lager:info("stop"),
+    lager:debug("mqtt handler stop"),
     {ok, State}.
 
 terminate(State=#state{}, Reason) ->
-    lager:info("terminate ~p", [Reason]),
+    lager:debug("mqtt handler terminate ~p", [Reason]),
     {ok, State}.
 
 login(State, {Username, Password}) when is_list(Username) ->
@@ -111,7 +111,7 @@ login(State, {Username, Password}) when is_list(Password) ->
 login(State=#state{access=Access}, {Username, Password}) ->
     case ioriol_access:authenticate(Access, Username, Password) of
         {ok, Session} ->
-            lager:info("login ~p ok", [Username]),
+            lager:debug("login ~p ok", [Username]),
             {ok, State#state{username=to_binary(Username), session=Session}};
         {error, Reason} ->
             lager:warning("login ~p failed: ~p", [Username, Reason]),
@@ -159,7 +159,7 @@ subscribe(State=#state{username=Username, bucket_separator=BucketSeparator,
                       ok ->
                           % TODO
                           QosVal = ?QOS_0,
-                          lager:info("Subscribe ~p ~p", [TopicName, Qos]),
+                          lager:debug("Subscribe ~p ~p", [TopicName, Qos]),
                           iorio:subscribe(Bucket, Stream, self()),
                           {[QosVal|QosList], OState};
                       {error, Reason} ->
