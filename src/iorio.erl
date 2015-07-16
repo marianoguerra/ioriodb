@@ -73,8 +73,8 @@ put_conditionally(_State, Bucket, Stream, Data, LastSeqNum, N, W, Timeout) ->
     ReqID = riak_core_vnode_master:sync_spawn_command(IndexNode, Args, iorio_vnode_master),
     wait_for_reqid(ReqID, Timeout).
 
-get_last(_State, Bucket, Stream) ->
-    case get(Bucket, Stream, nil, 1) of
+get_last(State, Bucket, Stream) ->
+    case get(State, Bucket, Stream, nil, 1) of
         [Blob] -> {ok, Blob};
         [] -> notfound
     end.
