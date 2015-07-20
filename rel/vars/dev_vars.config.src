@@ -7,12 +7,10 @@
 {iorio_http_port, @APIPORT@}.
 {iorio_https_port, @APISECPORT@}.
 {iorio_auth_secret, @APISECRET@}.
-{iorio_auth_algorithm, @APIALGORITHM@}.
 {iorio_admin_password, "@ADMINPASSWORD@"}.
 {iorio_http_acceptors, 100}.
 {ring_state_dir,    "data/ring"}.
 {web_ip,            "127.0.0.1"}.
-{web_port,          @WEBPORT@}.
 {handoff_port,      @HANDOFFPORT@}.
 
 %%

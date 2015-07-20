@@ -1,0 +1,497 @@
+## Enable/Disable HTTP API
+## 
+## Default: yes
+## 
+## Acceptable values:
+##   - yes or no
+http.enabled = yes
+
+## port to listen to for HTTP API
+## 
+## Default: 8080
+## 
+## Acceptable values:
+##   - an integer
+http.port = @APIPORT@
+
+## number of acceptors to user for HTTP API
+## 
+## Default: 100
+## 
+## Acceptable values:
+##   - an integer
+http.acceptors = 100
+
+## Enable/Disable HTTPS API
+## 
+## Default: no
+## 
+## Acceptable values:
+##   - yes or no
+https.enabled = no
+
+## port to listen to for HTTPS API
+## 
+## Default: 8443
+## 
+## Acceptable values:
+##   - an integer
+https.port = @APISECPORT@
+
+## number of acceptors to use for HTTPS API
+## 
+## Default: 100
+## 
+## Acceptable values:
+##   - an integer
+https.acceptors = 100
+
+## Enable/Disable HTTP CORS API
+## 
+## Default: no
+## 
+## Acceptable values:
+##   - yes or no
+http.cors.enabled = no
+
+## HTTP CORS API allowed origins, it can be a comma separated list of
+## origins to accept or * to accept all
+## 
+## Default: *
+## 
+## Acceptable values:
+##   - text
+http.cors.origins = *
+
+## HTTP CORS API indicates how long the results of a preflight request can
+## be cached
+## 
+## Default: 60s
+## 
+## Acceptable values:
+##   - a time duration with units, e.g. '10s' for 10 seconds
+http.cors.maxage = 60s
+
+## Enable/Disable MQTT protocol
+## 
+## Default: no
+## 
+## Acceptable values:
+##   - yes or no
+mqtt.enabled = @MQTTENABLED@
+
+## port to listen to for MQTT protocol
+## 
+## Default: 1883
+## 
+## Acceptable values:
+##   - an integer
+mqtt.port = @MQTTPORT@
+
+## number of acceptors to use for MQTT protocol
+## 
+## Default: 100
+## 
+## Acceptable values:
+##   - an integer
+mqtt.acceptors = 100
+
+## max number of connections to accept concurrently
+## 
+## Default: 1024
+## 
+## Acceptable values:
+##   - an integer
+mqtt.connections.max = 1024
+
+## secret used to encrypt the session token, IMPORTANT: change this
+## 
+## Default: changeme
+## 
+## Acceptable values:
+##   - text
+auth.secret = @APISECRET@
+
+## algorithm to use to encrypt the session token
+## 
+## Default: hs512
+## 
+## Acceptable values:
+##   - one of: hs256, hs384, hs512
+auth.algorithm = hs512
+
+## username for the initial admin user, it's created if it doesn't exist
+## on server startup
+## 
+## Default: admin
+## 
+## Acceptable values:
+##   - text
+auth.admin.username = admin
+
+## password for the initial admin user, IMPORTANT: change this
+## 
+## Default: secret
+## 
+## Acceptable values:
+##   - text
+auth.admin.password = @ADMINPASSWORD@
+
+## username for the initial admin user, it's created if it doesn't exist
+## on server startup
+## 
+## Default: anonymous
+## 
+## Acceptable values:
+##   - text
+auth.anon.username = anonymous
+
+## password for the initial anonymous user, IMPORTANT: change this
+## 
+## Default: secret
+## 
+## Acceptable values:
+##   - text
+auth.anon.password = secret
+
+## time a session is valid after login
+## 
+## Default: 24h
+## 
+## Acceptable values:
+##   - a time duration with units, e.g. '10s' for 10 seconds
+auth.session.duration = 24h
+
+## if enabled it will grant read write access to newly created users
+## to a bucket he owns
+## 
+## Default: yes
+## 
+## Acceptable values:
+##   - yes or no
+auth.permission.user.has_bucket = yes
+
+## if has_bucket is enabled this value will be used to prefix user's bucket
+## to avoid coliding with non user buckets
+## 
+## Default: _user_
+## 
+## Acceptable values:
+##   - text
+auth.permission.user.bucket.prefix = _user_
+
+## number of request that must succeed to consider a write request successful
+## 
+## Default: 3
+## 
+## Acceptable values:
+##   - an integer
+request.n = 3
+
+## number of request to attempt in a write request
+## 
+## Default: 3
+## 
+## Acceptable values:
+##   - an integer
+request.w = 3
+
+## timeout value for request
+## 
+## Default: 0.5s
+## 
+## Acceptable values:
+##   - a time duration with units, e.g. '10s' for 10 seconds
+request.timeout = 0.5s
+
+## max amount of events to keep in memory for a channel
+## 
+## Default: 50
+## 
+## Acceptable values:
+##   - an integer
+channel.max_items = 50
+
+## max size for events to keep in memory for a channel
+## 
+## Default: 2MB
+## 
+## Acceptable values:
+##   - a byte size with units, e.g. 10GB
+channel.max_items_size = 2MB
+
+## folder where bucket/streams are stored
+## 
+## Default: ../db_data/vnodes
+## 
+## Acceptable values:
+##   - the path to a directory
+paths.data = db_data/vnodes
+
+## interval to run bucket eviction
+## 
+## Default: 60s
+## 
+## Acceptable values:
+##   - a time duration with units, e.g. '10s' for 10 seconds
+eviction.bucket.interval = 60s
+
+## default maximum size to fire a bucket eviction
+## 
+## Default: 50MB
+## 
+## Acceptable values:
+##   - a byte size with units, e.g. 10GB
+eviction.bucket.size.max = 50MB
+
+## interval in seconds to send metrics
+## 
+## Default: 60s
+## 
+## Acceptable values:
+##   - a time duration with units, e.g. '10s' for 10 seconds
+metrics.interval_s = 60s
+
+## bucket to send metrics to
+## 
+## Default: $sys
+## 
+## Acceptable values:
+##   - text
+metrics.bucket = $sys
+
+## stream to send metrics to
+## 
+## Default: metrics
+## 
+## Acceptable values:
+##   - text
+metrics.stream = metrics
+
+## backend to use for authentication
+## 
+## Default: riak_core
+## 
+## Acceptable values:
+##   - one of: ldap, riak_core
+auth.backend.module = riak_core
+
+## if ldap enabled, host to connect to
+## 
+## Acceptable values:
+##   - text
+## auth.backend.ldap.host = 127.0.0.1
+
+## if ldap enabled, port to connect to
+## 
+## Acceptable values:
+##   - an integer
+## auth.backend.ldap.port = 10389
+
+## if ldap enabled, if the user authenticates with username with this
+## suffix it will force local authentication instead of authenticating against
+## ldap server
+## 
+## Acceptable values:
+##   - text
+## auth.backend.ldap.local_auth_suffix = @local
+
+## if ldap enabled, prefix to use when authenticating against ldap
+## 
+## Acceptable values:
+##   - text
+## auth.backend.ldap.user_prefix = uid=
+
+## if ldap enabled, suffix to use when authenticating against ldap
+## 
+## Acceptable values:
+##   - text
+## auth.backend.ldap.user_suffix = ou=users,dc=example,dc=com
+
+## Name of the Erlang node
+## 
+## Default: iorio@127.0.0.1
+## 
+## Acceptable values:
+##   - text
+nodename = @NODE@
+
+## Cookie for distributed node communication.  All nodes in the
+## same cluster should use the same cookie or they will not be able to
+## communicate.
+## 
+## Default: erlang
+## 
+## Acceptable values:
+##   - text
+distributed_cookie = erlang
+
+## Sets the number of threads in async thread pool, valid range
+## is 0-1024. If thread support is available, the default is 64.
+## More information at: http://erlang.org/doc/man/erl.html
+## 
+## Default: 64
+## 
+## Acceptable values:
+##   - an integer
+erlang.async_threads = 64
+
+## The number of concurrent ports/sockets
+## Valid range is 1024-134217727
+## 
+## Default: 65536
+## 
+## Acceptable values:
+##   - an integer
+erlang.max_ports = 65536
+
+## Set scheduler forced wakeup interval. All run queues will be
+## scanned each Interval milliseconds. While there are sleeping
+## schedulers in the system, one scheduler will be woken for each
+## non-empty run queue found. An Interval of zero disables this
+## feature, which also is the default.
+## This feature is a workaround for lengthy executing native code, and
+## native code that do not bump reductions properly.
+## More information: http://www.erlang.org/doc/man/erl.html#+sfwi
+## 
+## Acceptable values:
+##   - an integer
+## erlang.schedulers.force_wakeup_interval = 500
+
+## Enable or disable scheduler compaction of load. By default
+## scheduler compaction of load is enabled. When enabled, load
+## balancing will strive for a load distribution which causes as many
+## scheduler threads as possible to be fully loaded (i.e., not run out
+## of work). This is accomplished by migrating load (e.g. runnable
+## processes) into a smaller set of schedulers when schedulers
+## frequently run out of work. When disabled, the frequency with which
+## schedulers run out of work will not be taken into account by the
+## load balancing logic.
+## More information: http://www.erlang.org/doc/man/erl.html#+scl
+## 
+## Acceptable values:
+##   - one of: true, false
+## erlang.schedulers.compaction_of_load = false
+
+## Enable or disable scheduler utilization balancing of load. By
+## default scheduler utilization balancing is disabled and instead
+## scheduler compaction of load is enabled which will strive for a
+## load distribution which causes as many scheduler threads as
+## possible to be fully loaded (i.e., not run out of work). When
+## scheduler utilization balancing is enabled the system will instead
+## try to balance scheduler utilization between schedulers. That is,
+## strive for equal scheduler utilization on all schedulers.
+## More information: http://www.erlang.org/doc/man/erl.html#+sub
+## 
+## Acceptable values:
+##   - one of: true, false
+## erlang.schedulers.utilization_balancing = true
+
+## Number of partitions in the cluster (only valid when first
+## creating the cluster). Must be a power of 2, minimum 8 and maximum
+## 1024.
+## 
+## Default: 64
+## 
+## Acceptable values:
+##   - an integer
+## ring_size = 64
+
+## Number of concurrent node-to-node transfers allowed.
+## 
+## Default: 2
+## 
+## Acceptable values:
+##   - an integer
+## transfer_limit = 2
+
+## Default cert location for https can be overridden
+## with the ssl config variable, for example:
+## 
+## Acceptable values:
+##   - the path to a file
+## ssl.certfile = $(platform_etc_dir)/cert.pem
+
+## Default key location for https can be overridden with the ssl
+## config variable, for example:
+## 
+## Acceptable values:
+##   - the path to a file
+## ssl.keyfile = $(platform_etc_dir)/key.pem
+
+## Default signing authority location for https can be overridden
+## with the ssl config variable, for example:
+## 
+## Acceptable values:
+##   - the path to a file
+## ssl.cacertfile = $(platform_etc_dir)/cacertfile.pem
+
+## DTrace support Do not enable 'dtrace' unless your Erlang/OTP
+## runtime is compiled to support DTrace.  DTrace is available in
+## R15B01 (supported by the Erlang/OTP official source package) and in
+## R14B04 via a custom source repository & branch.
+## 
+## Default: off
+## 
+## Acceptable values:
+##   - on or off
+dtrace = off
+
+## Platform-specific installation paths (substituted by rebar)
+## 
+## Default: ./bin
+## 
+## Acceptable values:
+##   - the path to a directory
+platform_bin_dir = ./bin
+
+## 
+## Default: ../db_data
+## 
+## Acceptable values:
+##   - the path to a directory
+platform_data_dir = db_data
+
+## 
+## Default: ../db_config
+## 
+## Acceptable values:
+##   - the path to a directory
+platform_etc_dir = etc
+
+## 
+## Default: ./lib
+## 
+## Acceptable values:
+##   - the path to a directory
+platform_lib_dir = ./lib
+
+## 
+## Default: ./log
+## 
+## Acceptable values:
+##   - the path to a directory
+platform_log_dir = ./log
+
+## Enable consensus subsystem. Set to 'on' to enable the
+## consensus subsystem used for strongly consistent Riak operations.
+## 
+## Default: off
+## 
+## Acceptable values:
+##   - on or off
+## strong_consistency = on
+
+## This parameter defines the percentage of total server memory
+## to assign to LevelDB. LevelDB will dynamically adjust its internal
+## cache sizes to stay within this size.  The memory size can
+## alternately be assigned as a byte count via leveldb.maximum_memory
+## instead.
+## 
+## Default: 70
+## 
+## Acceptable values:
+##   - an integer
+leveldb.maximum_memory.percent = 70
+
+handoff.port = @HANDOFFPORT@
