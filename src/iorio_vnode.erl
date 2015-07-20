@@ -113,7 +113,7 @@ handle_command(Message, _Sender, State) ->
     lager:warning("unknown command ~p", [Message]),
     {noreply, State}.
 
-handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender,
+handle_handoff_command(?FOLD_REQ{foldfun=FoldFun, acc0=Acc0}, _Sender,
                        State=#state{partition=Partition, path=Path}) ->
     lager:info("fold req ~p", [Partition]),
     Opts = [],
@@ -121,7 +121,7 @@ handle_handoff_command(?FOLD_REQ{foldfun=Fun, acc0=Acc0}, _Sender,
                          #sblob_entry{seqnum=SeqNum, timestamp=Ts, data=Data}}, AccEntry) ->
                            Key = {BucketName, StreamName},
                            Val = {SeqNum, Ts, Data},
-                           AccEntryOut = Fun(Key, Val, AccEntry),
+                           AccEntryOut = FoldFun(Key, Val, AccEntry),
                            {continue, AccEntryOut}
                    end,
 
