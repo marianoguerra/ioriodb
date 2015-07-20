@@ -289,23 +289,23 @@ Multinode
 
 create 4 releases with different config::
 
-    make devrel
+    make newdevrel
 
 start the 4 nodes::
 
-    for d in dev/dev*; do $d/bin/iorio start; done
+    make devrel-start
 
 check that they are running::
 
-    for d in dev/dev*; do $d/bin/iorio ping; done
+    make devrel-ping
 
 join 3 nodes to the first one::
 
-    for d in dev/dev{2,3,4}; do $d/bin/iorio-admin cluster join iorio1@127.0.0.1; done
+    make devrel-join
 
 check the status of the cluster::
 
-    dev/dev1/bin/iorio-admin member-status
+    make devrel-status
 
 you should see something like this::
 
@@ -321,15 +321,15 @@ you should see something like this::
 
 it should say that 3 nodes are joining, now check the cluster plan::
 
-    dev/dev1/bin/iorio-admin cluster plan
+    make devrel-cluster-plan
 
 it should display the cluster plan, now we can commit the plan::
 
-    dev/dev1/bin/iorio-admin cluster commit
+    make devrel-cluster-commit
 
 check the status of the cluster again::
 
-    dev/dev1/bin/iorio-admin member-status
+    make devrel-status
 
 you could see the vnodes transfering::
 
@@ -357,15 +357,14 @@ at some point you should see something like this::
 
 when you are bored you can stop them::
 
-    for d in dev/dev*; do $d/bin/iorio stop; done
+    make devrel-stop
 
 Excercise Handoff
 -----------------
 
 first make devrel::
 
-    rm -rf dev
-    make devrel
+    make newdevrel
 
 then start one node::
 
@@ -389,7 +388,7 @@ you should see in the console (if logs set to info/debug) that the data is movin
 
 you can also watch on the member status how the data moves::
 
-    dev/dev1/bin/iorio-admin member-status
+    make devrel-status
 
 as it moves you should see something like this::
 
@@ -415,7 +414,7 @@ you can keep adding nodes until you are happy
 
 shortcut for the lazy, in one terminal::
 
-    rm -rf dev && make devrel && ./dev/dev1/bin/iorio console
+    make newdevrel && ./dev/dev1/bin/iorio console
 
 in another one::
 

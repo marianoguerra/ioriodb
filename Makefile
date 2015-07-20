@@ -26,6 +26,27 @@ relclean: clean
 devrelclean:
 	rm -rf dev
 
+devrel-start:
+	for d in dev/dev*; do $$d/bin/iorio start; done
+
+devrel-join:
+	for d in dev/dev{2,3,4}; do $$d/bin/iorio-admin cluster join iorio1@127.0.0.1; done
+
+devrel-cluster-plan:
+	dev/dev1/bin/iorio-admin cluster plan
+
+devrel-cluster-commit:
+	dev/dev1/bin/iorio-admin cluster commit
+
+devrel-status:
+	dev/dev1/bin/iorio-admin member-status
+
+devrel-ping:
+	for d in dev/dev*; do $$d/bin/iorio ping; done
+
+devrel-stop:
+	for d in dev/dev*; do $$d/bin/iorio stop; done
+
 dumpbuild:
 	echo "build by $(USER) at $(shell date -u +%Y-%m-%dT%H-%M-%S) on $(shell uname -a).\nCommit Hash: $(shell git log -n 1 --pretty=format:"%H")" >> ./rel/iorio/build.txt
 
