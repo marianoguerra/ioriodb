@@ -108,6 +108,10 @@ delete(State=#state{path=Path}) ->
     iorio_bucket:delete(Path),
     {ok, State}.
 
+free_resources(#state{buckets=Buckets, channels=Chans}) ->
+    iorio_vnode_channels:clean(Chans),
+    iorio_vnode_buckets:clean(Buckets).
+
 % private functions
 
 send_to_channel({_ReqId, {error, _Reason}}, _Channels, _BucketName, _Stream) ->
@@ -129,10 +133,6 @@ set_last_eviction(BucketName) ->
     Now = sblob_util:now_fast(),
     riak_core_metadata:put({<<"bucket">>, <<"eviction">>}, BucketName, Now),
     Now.
-
-free_resources(#state{buckets=Buckets, channels=Chans}) ->
-    iorio_vnode_channels:clean(Chans),
-    iorio_vnode_buckets:clean(Buckets).
 
 evict_bucket(BucketName, Partition, MaxSizeBytes, MaxTimeMsNoEviction) ->
     ShouldEvict = should_evict(BucketName, MaxTimeMsNoEviction),
