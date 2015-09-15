@@ -23,10 +23,10 @@
               update_user_password/3]).
 
 -include("include/iorio.hrl").
+-include("include/ioriol_access.hrl").
 -include_lib("permiso/include/permiso.hrl").
 
 -record(state, {secret, auth_mod, auth_state}).
--record(req, {bucket, stream, username, session_body, session}).
 
 %% XXX should I just pick one?
 -type grant() :: binary() | string().
@@ -49,7 +49,7 @@ new(Opts) ->
 new_req(Opts) ->
     parse_req_opts(Opts, #req{}).
 
-update_req(Req, Opts) ->
+update_req(Req=#req{}, Opts) ->
     parse_req_opts(Opts, Req).
 
 is_authorized_for_grant(State=#state{},
@@ -163,27 +163,27 @@ get_session(#state{auth_mod=AuthMod, auth_state=AuthState}, Username) ->
 %% private functions
 
 %% a request can start incomplete
-parse_req_opts([], Req) ->
+parse_req_opts([], Req=#req{}) ->
     {ok, Req};
 
-parse_req_opts([{bucket, Val}|Opts], Req) ->
+parse_req_opts([{bucket, Val}|Opts], Req=#req{}) ->
     parse_req_opts(Opts, Req#req{bucket=Val});
 
-parse_req_opts([{stream, Val}|Opts], Req) ->
+parse_req_opts([{stream, Val}|Opts], Req=#req{}) ->
     parse_req_opts(Opts, Req#req{stream=Val});
 
-parse_req_opts([{username, Val}|Opts], Req) ->
+parse_req_opts([{username, Val}|Opts], Req=#req{}) ->
     parse_req_opts(Opts, Req#req{username=Val});
 
-parse_req_opts([{session_body, Val}|Opts], Req) ->
+parse_req_opts([{session_body, Val}|Opts], Req=#req{}) ->
     parse_req_opts(Opts, Req#req{session_body=Val});
 
-parse_req_opts([{session, Val}|Opts], Req) ->
+parse_req_opts([{session, Val}|Opts], Req=#req{}) ->
     parse_req_opts(Opts, Req#req{session=Val});
 
 parse_req_opts([Other|Opts], Req) ->
     %% XXX crash?
-    lager:warning("Unknown option ~p", [Other]),
+    lager:warning("Unknown option ~p ~p", [Other, Req]),
     parse_req_opts(Opts, Req).
 
 prefix_user_bucket(Bucket) ->

@@ -5,9 +5,11 @@
 -ignore_xref([init/4, stream/3, info/3, terminate/2]).
 
 -include_lib("sblob/include/sblob.hrl").
+-include("include/ioriol_access.hrl").
 -include("include/iorio.hrl").
 
--record(state, {channels=[], iorio_mod, iorio_state, token, info, access, active}).
+-record(state, {channels=[], iorio_mod, iorio_state, token, info, access,
+                active}).
 
 % TODO: handle CORS in COMET on bullet?
 init(_Transport, Req, Opts, Active) ->
@@ -18,7 +20,8 @@ init(_Transport, Req, Opts, Active) ->
     case Method of
         <<"GET">> -> do_init(Req1, Access, Iorio, IorioState, Active);
         Other ->
-            lager:warning("got ~p request on listen, closing connection", [Other]),
+            lager:warning("got ~p request on listen, closing connection",
+                          [Other]),
             {shutdown, Req1, #state{}}
     end.
 
@@ -53,10 +56,12 @@ info({replay, Entries}, Req, State) when is_list(Entries) ->
 
 % in case someone sends some weird request and we do a shutdown
 terminate(_Req, #state{active=undefined}) -> ok;
-terminate(_Req, #state{channels=Channels, iorio_mod=Iorio, iorio_state=IorioState, active=Active}) ->
+terminate(_Req, #state{channels=Channels, iorio_mod=Iorio,
+                       iorio_state=IorioState, active=Active}) ->
     Pid = self(),
     lists:foreach(fun ({Bucket, Stream}) ->
-                          lager:debug("unsubscribing from ~s/~s~n", [Bucket, Stream]),
+                          lager:debug("unsubscribing from ~s/~s~n",
+                                      [Bucket, Stream]),
                           Iorio:unsubscribe(IorioState, Bucket, Stream, Pid)
                   end, Channels),
     iorio_stats:listen_disconnect(Active),
@@ -75,8 +80,11 @@ reply_entries_json(Entries, Req, State) ->
 entries_to_json(Entries) ->
     lists:map(fun entry_to_json/1, Entries).
 
-entry_to_json({entry, Bucket, Stream, #sblob_entry{seqnum=SeqNum, timestamp=Timestamp, data=Data}}) ->
-    [{meta, [{id, SeqNum}, {t, Timestamp}, {bucket, Bucket}, {stream, Stream}]},
+entry_to_json({entry, Bucket, Stream, #sblob_entry{seqnum=SeqNum,
+                                                   timestamp=Timestamp,
+                                                   data=Data}}) ->
+    [{meta, [{id, SeqNum}, {t, Timestamp}, {bucket, Bucket},
+             {stream, Stream}]},
      {data, iorio_json:decode_plist(Data)}].
 
 get_channel_args(Msg) ->
@@ -95,7 +103,8 @@ fail(Msg, Id, State) ->
 with_stream(Fn, Msg, Id, Req, State) ->
     {Body, NewState} = case get_channel_args(Msg) of
                {undefined, undefined} ->
-                               fail(<<"missing bucket and stream">>, Id, State);
+                               fail(<<"missing bucket and stream">>, Id,
+                                    State);
                {undefined, _} ->
                                fail(<<"missing bucket">>, Id, State);
                {_, undefined} ->
@@ -106,11 +115,12 @@ with_stream(Fn, Msg, Id, Req, State) ->
 
     {reply, Body, Req, NewState}.
 
-if_has_permission(Bucket, Stream, Action, Id, Fn, State=#state{access=Access, info=Info}) ->
-    {ok, Info1} = ioriol_access:update_req(Info,
-                                           [{bucket, Bucket}, {stream, Stream}]),
+if_has_permission(Bucket, Stream, Action, Id, Fn,
+                  State=#state{access=Access, info=Info=#req{}}) ->
+    {ok, Info1} = ioriol_access:update_req(Info, [{bucket, Bucket},
+                                                  {stream, Stream}]),
     case ioriol_access:is_authorized_for_stream(Access, Info1, Action) of
-        {ok, Info2} ->
+        {ok, Info2=#req{}} ->
             {FBody, State1} = Fn(Bucket, Stream),
             State2 = State1#state{info=Info2},
             {FBody, State2};
@@ -167,8 +177,10 @@ handle_subscribe(Msg, Id, Req, State=#state{channels=Channels}) ->
                         IsSubscribed = contains(Key, Channels),
                         if
                             IsSubscribed ->
-                                lager:warning("already subscribed ~s/~s~n", [Bucket, Stream]),
-                                {encode_error(<<"already subscribed">>, Id), State};
+                                lager:warning("already subscribed ~s/~s~n",
+                                              [Bucket, Stream]),
+                                {encode_error(<<"already subscribed">>, Id),
+                                 State};
 
                             true ->
                                 {encode_ok(Id, <<"subscribe">>),
@@ -186,14 +198,17 @@ handle_unsubscribe(Msg, Id, Req, State=#state{channels=Channels,
                         IsSubscribed = contains(Key, Channels),
                         if
                             IsSubscribed ->
-                                lager:debug("unsubscribing ~s/~s~n", [Bucket, Stream]),
-                                Iorio:unsubscribe(IorioState, Bucket, Stream, self()),
+                                lager:debug("unsubscribing ~s/~s~n",
+                                            [Bucket, Stream]),
+                                Iorio:unsubscribe(IorioState, Bucket, Stream,
+                                                  self()),
                                 NewChannels = remove(Key, Channels),
                                 State1 = State#state{channels=NewChannels},
                                 {encode_ok(Id, <<"unsubscribe">>), State1};
 
                             true ->
-                                lager:warning("not subscribed ~s/~s~n", [Bucket, Stream]),
+                                lager:warning("not subscribed ~s/~s~n",
+                                              [Bucket, Stream]),
                                 {encode_error(<<"not subscribed">>, Id), State}
 
                         end
@@ -202,10 +217,12 @@ handle_unsubscribe(Msg, Id, Req, State=#state{channels=Channels,
 encode_error(Reason, Id) ->
     lager:warning("error ~s ~p~n", [Reason, Id]),
     IdBin = integer_to_binary(Id),
-    <<"{\"ok\":false,\"id\":", IdBin/binary, ",\"reason\":\"", Reason/binary, "\"}">>.
+    <<"{\"ok\":false,\"id\":", IdBin/binary, ",\"reason\":\"",
+      Reason/binary, "\"}">>.
 
 set_json_response(Req) ->
-    cowboy_req:set_resp_header(<<"Content-Type">>, <<"application/json">>, Req).
+    cowboy_req:set_resp_header(<<"Content-Type">>, <<"application/json">>,
+                               Req).
 
 do_init(Req, Access, Iorio, IorioState, Active) ->
     {Token, Req1} = cowboy_req:qs_val(<<"jwt">>, Req, nil),
@@ -213,12 +230,13 @@ do_init(Req, Access, Iorio, IorioState, Active) ->
     Req3 = cowboy_req:compact(Req2),
     RawSubs = proplists:get_all_values(<<"s">>, Params),
     Subs = iorio_parse:subscriptions(RawSubs),
-    {ok, Info} = ioriol_access:new_req([]),
+    {ok, Info=#req{}} = ioriol_access:new_req([]),
     case iorio_session:fill_session_from_token(Access, Info, Token) of
-        {ok, Info1} ->
+        {ok, Info1=#req{}} ->
             iorio_stats:listen_connect(Active),
-            State = #state{channels=[], iorio_mod=Iorio, iorio_state=IorioState,
-                           access=Access, token=Token, info=Info1, active=Active},
+            State = #state{channels=[], iorio_mod=Iorio,
+                           iorio_state=IorioState, access=Access, token=Token,
+                           info=Info1, active=Active},
 
             State1 = subscribe_all(Subs, State),
             Req4 = if Active == once -> set_json_response(Req3);

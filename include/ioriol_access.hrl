@@ -1,0 +1,1 @@
+-record(req, {bucket, stream, username, session_body, session}).
