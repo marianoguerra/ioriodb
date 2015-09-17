@@ -83,9 +83,13 @@ handle_handoff_command(?FOLD_REQ{foldfun=FoldFun, acc0=Acc0}, _Sender,
                                  EntryData = {BucketName, StreamName, Entry},
                                  GblobFoldFun(EntryData, AccInner)
                          end,
-                  Resp = gblob_util:fold(Gblob, Opts, FunI, AccL),
-                  {_StopReason, AccLOut} = Resp,
-                  AccLOut
+                  case gblob_util:fold(Gblob, Opts, FunI, AccL) of
+                      {error, Reason, AccLOut} ->
+                          lager:warning("Error while folding gblob ~p",
+                                        [Reason]),
+                          AccLOut;
+                      {_StopReason, AccLOut} -> AccLOut
+                  end
           end,
     Acc = iorio_bucket:foldl_gblobs(Path, Fun, Acc0),
     {reply, Acc, State};
