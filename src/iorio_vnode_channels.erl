@@ -38,7 +38,7 @@ handle_call(clean, _From, State=#state{channels=Chans}) ->
     {reply, ok, State#state{channels=NewChans}};
 
 handle_call(Msg, _From, State) ->
-    lager:warning("Unexpected handle call message: ~p",[Msg]),
+    lager:warning("vnode_channels: Unexpected handle call message: ~p",[Msg]),
     {reply, ok, State}.
 
 

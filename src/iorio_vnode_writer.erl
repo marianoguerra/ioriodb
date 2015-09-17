@@ -22,7 +22,7 @@ init([]) ->
     {ok, State}.
 
 handle_call(Msg, _From, State) ->
-    lager:warning("Unexpected handle call message: ~p",[Msg]),
+    lager:warning("vnode_writer: Unexpected handle call message: ~p",[Msg]),
     {reply, ok, State}.
 
 handle_cast({reply_to, Pid, ReqId, {M, F, A}},

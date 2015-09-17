@@ -83,7 +83,7 @@ handle_call({truncate_percentage, BucketName, Percentage}, _From, State) ->
     {reply, Reply, NewState};
 
 handle_call(Msg, _From, State) ->
-    lager:warning("Unexpected handle call message: ~p",[Msg]),
+    lager:warning("vnode_buckets: Unexpected handle call message: ~p",[Msg]),
     {reply, ok, State}.
 
 
