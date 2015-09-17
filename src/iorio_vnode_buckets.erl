@@ -82,6 +82,10 @@ handle_call({truncate_percentage, BucketName, Percentage}, _From, State) ->
     {NewState, Reply} = do_truncate_percentage(State, BucketName, Percentage),
     {reply, Reply, NewState};
 
+handle_call(clean, _From, State=#state{gblobs=Gblobs}) ->
+    {ok, NewGblobs} = rscbag:clean(Gblobs),
+    {reply, ok, State#state{gblobs=NewGblobs}};
+
 handle_call(Msg, _From, State) ->
     lager:warning("vnode_buckets: Unexpected handle call message: ~p",[Msg]),
     {reply, ok, State}.
