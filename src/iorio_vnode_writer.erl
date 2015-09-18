@@ -44,11 +44,11 @@ handle_cast({reply_to, Pid, ReqId, {M, F, A}},
     {noreply, State};
 
 handle_cast(Msg, State) ->
-    lager:warning("Unexpected handle cast message: ~p", [Msg]),
+    lager:warning("vnode_writer: Unexpected handle cast message: ~p", [Msg]),
     {noreply, State}.
 
 handle_info(Msg, State) ->
-    lager:warning("Unexpected handle info message: ~p", [Msg]),
+    lager:warning("vnode_writer: Unexpected handle info message: ~p", [Msg]),
     {noreply, State}.
 
 

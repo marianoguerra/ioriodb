@@ -96,7 +96,7 @@ handle_cast({get, BucketName, Stream, From, Count, Callback}, State) ->
     {noreply, NewState};
 
 handle_cast(Msg, State) ->
-    lager:warning("Unexpected handle cast message: ~p",[Msg]),
+    lager:warning("vnode_buckets: Unexpected handle cast message: ~p",[Msg]),
     {noreply, State}.
 
 
@@ -105,7 +105,7 @@ handle_info({'DOWN', _MonitorRef, process, Pid, _Info}, State=#state{gblobs=GBlo
     {noreply, State#state{gblobs=NewGBlobs}};
 
 handle_info(Msg, State) ->
-    lager:warning("Unexpected handle info message: ~p", [Msg]),
+    lager:warning("vnode_buckets: Unexpected handle info message: ~p", [Msg]),
     {noreply, State}.
 
 

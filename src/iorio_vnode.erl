@@ -154,7 +154,7 @@ handle_coverage(Req, _KeySpaces, _Sender, State) ->
     {noreply, State}.
 
 handle_exit(_Pid, _Reason, State=#state{partition=Partition}) ->
-    lager:info("handle exit ~p", [Partition]),
+    lager:info("vnode: handle exit ~p", [Partition]),
     iorio_node:free_resources(State),
     {noreply, State}.
 
@@ -162,7 +162,7 @@ handle_info(evict_bucket, State) ->
     iorio_node:evict_bucket(State);
 
 handle_info(Msg, State=#state{partition=Partition}) ->
-    lager:warning("Unexpected handle info msg: ~p ~p", [Partition, Msg]),
+    lager:warning("vnode: Unexpected handle info msg: ~p ~p", [Partition, Msg]),
     {ok, State}.
 
 terminate(Reason, State=#state{partition=Partition}) ->

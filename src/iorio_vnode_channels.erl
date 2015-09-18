@@ -55,7 +55,7 @@ handle_cast({unsubscribe, Bucket, Stream, Subscriber}, State=#state{channels=Cha
     {noreply, State#state{channels=NewChans}};
 
 handle_cast(Msg, State) ->
-    lager:warning("Unexpected handle cast message: ~p",[Msg]),
+    lager:warning("vnode_channels: Unexpected handle cast message: ~p",[Msg]),
     {noreply, State}.
 
 
@@ -64,7 +64,7 @@ handle_info({'DOWN', _MonitorRef, process, Pid, _Info}, State=#state{channels=Ch
     {noreply, State#state{channels=NewChans}};
 
 handle_info(Msg, State) ->
-    lager:warning("Unexpected handle info message: ~p", [Msg]),
+    lager:warning("vnode_channels: Unexpected handle info message: ~p", [Msg]),
     {noreply, State}.
 
 
