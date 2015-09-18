@@ -205,18 +205,31 @@ store_blob_and_reply_1(Req, State, Bucket, Stream, WithUriStr, PutResult) ->
             {false, Req1, State}
     end.
 
-from_json(Req, State=#state{bucket=Bucket, stream=Stream}) ->
-    {ok, Body, Req1} = cowboy_req:body(Req),
-    case iorio_json:is_json(Body) of
-        true ->
-            store_blob_and_reply(Req1, State, Bucket, Stream, Body, true);
-        false ->
-            {false, iorio_http:invalid_body(Req1), State}
+read_body(Req, State=#state{bucket=Bucket, stream=Stream}) ->
+    case cowboy_req:body(Req) of
+        {ok, _Body, _Req1}=Res -> Res;
+        {more, _Body, Req1} ->
+            lager:warning("request body to large for ~p:~p", [Bucket, Stream]),
+            {false, iorio_http:invalid_body(Req1), State};
+        {error, Reason} ->
+            lager:error("reading request body for ~p:~p: ~p", [Bucket, Stream, Reason]),
+            {false, iorio_http:invalid_body(Req), State}
     end.
 
-from_json_patch(Req, State=#state{bucket=Bucket, stream=Stream,
-                                  iorio_mod=Iorio, iorio_state=IorioState}) ->
-    {ok, Body, Req1} = cowboy_req:body(Req),
+from_json(Req, State=#state{bucket=Bucket, stream=Stream}) ->
+    case read_body(Req, State) of
+        {ok, Body, Req1} ->
+            case iorio_json:is_json(Body) of
+                true ->
+                    store_blob_and_reply(Req1, State, Bucket, Stream, Body, true);
+                false ->
+                    {false, iorio_http:invalid_body(Req1), State}
+            end;
+        Other -> Other
+    end.
+
+handle_patch(Req, Body, State=#state{bucket=Bucket, stream=Stream, iorio_mod=Iorio,
+                                     iorio_state=IorioState}) ->
     case iorio_json:is_json(Body) of
         true ->
             case jsonpatch:parse(Body) of
@@ -227,7 +240,7 @@ from_json_patch(Req, State=#state{bucket=Bucket, stream=Stream,
                             case jsonpatch:patch(ParsedPatch, ParsedBlob) of
                                 {ok, PatchResult} ->
                                     EncodedPatchResult = iorio_json:encode(PatchResult),
-                                    Resp = store_blob_and_reply(Req1, State,
+                                    Resp = store_blob_and_reply(Req, State,
                                                                 Bucket, Stream,
                                                                 EncodedPatchResult,
                                                                 false, LastSeqNum),
@@ -241,18 +254,25 @@ from_json_patch(Req, State=#state{bucket=Bucket, stream=Stream,
                                 _Other ->
                                     % lager doesn't know how to handle maps yet
                                     lager:warning("Error applying patch ~s", [Body]),
-                                    {false, iorio_http:invalid_body(Req1), State}
+                                    {false, iorio_http:invalid_body(Req), State}
                             end;
                         notfound ->
-                            {false, iorio_http:error(Req1, <<"not-found">>, <<"Not Found">>), State}
+                            {false, iorio_http:error(Req, <<"not-found">>, <<"Not Found">>), State}
                     end;
                 {error, Reason} ->
                     % lager doesn't know how to handle maps yet
                     lager:warning("Error parsing patch ~p", [element(1, Reason)]),
-                    {false, iorio_http:invalid_body(Req1), State}
+                    {false, iorio_http:invalid_body(Req), State}
             end;
         false ->
-            {false, iorio_http:invalid_body(Req1), State}
+            {false, iorio_http:invalid_body(Req), State}
+    end.
+
+from_json_patch(Req, State) ->
+    case read_body(Req, State) of
+        {ok, Body, Req1} ->
+            handle_patch(Req1, Body, State);
+        Other -> Other
     end.
 
 rest_terminate(_Req, _State) ->
