@@ -20,7 +20,7 @@ make_anon_session(Access) ->
     session_from_parsed_body(Access, [{<<"u">>, <<"anonymous">>}]).
 
 session_from_token(Access, nil, _Secret) ->
-    {ok, make_anon_session(Access)};
+    make_anon_session(Access);
 session_from_token(Access, JWTToken, Secret) ->
     case jwt:decode(JWTToken, Secret) of
         {ok, #jwt{body=BodyRaw}}    -> session_from_parsed_token(Access, BodyRaw);
