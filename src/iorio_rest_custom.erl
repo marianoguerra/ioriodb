@@ -57,7 +57,9 @@ behaviour_info(_Other) ->
 init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest};
 init({ssl, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
-rest_init(Req, [{access, Access}, {cors, Cors}]) ->
+rest_init(Req, Opts) ->
+    {access, Access} = proplists:lookup(access, Opts),
+    {cors, Cors} = proplists:lookup(cors, Opts),
     {HandlerName, Req1} = cowboy_req:binding(handler, Req),
 	{ok, Req1, #state{access=Access, handler_name=HandlerName, cors=Cors}}.
 
