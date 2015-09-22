@@ -7,7 +7,8 @@
 
 -record(state, {access}).
 
-init_req(Req, Access) ->
+init_req(Req, Opts) ->
+    {access, Access} = proplists:lookup(access, Opts),
     {#state{access=Access}, Req}.
 
 allowed_methods(_State, Req) ->

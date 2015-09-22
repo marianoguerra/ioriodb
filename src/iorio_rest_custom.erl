@@ -38,7 +38,8 @@
 
 -include("include/iorio.hrl").
 
--record(state, {access, handler_name, handler_state, handler, cors}).
+-record(state, {access, handler_name, handler_state, handler, cors,
+               iorio_mod, iorio_state}).
 
 behaviour_info(callbacks) ->
     [{init_req, 2},
@@ -60,14 +61,21 @@ init({ssl, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 rest_init(Req, Opts) ->
     {access, Access} = proplists:lookup(access, Opts),
     {cors, Cors} = proplists:lookup(cors, Opts),
+    {iorio_mod, IorioMod} = proplists:lookup(iorio_mod, Opts),
+    {iorio_state, IorioState} = proplists:lookup(iorio_state, Opts),
     {HandlerName, Req1} = cowboy_req:binding(handler, Req),
-	{ok, Req1, #state{access=Access, handler_name=HandlerName, cors=Cors}}.
+    {ok, Req1, #state{access=Access, handler_name=HandlerName, cors=Cors,
+                      iorio_mod=IorioMod, iorio_state=IorioState}}.
 
-known_methods(Req, State=#state{handler_name=HandlerName, access=Access}) ->
+known_methods(Req, State=#state{handler_name=HandlerName, access=Access,
+                                iorio_mod=IorioMod, iorio_state=IorioState}) ->
     case iorio_x:name_to_module(HandlerName) of
         {ok, Handler} ->
-            {HandlerState, Req1} = Handler:init_req(Req, Access),
-            {?KNOWN_METHODS, Req1, State#state{handler=Handler, handler_state=HandlerState}};
+            HandlerOpts = [{iorio_mod, IorioMod}, {iorio_state, IorioState},
+                           {access, Access}],
+            {HandlerState, Req1} = Handler:init_req(Req, HandlerOpts),
+            {?KNOWN_METHODS, Req1, State#state{handler=Handler,
+                                               handler_state=HandlerState}};
         {error, {invalid_module, _Name}} ->
             {[], Req, State}
     end.
