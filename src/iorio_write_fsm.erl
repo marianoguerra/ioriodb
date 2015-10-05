@@ -3,14 +3,15 @@
 -include("iorio.hrl").
 
 %% API
--export([start_link/8, write/7, write_conditionally/8]).
+-export([start_link/9, write/7, delete/5, write_conditionally/8]).
 
 %% Callbacks
 -export([init/1, code_change/4, handle_event/3, handle_info/3,
          handle_sync_event/4, terminate/3]).
 
--ignore_xref([start_link/8, init/1, code_change/4, handle_event/3, handle_info/3,
-         handle_sync_event/4, terminate/3, write/7, write_conditionally/8]).
+-ignore_xref([start_link/9, init/1, code_change/4, handle_event/3,
+              handle_info/3, handle_sync_event/4, terminate/3, write/7,
+              write_conditionally/8, delete/5]).
 
 %% States
 -export([prepare/2, execute/2, waiting/2]).
@@ -30,6 +31,7 @@
                 w :: pos_integer(),
                 bucket :: string(),
                 stream :: string(),
+                action :: write | delete,
                 last_seqnum :: pos_integer() | nil,
                 data = undefined :: term() | undefined,
                 preflist :: riak_core_apl:preflist2(),
@@ -39,15 +41,23 @@
 %%% API
 %%%===================================================================
 
-start_link(ReqID, From, Bucket, Stream, Data, N, W, LastSeqNum) ->
-    gen_fsm:start_link(?MODULE, [ReqID, From, Bucket, Stream, Data, N, W, LastSeqNum], []).
+start_link(ReqID, From, Bucket, Stream, Data, N, W, LastSeqNum, Action) ->
+    gen_fsm:start_link(?MODULE, [ReqID, From, Bucket, Stream, Data, N, W,
+                                 LastSeqNum, Action], []).
 
 write(N, W, Bucket, Stream, Data, Pid, ReqID) ->
-    iorio_write_fsm_sup:start_write_fsm([ReqID, Pid, Bucket, Stream, Data, N, W, nil]),
+    iorio_write_fsm_sup:start_write_fsm([ReqID, Pid, Bucket, Stream, Data, N,
+                                         W, nil, write]),
+    {ok, ReqID}.
+
+delete(N, Bucket, Stream, Pid, ReqID) ->
+    iorio_write_fsm_sup:start_write_fsm([ReqID, Pid, Bucket, Stream, nil, N,
+                                         N, nil, delete]),
     {ok, ReqID}.
 
 write_conditionally(N, W, Bucket, Stream, Data, LastSeqNum, Pid, ReqID) ->
-    iorio_write_fsm_sup:start_write_fsm([ReqID, Pid, Bucket, Stream, Data, N, W, LastSeqNum]),
+    iorio_write_fsm_sup:start_write_fsm([ReqID, Pid, Bucket, Stream, Data, N,
+                                         W, LastSeqNum, write]),
     {ok, ReqID}.
 
 %%%===================================================================
@@ -55,9 +65,9 @@ write_conditionally(N, W, Bucket, Stream, Data, LastSeqNum, Pid, ReqID) ->
 %%%===================================================================
 
 %% @doc Initialize the state data.
-init([ReqID, From, Bucket, Stream, Data, N, W, LastSeqNum]) ->
-    SD = #state{req_id=ReqID, from=From, n=N, w=W, bucket=Bucket,
-                stream=Stream, data=Data, last_seqnum=LastSeqNum},
+init([ReqID, From, Bucket, Stream, Data, N, W, LastSeqNum, Action]) ->
+    SD = #state{req_id=ReqID, from=From, bucket=Bucket, action=Action,
+                stream=Stream, data=Data, n=N, w=W, last_seqnum=LastSeqNum},
     {ok, prepare, SD, 0}.
 
 %% @doc Prepare the write by calculating the _preference list_.
@@ -72,12 +82,16 @@ prepare(timeout, SD0=#state{bucket=Bucket, n=N, stream=Stream}) ->
 execute(timeout, SD0=#state{req_id=ReqID,
                             bucket=Bucket,
                             stream=Stream,
+                            action=Action,
                             data=Data,
                             preflist=Preflist,
                             last_seqnum=LastSeqNum}) ->
 
-    Command = if LastSeqNum == nil -> {put, ReqID, Bucket, Stream, Data};
-                 true -> {put_conditionally, ReqID, Bucket, Stream, Data, LastSeqNum}
+    Command = if
+                  Action == delete -> {delete, ReqID, Bucket, Stream};
+                  LastSeqNum == nil -> {put, ReqID, Bucket, Stream, Data};
+                  true -> {put_conditionally, ReqID, Bucket, Stream, Data,
+                           LastSeqNum}
               end,
     riak_core_vnode_master:command(Preflist, Command, {fsm, undefined, self()},
                                    iorio_vnode_master),

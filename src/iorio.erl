@@ -3,6 +3,7 @@
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 
 -export([ping/1, put/4, put/7, put_conditionally/8, get/4, get/5, get_last/3,
+         delete/5,
          subscribe/4, subscribe/5, unsubscribe/4, list/1, list/2, list/3,
          bucket_size/1, bucket_size/2, truncate/2, truncate_percentage/2,
          init/0, stats/1]).
@@ -49,7 +50,8 @@ stats(_State) ->
 %% @doc Pings a random vnode to make sure communication is functional
 ping(_State) ->
     iorio_stats:core_ping(),
-    DocIdx = riak_core_util:chash_key({<<"ping">>, term_to_binary(now())}),
+    Now = os:timestamp(),
+    DocIdx = riak_core_util:chash_key({<<"ping">>, term_to_binary(Now)}),
     PrefList = riak_core_apl:get_primary_apl(DocIdx, 1, iorio),
     [{IndexNode, _Type}] = PrefList,
     riak_core_vnode_master:sync_spawn_command(IndexNode, ping, iorio_vnode_master).
@@ -71,6 +73,12 @@ put_conditionally(_State, Bucket, Stream, Data, LastSeqNum, N, W, Timeout) ->
     Pid = self(),
     Args = {coord_put_conditionally, N, W, Bucket, Stream, Data, LastSeqNum, Pid},
     ReqID = riak_core_vnode_master:sync_spawn_command(IndexNode, Args, iorio_vnode_master),
+    wait_for_reqid(ReqID, Timeout).
+
+delete(_State, Bucket, Stream, N, Timeout) ->
+    iorio_stats:core_delete(),
+    ReqID = iorio_util:reqid(),
+    iorio_write_fsm:delete(N, Bucket, Stream, self(), ReqID),
     wait_for_reqid(ReqID, Timeout).
 
 get_last(State, Bucket, Stream) ->

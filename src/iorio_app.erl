@@ -30,6 +30,14 @@ stop(_State) ->
 
 %% private api
 
+on_user_created(Mod, State, #user{username=Username}) ->
+    case ioriol_access:maybe_grant_bucket_ownership(Mod, State, Username) of
+        ok -> ok;
+        Error ->
+            lager:warning("grant bucket ownership result: ~p", [Error])
+    end,
+    Mod:user_join(State, Username, ?USER_GROUP).
+
 init_auth() ->
     {ok, ApiSecret} = env(auth_secret),
 
@@ -43,10 +51,7 @@ init_auth() ->
     AuthMod = envd(auth_mod, permiso_rcore),
     AuthModOpts0 = envd(auth_mod_opts, []),
 
-    OnUserCreated = fun (Mod, State, #user{username=Username}) ->
-                            ioriol_access:maybe_grant_bucket_ownership(Mod, State, Username),
-                            Mod:user_join(State, Username, ?USER_GROUP)
-                    end,
+    OnUserCreated = fun on_user_created/3,
     AuthModOpts = [{user_created_cb, OnUserCreated}|AuthModOpts0],
     {ok, AccessLogic} = ioriol_access:new([{auth_mod, AuthMod},
                                            {auth_mod_opts, AuthModOpts},

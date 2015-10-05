@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 -export([start_link/1, put/5, put/6, raw_put/5, get/6, bucket_size/2,
-         check_evict/2, truncate_percentage/3, clean/1]).
+         delete/3, check_evict/2, truncate_percentage/3, clean/1]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
@@ -35,6 +35,9 @@ check_evict(Ref, Fun) ->
 
 bucket_size(Ref, BucketName) ->
     gen_server:call(Ref, {bucket_size, BucketName}).
+
+delete(Ref, BucketName, Stream) ->
+    gen_server:call(Ref, {delete, BucketName, Stream}).
 
 truncate_percentage(Ref, BucketName, Percentage) ->
     gen_server:call(Ref, {truncate_percentage, BucketName, Percentage}).
@@ -76,6 +79,10 @@ handle_call({check_evict, Fun}, _From, State) ->
 
 handle_call({bucket_size, BucketName}, _From, State) ->
     {NewState, Reply} = do_bucket_size(State, BucketName),
+    {reply, Reply, NewState};
+
+handle_call({delete, BucketName, Stream}, _From, State) ->
+    {NewState, Reply} = do_stream_delete(State, BucketName, Stream),
     {reply, Reply, NewState};
 
 handle_call({truncate_percentage, BucketName, Percentage}, _From, State) ->
@@ -139,6 +146,11 @@ do_bucket_size(State=#state{path=Path}, Bucket) ->
                             {NewTotalSize, NewSizes}
                     end, {0, []}, Streams),
     {State, R}.
+
+do_stream_delete(State=#state{}, BucketName, Stream) ->
+    {NewState, GBlob} = get_gblob(State, BucketName, Stream),
+    gblob_server:delete(GBlob),
+    {NewState, ok}.
 
 do_truncate_percentage(State=#state{path=Path}, BucketName, Percentage) ->
     HaveBucket = iorio_bucket:have_bucket(Path, BucketName),

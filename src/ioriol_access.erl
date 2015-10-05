@@ -106,7 +106,7 @@ maybe_grant_bucket_ownership(AuthMod, AuthState, Username) ->
         Bucket = prefix_user_bucket(Username),
         lager:info("granting ~s bucket ownership to ~s", [Bucket, Username]),
         Permissions = [?PERM_BUCKET_GET, ?PERM_BUCKET_PUT, ?PERM_BUCKET_GRANT,
-                       ?PERM_BUCKET_LIST],
+                       ?PERM_BUCKET_DELETE, ?PERM_BUCKET_LIST],
         Grant = #grant{resource={Bucket, any}, permissions=Permissions},
         drop_state(AuthMod:user_grant(AuthState, Username, Grant));
        true -> ok
@@ -191,11 +191,13 @@ prefix_user_bucket(Bucket) ->
     list_to_binary(io_lib:format("~s~s", [Prefix, Bucket])).
 
 internal_to_permission({_Bucket, any}, ?PERM_BUCKET_GET) -> <<"get">>;
+internal_to_permission({_Bucket, any}, ?PERM_BUCKET_DELETE) -> <<"delete">>;
 internal_to_permission({_Bucket, any}, ?PERM_BUCKET_PUT) -> <<"put">>;
 internal_to_permission({_Bucket, any}, ?PERM_BUCKET_LIST) -> <<"list">>;
 internal_to_permission({_Bucket, any}, ?PERM_BUCKET_GRANT) -> <<"grant">>;
 
 internal_to_permission({_Bucket, _Stream}, ?PERM_STREAM_GET) -> <<"get">>;
+internal_to_permission({_Bucket, _Stream}, ?PERM_STREAM_DELETE) -> <<"delete">>;
 internal_to_permission({_Bucket, _Stream}, ?PERM_STREAM_PUT) -> <<"put">>;
 internal_to_permission({_Bucket, _Stream}, ?PERM_STREAM_GRANT) -> <<"grant">>;
 
@@ -225,11 +227,13 @@ user_allowed(AuthMod, AuthState, Session, Resource, Perm) ->
     end.
 
 permission_to_internal(_Bucket, any, <<"get">>) -> ?PERM_BUCKET_GET;
+permission_to_internal(_Bucket, any, <<"delete">>) -> ?PERM_BUCKET_DELETE;
 permission_to_internal(_Bucket, any, <<"put">>) -> ?PERM_BUCKET_PUT;
 permission_to_internal(_Bucket, any, <<"list">>) -> ?PERM_BUCKET_LIST;
 permission_to_internal(_Bucket, any, <<"grant">>) -> ?PERM_BUCKET_GRANT;
 
 permission_to_internal(_Bucket, _Stream, <<"get">>) -> ?PERM_STREAM_GET;
+permission_to_internal(_Bucket, _Stream, <<"delete">>) -> ?PERM_STREAM_DELETE;
 permission_to_internal(_Bucket, _Stream, <<"put">>) -> ?PERM_STREAM_PUT;
 permission_to_internal(_Bucket, _Stream, <<"grant">>) -> ?PERM_STREAM_GRANT;
 

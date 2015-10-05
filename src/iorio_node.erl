@@ -1,6 +1,7 @@
 -module(iorio_node).
 
 -export([init/1, ping/1, put/5, coord_put_conditionally/8, coord_put/7,
+         delete/4,
          put_conditionally/6, get/6, subscribe/5, unsubscribe/4,
          evict_bucket/1, free_resources/1, truncate_percentage/4,
          bucket_size/3, list_buckets/2, list_streams/3, delete/1]).
@@ -30,7 +31,8 @@ init(Opts) ->
     spawn(fun () ->
                   % distribute intervals to avoid calling all of them at once
                   % on the same node
-                  {RandomSleep, _} = random:uniform_s(BucketEvictTimeInterval, now()),
+                  Now = os:timestamp(),
+                  {RandomSleep, _} = random:uniform_s(BucketEvictTimeInterval, Now),
                   timer:sleep(RandomSleep),
                   {ok, _TimerRef} = timer:send_interval(BucketEvictTimeInterval,
                                                         Pid, evict_bucket)
@@ -74,6 +76,11 @@ put_conditionally(State=#state{buckets=Buckets, channels=Channels}, ReqId,
 get(State=#state{buckets=Buckets}, BucketName, Stream, From, Count, Callback) ->
     iorio_vnode_buckets:get(Buckets, BucketName, Stream, From, Count, Callback),
     {noreply, State}.
+
+delete(State=#state{buckets=Buckets}, ReqId, BucketName, Stream) ->
+    lager:info("iorio_node:delete ~p/~p", [BucketName, Stream]),
+    iorio_vnode_buckets:delete(Buckets, BucketName, Stream),
+    {reply, {ReqId, nil}, State}.
 
 subscribe(State=#state{channels=Channels}, BucketName, Stream, FromSeqNum, Pid) ->
     iorio_vnode_channels:subscribe(Channels, BucketName, Stream, FromSeqNum, Pid),

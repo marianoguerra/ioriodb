@@ -4,7 +4,7 @@
 
 -export([auth_error/0, auth_success/0, listen_connect/1, listen_disconnect/1]).
 
--export([core_ping/0, core_put/0, core_get/0,
+-export([core_ping/0, core_put/0, core_get/0, core_delete/0,
          core_subscribe/0, core_unsubscribe/0,
          core_list_buckets/0, core_list_streams/0,
          core_truncate/0,
@@ -26,6 +26,7 @@
 -define(METRIC_CORE_PING, [iorio, core, ping]).
 -define(METRIC_CORE_PUT, [iorio, core, put]).
 -define(METRIC_CORE_GET, [iorio, core, get]).
+-define(METRIC_CORE_DELETE, [iorio, core, delete]).
 -define(METRIC_CORE_SUBSCRIBE, [iorio, core, subscribe]).
 -define(METRIC_CORE_UNSUBSCRIBE, [iorio, core, unsubscribe]).
 -define(METRIC_CORE_LIST_BUCKETS, [iorio, core, list, buckets]).
@@ -75,6 +76,7 @@ listen_disconnect(false) -> exometer:update(?METRIC_LISTEN_FALSE, -1).
 core_ping()         -> exometer:update(?METRIC_CORE_PING, 1).
 core_put()          -> exometer:update(?METRIC_CORE_PUT, 1).
 core_get()          -> exometer:update(?METRIC_CORE_GET, 1).
+core_delete()       -> exometer:update(?METRIC_CORE_DELETE, 1).
 core_subscribe()    -> exometer:update(?METRIC_CORE_SUBSCRIBE, 1).
 core_unsubscribe()  -> exometer:update(?METRIC_CORE_UNSUBSCRIBE, 1).
 core_list_buckets() -> exometer:update(?METRIC_CORE_LIST_BUCKETS, 1).
@@ -135,6 +137,7 @@ core_stats() ->
     [{ping, unwrap_metric_value(?METRIC_CORE_PING)},
      {put, unwrap_metric_value(?METRIC_CORE_PUT)},
      {get, unwrap_metric_value(?METRIC_CORE_GET)},
+     {delete, unwrap_metric_value(?METRIC_CORE_DELETE)},
      {subscribe, unwrap_metric_value(?METRIC_CORE_SUBSCRIBE)},
      {unsubscribe, unwrap_metric_value(?METRIC_CORE_UNSUBSCRIBE)},
      {list_buckets, unwrap_metric_value(?METRIC_CORE_LIST_BUCKETS)},
@@ -158,6 +161,7 @@ init_metrics() ->
     exometer:new(?METRIC_CORE_PING, spiral, [{time_span, 60000}]),
     exometer:new(?METRIC_CORE_PUT, spiral, [{time_span, 60000}]),
     exometer:new(?METRIC_CORE_GET, spiral, [{time_span, 60000}]),
+    exometer:new(?METRIC_CORE_DELETE, spiral, [{time_span, 60000}]),
     exometer:new(?METRIC_CORE_SUBSCRIBE, spiral, [{time_span, 60000}]),
     exometer:new(?METRIC_CORE_UNSUBSCRIBE, spiral, [{time_span, 60000}]),
     exometer:new(?METRIC_CORE_LIST_BUCKETS, spiral, [{time_span, 60000}]),

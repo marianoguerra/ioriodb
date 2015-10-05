@@ -55,6 +55,9 @@ handle_command({get, BucketName, Stream, From, Count}, Sender, State) ->
     Callback = fun (Entries) -> riak_core_vnode:reply(Sender, Entries) end,
     iorio_node:get(State, BucketName, Stream, From, Count, Callback);
 
+handle_command({delete, ReqId, BucketName, Stream}, _Sender, State) ->
+    iorio_node:delete(State, ReqId, BucketName, Stream);
+
 handle_command({subscribe, BucketName, Stream, FromSeqNum, Pid}, _Sender, State) ->
     iorio_node:subscribe(State, BucketName, Stream, FromSeqNum, Pid);
 

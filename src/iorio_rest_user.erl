@@ -106,20 +106,27 @@ do_action(Access, Username, Password, Req, Action) ->
     lager:info("~p'ing user '~s'", [Action, Username]),
     case {Action, ioriol_access:Action(Access, Username, binary_to_list(Password))} of
         {create_user, ok} ->
-            ioriol_access:maybe_grant_bucket_ownership(Access, Username),
+            case ioriol_access:maybe_grant_bucket_ownership(Access, Username) of
+                ok -> ok;
+                Error ->
+                    lager:warning("grant bucket ownership result: ~p", [Error])
+            end,
             UriStr = io_lib:format("/users/~s", [Username]),
             {{true, UriStr}, iorio_http:ok(Req)};
         {update_user_password, ok} ->
             {true, iorio_http:ok(Req)};
         {create_user, {error, duplicate}} ->
             lager:error("creating existing user '~s'", [Username]),
-            {false, iorio_http:error(Req, <<"user-exists">>, <<"User already exists">>)};
+            {false, iorio_http:error(Req, <<"user-exists">>,
+                                     <<"User already exists">>)};
         {_, {error, illegal_name_char}} ->
             lager:error("creating user '~s'", [Username]),
-            {false, iorio_http:error(Req, <<"illegal-username">>, <<"Illegal Username">>)};
+            {false, iorio_http:error(Req, <<"illegal-username">>,
+                                     <<"Illegal Username">>)};
         {Action, Error} ->
-            lager:error("~p'inguser '~s' ~p", [Action, Username, Error]),
-            {false, iorio_http:error(Req, <<"unknown-error">>, <<"Unknown Error">>)}
+            lager:error("~p'ing user '~s' ~p", [Action, Username, Error]),
+            {false, iorio_http:error(Req, <<"unknown-error">>,
+                                     <<"Unknown Error">>)}
     end.
 
 unauthorized_response(Req, State, Reason) ->
