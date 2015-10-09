@@ -49,6 +49,16 @@ new_access_logic() ->
                                            {secret, ApiSecret}]),
     AccessLogic.
 
+grant_admin_perms(AccessLogic, Username) ->
+    Res1 = ioriol_access:grant(AccessLogic, Username, ?PERM_MAGIC_BUCKET, any,
+                               ?PERM_ADMIN_USERS),
+    Res2 = ioriol_access:grant(AccessLogic, Username, any, any,
+                             ?PERM_BUCKET_LIST),
+    Res3 = ioriol_access:maybe_grant_bucket_ownership(AccessLogic, Username),
+    lager:info("assign admin users to ~p: ~p", [Username, Res1]),
+    lager:info("assign list buckets to ~p: ~p", [Username, Res2]),
+    lager:info("assign bucket ownership to ~p: ~p", [Username, Res3]).
+
 init_auth() ->
     AdminUsername = envd(admin_username, "admin"),
     {ok, AdminPassword} = env(admin_password),
@@ -62,16 +72,11 @@ init_auth() ->
     CreateGroupsResult = create_groups(AccessLogic),
     lager:info("create groups ~p", [CreateGroupsResult]),
 
-    GrantAdminUsers = fun (Username) ->
-                              Res = ioriol_access:grant(AccessLogic, AdminUsername,
-                                                        ?PERM_MAGIC_BUCKET, any,
-                                                        ?PERM_ADMIN_USERS),
-                              lager:info("assign admin users to ~p: ~p",
-                                         [Username, Res]),
-                              ioriol_access:maybe_grant_bucket_ownership(AccessLogic, AdminUsername)
+    GrantAdminPerms = fun (Username) ->
+                              grant_admin_perms(AccessLogic, Username)
                       end,
     create_user(AccessLogic, AdminUsername, AdminPassword, [?ADMIN_GROUP],
-                GrantAdminUsers),
+                GrantAdminPerms),
     create_user(AccessLogic, AnonUsername, AnonPassword, [],
                 fun (_) -> ok end),
 
