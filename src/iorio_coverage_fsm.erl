@@ -16,7 +16,7 @@ start_link(ReqId, From, Request, Timeout) ->
                                       [ReqId, From, Request, Timeout]).
 
 start(Request, Timeout) ->
-    ReqId = erlang:phash2(erlang:now()),
+    ReqId = erlang:phash2(time_compat:monotonic_time()),
     {ok, _} = iorio_coverage_fsm_sup:start_fsm([ReqId, self(), Request, Timeout]),
     receive
         {ReqId, Val} -> Val
@@ -28,9 +28,14 @@ init(_, [ReqId, From, Request, Timeout]) ->
     State = #state{req_id=ReqId, from=From, request=Request},
     {Request, allup, 1, 1, iorio, iorio_vnode_master, Timeout, State}.
 
-process_results({{_ReqId, {Partition, Node}}, Data}, State=#state{accum=Accum}) ->
+process_results({{_ReqId, {Partition, Node}}, Data},
+                State=#state{accum=Accum}) ->
     NewAccum = [{Partition, Node, Data}|Accum],
-    {done, State#state{accum=NewAccum}}.
+    {done, State#state{accum=NewAccum}};
+
+process_results(Other, State=#state{}) ->
+    lager:warning("unknown process_results message ~p", [Other]),
+    {stop, {error, {unknown_msg, Other}}, State}.
 
 finish(clean, S=#state{req_id=ReqId, from=From, accum=Accum}) ->
     From ! {ReqId, {ok, Accum}},

@@ -11,21 +11,23 @@
 
 init(Opts) ->
     Partition = proplists:get_value(partition, Opts),
-    lager:debug("partition init ~p", [Partition]),
-
     BasePath = iorio_bucket:base_path(),
     {ok, WriterPid} = iorio_vnode_writer:start_link(),
 
     PartitionStr = integer_to_list(Partition),
     Path = filename:join([BasePath, PartitionStr]),
 
-    BucketsOpts = [{path, Path}, {partition, Partition}],
-
-    {ok, Channels} = iorio_vnode_channels:start_link(),
-    {ok, Buckets}  = iorio_vnode_buckets:start_link(BucketsOpts),
-
     % TODO: calculate based on number of buckets
     BucketEvictTimeInterval = application:get_env(iorio, bucket_evict_time_ms, 60000),
+    VnodeInfoTimeout = application:get_env(iorio, vnode_info_timeout_ms, 30000),
+
+    BucketsOpts = [{path, Path}, {partition, Partition}],
+    VnodeInfoOpts = [{path, Path}, {partition, Partition},
+                     {timeout, VnodeInfoTimeout}],
+
+    {ok, Channels}  = iorio_vnode_channels:start_link(),
+    {ok, Buckets}   = iorio_vnode_buckets:start_link(BucketsOpts),
+    {ok, VnodeInfo} = iorio_vnode_info:start_link(VnodeInfoOpts),
 
     Pid = self(),
     spawn(fun () ->
@@ -40,7 +42,7 @@ init(Opts) ->
 
 
     State = #state{partition=Partition, path=Path, writer=WriterPid,
-                   buckets=Buckets, channels=Channels},
+                   buckets=Buckets, channels=Channels, vnode_info=VnodeInfo},
     {ok, State}.
 
 ping(State=#state{partition=Partition}) ->
@@ -99,16 +101,25 @@ truncate_percentage(State=#state{buckets=Buckets}, BucketName, Percentage, RefId
     Result = iorio_vnode_buckets:truncate_percentage(Buckets, BucketName, Percentage),
     {reply, {RefId, Result}, State}.
 
-bucket_size(State=#state{buckets=Buckets}, BucketName, RefId) ->
-    Result = iorio_vnode_buckets:bucket_size(Buckets, BucketName),
-    {reply, {RefId, Result}, State}.
+bucket_size(State=#state{vnode_info=VnodeInfo}, BucketName, RefId) ->
+    case iorio_vnode_info:bucket_info(VnodeInfo, BucketName) of
+    {ok, #{size := Size, streams := Streams}} ->
+            Fun = fun (StreamName, #{size := StreamSize}, AccIn) ->
+                          [{StreamName, StreamSize}|AccIn]
+                  end,
+            StreamNamesAndSizes = maps:fold(Fun, [], Streams),
+            Result = {Size, StreamNamesAndSizes},
+            {reply, {RefId, Result}, State};
+    {error, not_found} ->
+            {reply, {RefId, {0, []}}, State}
+    end.
 
-list_buckets(State=#state{path=Path}, RefId) ->
-    Buckets = iorio_bucket:list_buckets(Path),
+list_buckets(State=#state{vnode_info=VnodeInfo}, RefId) ->
+    {ok, Buckets} = iorio_vnode_info:list_buckets(VnodeInfo),
     {reply, {RefId, Buckets}, State}.
 
-list_streams(State=#state{path=Path}, Bucket, RefId) ->
-    Streams = iorio_bucket:list_streams(Path, Bucket),
+list_streams(State=#state{vnode_info=VnodeInfo}, Bucket, RefId) ->
+    {ok, Streams} = iorio_vnode_info:list_streams(VnodeInfo, Bucket),
     {reply, {RefId, Streams}, State}.
 
 delete(State=#state{path=Path}) ->

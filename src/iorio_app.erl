@@ -38,9 +38,18 @@ on_user_created(Mod, State, #user{username=Username}) ->
     end,
     Mod:user_join(State, Username, ?USER_GROUP).
 
-init_auth() ->
+new_access_logic() ->
     {ok, ApiSecret} = env(auth_secret),
+    OnUserCreated = fun on_user_created/3,
+    AuthMod = envd(auth_mod, permiso_rcore),
+    AuthModOpts0 = envd(auth_mod_opts, []),
+    AuthModOpts = [{user_created_cb, OnUserCreated}|AuthModOpts0],
+    {ok, AccessLogic} = ioriol_access:new([{auth_mod, AuthMod},
+                                           {auth_mod_opts, AuthModOpts},
+                                           {secret, ApiSecret}]),
+    AccessLogic.
 
+init_auth() ->
     AdminUsername = envd(admin_username, "admin"),
     {ok, AdminPassword} = env(admin_password),
 
@@ -48,14 +57,7 @@ init_auth() ->
     % default password since login in as anonymous is not that useful
     AnonPassword = envd(anon_password, <<"secret">>),
 
-    AuthMod = envd(auth_mod, permiso_rcore),
-    AuthModOpts0 = envd(auth_mod_opts, []),
-
-    OnUserCreated = fun on_user_created/3,
-    AuthModOpts = [{user_created_cb, OnUserCreated}|AuthModOpts0],
-    {ok, AccessLogic} = ioriol_access:new([{auth_mod, AuthMod},
-                                           {auth_mod_opts, AuthModOpts},
-                                           {secret, ApiSecret}]),
+    AccessLogic = new_access_logic(),
 
     CreateGroupsResult = create_groups(AccessLogic),
     lager:info("create groups ~p", [CreateGroupsResult]),
