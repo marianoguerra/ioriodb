@@ -75,9 +75,11 @@ response_to_json(Req, State, Response) ->
 
     {iorio_json:encode([{status, Status}, {data, UniqueItems}]), Req, State}.
 
-to_json(Req, State=#state{bucket=any, iorio_mod=Iorio, iorio_state=IorioState}) ->
+to_json(Req, State=#state{bucket=any, iorio_mod=Iorio,
+                          iorio_state=IorioState}) ->
     response_to_json(Req, State, Iorio:list(IorioState));
-to_json(Req, State=#state{bucket=Bucket, iorio_mod=Iorio, iorio_state=IorioState}) ->
+to_json(Req, State=#state{bucket=Bucket, iorio_mod=Iorio,
+                          iorio_state=IorioState}) ->
     response_to_json(Req, State, Iorio:list(IorioState, Bucket)).
 
 rest_terminate(_Req, _State) ->

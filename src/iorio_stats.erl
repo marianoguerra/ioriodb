@@ -8,7 +8,8 @@
          core_subscribe/0, core_unsubscribe/0,
          core_list_buckets/0, core_list_streams/0,
          core_truncate/0,
-         core_msg_size/1]).
+         core_msg_size/1,
+         log_level/1]).
 
 -behaviour(cowboy_middleware).
 -export([execute/2]).
@@ -48,10 +49,15 @@
 
                        500, 501, 502, 503, 504, 505, 506, 511]).
 
+% taken from lager.hrl to avoid including lot of constants here
+-define(LOG_LEVELS, [debug, info, notice, warning, error, critical, alert,
+                     emergency, none]).
+
 all_stats(Iorio, IorioState) ->
  [{node, node_stats()},
   {iorio, Iorio:stats(IorioState)},
   {file, file_stats()},
+  {log, log_stats()},
   {http, http_stats()},
   {core, core_stats()}].
 
@@ -85,6 +91,8 @@ core_truncate()     -> exometer:update(?METRIC_CORE_TRUNCATE, 1).
 
 core_msg_size(Size) -> exometer:update(?METRIC_CORE_MSG_SIZE, Size).
 
+log_level(Level) -> exometer:update(log_level_key(Level), 1).
+
 endpoint_key(Type, EndPoint) ->
     [iorio, api, http, Type, EndPoint].
 
@@ -94,8 +102,9 @@ get_endpoint_min_value(EndPoint) ->
 get_endpoint_time_value(EndPoint) ->
     get_endpoint_value(req_time, EndPoint).
 
-resp_code_key(Code) ->
-    [iorio, api, http, resp, Code].
+resp_code_key(Code) -> [iorio, api, http, resp, Code].
+
+log_level_key(Level) -> [iorio, core, log, Level].
 
 unwrap_metric_value(Key) ->
     case exometer:get_value(Key) of
@@ -113,6 +122,10 @@ get_resp_code_value(Code) ->
     Value = unwrap_metric_value(resp_code_key(Code)),
     {Code, Value}.
 
+get_log_level_value(Level) ->
+    Value = unwrap_metric_value(log_level_key(Level)),
+    {Level, Value}.
+
 create_endpoint_min_metric(EndPoint) ->
     exometer:new(endpoint_key(req_min, EndPoint), spiral, [{time_span, 60000}]).
 
@@ -121,6 +134,9 @@ create_endpoint_time_metric(EndPoint) ->
 
 create_resp_code_metric(Code) ->
     exometer:new(resp_code_key(Code), spiral, [{time_span, 60000}]).
+
+create_log_level_metric(Level) ->
+    exometer:new(log_level_key(Level), spiral, [{time_span, 60000}]).
 
 http_stats() ->
     [{listen, [{active, unwrap_metric_value(?METRIC_LISTEN_ACTIVE)},
@@ -132,6 +148,9 @@ http_stats() ->
      {req, [{time, lists:map(fun get_endpoint_time_value/1, ?ENDPOINTS)},
             {active, unwrap_metric_value(?METRIC_HTTP_ACTIVE_REQS)},
             {count, lists:map(fun get_endpoint_min_value/1, ?ENDPOINTS)}]}].
+
+log_stats() ->
+     [{by_level, lists:map(fun get_log_level_value/1, ?LOG_LEVELS)}].
 
 core_stats() ->
     [{ping, unwrap_metric_value(?METRIC_CORE_PING)},
@@ -149,6 +168,7 @@ init_metrics() ->
     lists:map(fun create_endpoint_time_metric/1, ?ENDPOINTS),
     lists:map(fun create_endpoint_min_metric/1, ?ENDPOINTS),
     lists:map(fun create_resp_code_metric/1, ?STATUS_CODES),
+    lists:map(fun create_log_level_metric/1, ?LOG_LEVELS),
 
     exometer:new(?METRIC_AUTH_ERROR, spiral, [{time_span, 60000}]),
     exometer:new(?METRIC_AUTH_SUCCESS, spiral, [{time_span, 60000}]),
