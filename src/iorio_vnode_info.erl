@@ -39,6 +39,11 @@ init(Opts) ->
 
     {ok, set_timer(State)}.
 
+handle_call(Command, _From, State=#state{last_update=undefined})
+        when Command =/= {check} ->
+    NewState = do_check(State),
+    handle_call(Command, _From, NewState);
+
 handle_call({list_buckets}, _From, State=#state{buckets=Buckets}) ->
     {reply, {ok, Buckets}, State};
 
