@@ -100,35 +100,36 @@ get_stream_info(BasePath, StreamName) ->
     Size = sblob_util:deep_size(Path),
     #{name => list_to_binary(StreamName), size => Size}.
 
+fold_streams(StreamName, {Path, CurSize, StreamsIn}) ->
+    StreamInfo = get_stream_info(Path, StreamName),
+    StreamOut = maps:put(list_to_binary(StreamName), StreamInfo, StreamsIn),
+    #{size := StreamSize} = StreamInfo,
+    SizeOut = CurSize + StreamSize,
+    {Path, SizeOut, StreamOut}.
+
 get_bucket_info(BasePath, BucketName) ->
     Path = filename:join(BasePath, BucketName),
     {ok, StreamNames} = list_dir(Path),
-    Fun = fun (StreamName, {CurSize, StreamsIn}) ->
-                  StreamInfo = get_stream_info(Path, StreamName),
-                  StreamOut = maps:put(list_to_binary(StreamName), StreamInfo,
-                                       StreamsIn),
-                  #{size := StreamSize} = StreamInfo,
-                  SizeOut = CurSize + StreamSize,
-
-                  {SizeOut, StreamOut}
-          end,
-    {Size, NewStreams} = lists:foldl(Fun, {0, #{}}, StreamNames),
+    Fun = fun fold_streams/2,
+    {_Path, Size, NewStreams} = lists:foldl(Fun, {Path, 0, #{}}, StreamNames),
     #{streams => NewStreams, size => Size}.
 
-do_check(State=#state{path=Path}) ->
+fold_buckets(BucketName, {Path, CurSize, BucketsIn}) ->
+    BucketInfo = get_bucket_info(Path, BucketName),
+    #{size := BucketSize} = BucketInfo,
+    BucketsOut = maps:put(list_to_binary(BucketName), BucketInfo, BucketsIn),
+    SizeOut = CurSize + BucketSize,
+    {Path, SizeOut, BucketsOut}.
+
+check_path(Path) ->
     {ok, BucketNames} = list_dir(Path),
-    Fun = fun (BucketName, {CurSize, BucketsIn}) ->
-                  BucketInfo = get_bucket_info(Path, BucketName),
-                  BucketsOut = maps:put(list_to_binary(BucketName), BucketInfo,
-                                        BucketsIn),
+    Fun = fun fold_buckets/2,
+    {_Path, Size, Buckets} = lists:foldl(Fun, {Path, 0, #{}}, BucketNames),
+    {Size, Buckets}.
 
-                  #{size := BucketSize} = BucketInfo,
-                  SizeOut = CurSize + BucketSize,
-
-                  {SizeOut, BucketsOut}
-          end,
-    {Size, NewBuckets} = lists:foldl(Fun, {0, #{}}, BucketNames),
+do_check(State=#state{path=Path}) ->
     Now = os:timestamp(),
+    {Size, NewBuckets} = check_path(Path),
     State#state{buckets=NewBuckets, last_update=Now, size=Size}.
 
 ensure_binary(Val) when is_binary(Val) -> Val;
