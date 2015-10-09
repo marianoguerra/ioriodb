@@ -49,10 +49,6 @@
 
                        500, 501, 502, 503, 504, 505, 506, 511]).
 
-% taken from lager.hrl to avoid including lot of constants here
--define(LOG_LEVELS, [debug, info, notice, warning, error, critical, alert,
-                     emergency, none]).
-
 all_stats(Iorio, IorioState) ->
  [{node, node_stats()},
   {iorio, Iorio:stats(IorioState)},
@@ -91,7 +87,7 @@ core_truncate()     -> exometer:update(?METRIC_CORE_TRUNCATE, 1).
 
 core_msg_size(Size) -> exometer:update(?METRIC_CORE_MSG_SIZE, Size).
 
-log_level(Level) -> exometer:update(log_level_key(Level), 1).
+log_level(Level) -> lager_metrics:log_level(Level).
 
 endpoint_key(Type, EndPoint) ->
     [iorio, api, http, Type, EndPoint].
@@ -103,8 +99,6 @@ get_endpoint_time_value(EndPoint) ->
     get_endpoint_value(req_time, EndPoint).
 
 resp_code_key(Code) -> [iorio, api, http, resp, Code].
-
-log_level_key(Level) -> [iorio, core, log, Level].
 
 unwrap_metric_value(Key) ->
     case exometer:get_value(Key) of
@@ -123,7 +117,7 @@ get_resp_code_value(Code) ->
     {Code, Value}.
 
 get_log_level_value(Level) ->
-    Value = unwrap_metric_value(log_level_key(Level)),
+    Value = unwrap_metric_value(lager_metrics:log_level_key(Level)),
     {Level, Value}.
 
 create_endpoint_min_metric(EndPoint) ->
@@ -134,9 +128,6 @@ create_endpoint_time_metric(EndPoint) ->
 
 create_resp_code_metric(Code) ->
     exometer:new(resp_code_key(Code), spiral, [{time_span, 60000}]).
-
-create_log_level_metric(Level) ->
-    exometer:new(log_level_key(Level), spiral, [{time_span, 60000}]).
 
 http_stats() ->
     [{listen, [{active, unwrap_metric_value(?METRIC_LISTEN_ACTIVE)},
@@ -150,7 +141,8 @@ http_stats() ->
             {count, lists:map(fun get_endpoint_min_value/1, ?ENDPOINTS)}]}].
 
 log_stats() ->
-     [{by_level, lists:map(fun get_log_level_value/1, ?LOG_LEVELS)}].
+     [{by_level, lists:map(fun get_log_level_value/1,
+                           lager_metrics:log_levels())}].
 
 core_stats() ->
     [{ping, unwrap_metric_value(?METRIC_CORE_PING)},
@@ -168,7 +160,7 @@ init_metrics() ->
     lists:map(fun create_endpoint_time_metric/1, ?ENDPOINTS),
     lists:map(fun create_endpoint_min_metric/1, ?ENDPOINTS),
     lists:map(fun create_resp_code_metric/1, ?STATUS_CODES),
-    lists:map(fun create_log_level_metric/1, ?LOG_LEVELS),
+    lager_metrics:create(),
 
     exometer:new(?METRIC_AUTH_ERROR, spiral, [{time_span, 60000}]),
     exometer:new(?METRIC_AUTH_SUCCESS, spiral, [{time_span, 60000}]),
