@@ -160,7 +160,6 @@ init_metrics() ->
     lists:map(fun create_endpoint_time_metric/1, ?ENDPOINTS),
     lists:map(fun create_endpoint_min_metric/1, ?ENDPOINTS),
     lists:map(fun create_resp_code_metric/1, ?STATUS_CODES),
-    lager_exometer_backend_metrics:create(),
 
     exometer:new(?METRIC_AUTH_ERROR, spiral, [{time_span, 60000}]),
     exometer:new(?METRIC_AUTH_SUCCESS, spiral, [{time_span, 60000}]),
