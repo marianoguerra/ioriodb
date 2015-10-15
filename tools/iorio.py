@@ -66,7 +66,7 @@ class Connection(object):
     MT_JSON = 'application/json'
     MT_JSON_PATCH = 'application/json-patch+json'
 
-    def __init__(self, host, port, secure=False, session_header_name='x-session'):
+    def __init__(self, host, port, secure=False, session_header_name='x-session', path_prefix=""):
         self.host = host
         self.port = port
         self.session = requests.Session()
@@ -74,6 +74,7 @@ class Connection(object):
         self.token = None
         self.username = None
         self.session_header_name = session_header_name
+        self.path_prefix = path_prefix
 
     def format_url(self, paths, query_params=None):
         if query_params:
@@ -81,7 +82,7 @@ class Connection(object):
         else:
             params = ""
 
-        path = "/".join(str(item) for item in paths)
+        path = self.path_prefix + "/" + "/".join(str(item) for item in paths)
 
         if self.secure:
             protocol = 'https'

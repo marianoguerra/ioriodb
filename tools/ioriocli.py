@@ -27,6 +27,10 @@ def get_arg_parser():
                         help='how many times to do the action')
 
     parser.add_argument('--human', action='store_true', default=False)
+    parser.add_argument('--pathprefix', default='',
+            help="change the prefix of API path")
+    parser.add_argument('-s', '--secure', action='store_true', default=False,
+            help="use HTTPS")
 
     subparsers = parser.add_subparsers()
     p_post = subparsers.add_parser('post', help='add an event to a stream')
@@ -94,7 +98,7 @@ def parse_data_from_raw(data_raw):
 def do_when_authenticated(args, fun, conn=None):
     '''if auth works run fun'''
     if conn is None:
-        conn = iorio.Connection(args.host, args.port)
+        conn = iorio.Connection(args.host, args.port, secure=args.secure, path_prefix=args.pathprefix)
 
     auth_t1 = time.time()
     auth_ok, auth_resp = conn.authenticate(args.username, args.password)
