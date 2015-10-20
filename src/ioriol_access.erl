@@ -7,6 +7,7 @@
          is_authorized_for_bucket/3, is_authorized_for_stream/3,
          is_authorized_for_bucket/4, is_authorized_for_stream/5,
          access_details/2, add_group/2, grant/5, revoke/5,
+         group_grant/5,
          authenticate/3, authenticate/4]).
 
 -export([secret/1, username/1, session_body/1, bucket/1, stream/1]).
@@ -127,6 +128,12 @@ revoke(#state{auth_mod=AuthMod, auth_state=AuthState}, Username, Bucket, Stream,
     lager:info("revoke ~p ~p/~p: ~p", [Username, Bucket, Stream, Permission]),
     Grant = #grant{resource={Bucket, Stream}, permissions=[Permission]},
     drop_state(AuthMod:user_revoke(AuthState, Username, Grant)).
+
+group_grant(#state{auth_mod=AuthMod, auth_state=AuthState}, Groupname, Bucket,
+            Stream, Permission) ->
+    lager:info("grant ~p ~p/~p: ~p", [Groupname, Bucket, Stream, Permission]),
+    Grant = #grant{resource={Bucket, Stream}, permissions=[Permission]},
+    drop_state(AuthMod:group_grant(AuthState, Groupname, Grant)).
 
 authenticate(State=#state{auth_mod=AuthMod, auth_state=AuthState},
              Req, Username, Password) ->
