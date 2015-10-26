@@ -92,8 +92,17 @@ base_routes(AccessLogic, CorsInfo) ->
     IorioMod = iorio,
     IorioState = nil,
 
-    [
-     {"/listen", bullet_handler,
+    JsonEncoder = fun iorio_json:encode/1,
+    JsonDecoder = fun iorio_json:decode/1,
+    IsAuthorizedFun = fun (Req, _Info) ->
+                              %{{false, <<"jwt">>}, Req}
+                              {true, Req}
+                      end,
+    RcsOpts = #{env_keys => [iorio],
+                json_encoder => JsonEncoder, json_decoder => JsonDecoder,
+                base_uri => "/admin", is_authorized => IsAuthorizedFun},
+
+    [{"/listen", bullet_handler,
       [{handler, iorio_listen_handler}, {access, AccessLogic},
        {cors, CorsInfo}, {iorio_mod, IorioMod}, {iorio_state, IorioState}]},
      {"/streams/:bucket", iorio_rest_list,
@@ -114,15 +123,15 @@ base_routes(AccessLogic, CorsInfo) ->
       [{access, AccessLogic}, {algorithm, ApiAlgorithm},
        {session_duration_secs, SessionDurationSecs},
        {cors, CorsInfo}]},
-     {"/users/", iorio_rest_user,
-      [{access, AccessLogic}, {cors, CorsInfo}]},
+     {"/users/", iorio_rest_user, [{access, AccessLogic}, {cors, CorsInfo}]},
      {"/ping", iorio_rest_ping, [{cors, CorsInfo}, {iorio_mod, IorioMod},
                                  {iorio_state, IorioState}]},
+     {"/admin/:action", rcs_cowboy_handler, RcsOpts},
+     {"/admin/:action/:param1", rcs_cowboy_handler, RcsOpts},
 
      {"/x/:handler/[...]", iorio_rest_custom,
       [{access, AccessLogic}, {cors, CorsInfo},
-       {iorio_mod, IorioMod}, {iorio_state, IorioState}]}
-    ].
+       {iorio_mod, IorioMod}, {iorio_state, IorioState}]}].
 
 user_routes() ->
     envd(api_handlers,
