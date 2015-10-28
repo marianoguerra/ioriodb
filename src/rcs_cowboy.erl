@@ -63,8 +63,8 @@ user_grants(Name) -> grants_for(Name, <<"usergrants">>).
 groups_grants(Names) ->
     R = fold(fun ({{Role, Target}, [Grants]}, {Groups, All}=Acc) ->
                      IsInNames = lists:member(Role, Names),
-                     if Role =:= all -> {Groups, [{Target, Grants}|All]};
-                        IsInNames -> {[{Target, Grants}|Groups], All};
+                     if Role =:= all -> {Groups, [{{global, <<"*">>}, Target, Grants}|All]};
+                        IsInNames -> {[{{group, Role}, Target, Grants}|Groups], All};
                         true -> Acc
                      end
              end, {[], []}, <<"groupgrants">>),
@@ -72,24 +72,30 @@ groups_grants(Names) ->
     {ok, {grants_to_bin(Groups), grants_to_bin(All)}}.
 
 grants_for(Name, Type) ->
+    RoleType = if Type =:= <<"groupgrants">> -> group;
+                  Type =:= <<"usergrants">> -> user
+               end,
     R = fold(fun ({{Role, Target}, [Grants]}, Acc) when Role =:= Name; Role =:= all ->
-                     [{Target, Grants}|Acc];
+                     [{{RoleType, Role}, Target, Grants}|Acc];
                  (_, Acc) -> Acc
              end, [], Type),
     {ok, grants_to_bin(R)}.
 
 grants_to_bin(Grants) ->
-    lists:map(fun ({Bucket, Permissions}) ->
+    lists:map(fun ({Role, Bucket, Permissions}) ->
                       GrantsBin = lists:map(fun list_to_binary/1, Permissions),
-                      [{grants, GrantsBin}|target_info(Bucket)]
+                      [{grants, GrantsBin}|target_info(Role, Bucket)]
               end, Grants).
 
-target_info(any)  ->
-    [{bucket, <<"*">>}, {key, <<"*">>}, {bucket_grant, false}, {any, true}];
-target_info(Bucket) when is_binary(Bucket) ->
-    [{bucket, Bucket}, {key, <<"*">>}, {bucket_grant, true}, {any, false}];
-target_info({Bucket, Key}) ->
-    [{bucket, Bucket}, {key, Key}, {bucket_grant, false}, {any, false}].
+target_info({RoleType, Role}, any)  ->
+    [{bucket, <<"*">>}, {key, <<"*">>}, {bucket_grant, false}, {any, true},
+     {role_type, RoleType}, {role, Role}];
+target_info({RoleType, Role}, Bucket) when is_binary(Bucket) ->
+    [{bucket, Bucket}, {key, <<"*">>}, {bucket_grant, true}, {any, false},
+     {role_type, RoleType}, {role, Role}];
+target_info({RoleType, Role}, {Bucket, Key}) ->
+    [{bucket, Bucket}, {key, Key}, {bucket_grant, false}, {any, false},
+     {role_type, RoleType}, {role, Role}].
 
 %name_info(all) -> [{name, <<"*">>}, {all, true}];
 %name_info(Name) -> [{name, Name}, {all, false}].

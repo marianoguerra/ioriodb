@@ -57,7 +57,9 @@ is_authorized(Req, State=#state{action=Action, param1=Param1,
 
 to_json(Req, State=#state{action = <<"permissions">>, env_keys=EnvKeys}) ->
     Permissions = rcs_cowboy:get_permissions(EnvKeys),
-    to_json_reply(Req, State, Permissions);
+    {ok, GlobalGrants} = rcs_cowboy:group_grants(all),
+    Result = [{permissions, Permissions}, {grants, [{global, GlobalGrants}]}],
+    to_json_reply(Req, State, Result);
 to_json(Req, State=#state{action = <<"users">>, param1=undefined}) ->
     {ok, Users} = rcs_cowboy:users(),
     to_json_reply(Req, State,[{users, Users}]);
