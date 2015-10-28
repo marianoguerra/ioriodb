@@ -93,7 +93,9 @@ from_json(Req, State=#state{action = <<"groups">>}) ->
 from_json(Req, State=#state{action = <<"users">>, method=put}) ->
     with_user_body(Req, State, fun do_update_user/6);
 from_json(Req, State=#state{action = <<"users">>}) ->
-    with_user_body(Req, State, fun do_create_user/6).
+    with_user_body(Req, State, fun do_create_user/6);
+from_json(Req, State=#state{}) ->
+    {false, Req, State}.
 
 % TODO: load the body here and check if it exists
 resource_exists(Req, State=#state{action = <<"users">>, method = post}) ->
