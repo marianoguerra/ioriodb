@@ -3,6 +3,7 @@
          fold_users/1, fold_users/2, fold_groups/1, fold_groups/2,
          get_security_context/1, get_user_info/1, get_group_info/1,
          group_grants/1, user_grants/1, grants_for/2, grants_to_bin/1,
+         groups_grants/1,
          pgroups/1]).
 
 -define(TOMBSTONE, '$deleted').
@@ -59,8 +60,19 @@ get_info(Type, Name) ->
 group_grants(Name) -> grants_for(Name, <<"groupgrants">>).
 user_grants(Name) -> grants_for(Name, <<"usergrants">>).
 
+groups_grants(Names) ->
+    R = fold(fun ({{Role, Target}, [Grants]}, {Groups, All}=Acc) ->
+                     IsInNames = lists:member(Role, Names),
+                     if Role =:= all -> {Groups, [{Target, Grants}|All]};
+                        IsInNames -> {[{Target, Grants}|Groups], All};
+                        true -> Acc
+                     end
+             end, {[], []}, <<"groupgrants">>),
+    {Groups, All} = R,
+    {ok, {grants_to_bin(Groups), grants_to_bin(All)}}.
+
 grants_for(Name, Type) ->
-    R = fold(fun ({{Role, Target}, [Grants]}, Acc) when Role =:= Name ->
+    R = fold(fun ({{Role, Target}, [Grants]}, Acc) when Role =:= Name; Role =:= all ->
                      [{Target, Grants}|Acc];
                  (_, Acc) -> Acc
              end, [], Type),

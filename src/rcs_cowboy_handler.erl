@@ -68,17 +68,22 @@ to_json(Req, State=#state{action = <<"groups">>, param1=Group,
                           group_info=GroupInfo}) ->
     Groups = rcs_cowboy:pgroups(GroupInfo),
     {ok, DirectGrants} = rcs_cowboy:group_grants(Group),
+    {ok, {GroupsGrants, GlobalGrants}} = rcs_cowboy:groups_grants(Groups),
     Response = [{group, [{name, Group}, {groups, Groups},
-                         {direct_grants, DirectGrants}]}],
+                         {grants, [{direct, DirectGrants},
+                                   {groups, GroupsGrants},
+                                   {global, GlobalGrants}]}]}],
     to_json_reply(Req, State, Response);
 to_json(Req, State=#state{action = <<"users">>, user_ctx=UserCtx}) ->
-    {context, Username, Grants, _Ts} = UserCtx,
+    {context, Username, _CtxGrants, _Ts} = UserCtx,
     {ok, UserInfo} = rcs_cowboy:get_user_info(Username),
     {ok, DirectGrants} = rcs_cowboy:user_grants(Username),
     Groups = rcs_cowboy:pgroups(UserInfo),
+    {ok, {GroupsGrants, GlobalGrants}} = rcs_cowboy:groups_grants(Groups),
     Response = [{user, [{username, Username}, {groups, Groups},
-                        {grants, rcs_cowboy:grants_to_bin(Grants)},
-                        {direct_grants, DirectGrants}]}],
+                         {grants, [{direct, DirectGrants},
+                                   {groups, GroupsGrants},
+                                   {global, GlobalGrants}]}]}],
     to_json_reply(Req, State, Response).
 
 delete_resource(Req, State=#state{action = <<"users">>, param1=Username}) ->
@@ -94,6 +99,10 @@ from_json(Req, State=#state{action = <<"users">>, method=put}) ->
     with_user_body(Req, State, fun do_update_user/6);
 from_json(Req, State=#state{action = <<"users">>}) ->
     with_user_body(Req, State, fun do_create_user/6);
+from_json(Req, State=#state{action = <<"grants">>}) ->
+    with_grant_body(Req, State, fun do_grant/6);
+from_json(Req, State=#state{action = <<"revokes">>}) ->
+    with_grant_body(Req, State, fun do_revoke/6);
 from_json(Req, State=#state{}) ->
     {false, Req, State}.
 
@@ -250,55 +259,77 @@ with_user_body(Req, State, Fun) ->
             {false, Req1, State1}
     end.
 
-do_create_group(Req, State=#state{base_uri=BaseUri}, Body, Groupname, Groups) ->
-    try create_group(Groupname, Groups) of
+with_grant_body(Req, State, Fun) ->
+    case parse_body(Req, State) of
+        {ok, #{<<"role">> := Role, <<"bucket">> := Bucket, <<"key">> := Key,
+               <<"permission">> := Permission}=Body,
+         Req1, State1}
+          when is_binary(Role), is_binary(Bucket), is_binary(Key), is_binary(Permission) ->
+            Fun(Req1, State1, Body, to_rc_role(Role),
+                to_rc_bucket(Bucket, Key), to_rc_permission(Permission));
+        {ok, _Body, Req1, State1} ->
+            {false, Req1, State1};
+        {error, _Reason, Req1, State1} ->
+            {false, Req1, State1}
+    end.
+
+do_update(Req, State, Body, ErrorMsg, Fun) ->
+    try Fun() of
         ok ->
-            reply_created(BaseUri, "groups", Groupname, Req, State);
+            {true, json_ok_response(Req), State};
         Error ->
-            lager:error("creating group ~p: ~p", [Body, Error]),
+            lager:error("~s ~p: ~p", [ErrorMsg, Body, Error]),
             {false, Req, State}
     catch
         T:E ->
-            lager:error("creating group ~p: ~p", [T, E]),
+            lager:error("~s ~p: ~p", [ErrorMsg, T, E]),
             {false, Req, State}
     end.
+
+do_create(Req, State=#state{base_uri=BaseUri}, Body, ErrorMsg, Uri1, Uri2, Fun) ->
+    try Fun() of
+        ok ->
+            reply_created(BaseUri, Uri1, Uri2, Req, State);
+        Error ->
+            lager:error("~s ~p: ~p", [ErrorMsg, Body, Error]),
+            {false, Req, State}
+    catch
+        T:E ->
+            lager:error("~s ~p: ~p", [ErrorMsg, T, E]),
+            {false, Req, State}
+    end.
+
+do_grant(Req, State, Body, Role, Bucket, Permission) ->
+    do_update(Req, State, Body, "granting permission",
+              fun () ->
+                      riak_core_security:add_grant(Role, Bucket, Permission)
+              end).
+
+do_revoke(Req, State, Body, Role, Bucket, Permission) ->
+    do_update(Req, State, Body, "revoking permission",
+              fun () ->
+                      riak_core_security:add_revoke(Role, Bucket, Permission)
+              end).
+do_create_group(Req, State, Body, Groupname, Groups) ->
+    do_create(Req, State, Body, "creating group", "groups", Groupname,
+              fun () -> create_group(Groupname, Groups) end).
 
 do_update_group(Req, State, Body, Groupname, Groups) ->
-    try update_group(Groupname, Groups) of
-        ok ->
-            {true, json_ok_response(Req), State};
-        Error ->
-            lager:error("updating group ~p: ~p", [Body, Error]),
-            {false, Req, State}
-    catch
-        T:E ->
-            lager:error("updating group ~p: ~p", [T, E]),
-            {false, Req, State}
-    end.
+    do_update(Req, State, Body, "updating group",
+              fun () -> update_group(Groupname, Groups) end).
 
-do_create_user(Req, State=#state{base_uri=BaseUri}, Body, Username, Password,
-               Groups) ->
-    try create_user(Username, Password, Groups) of
-        ok ->
-            reply_created(BaseUri, "users", Username, Req, State);
-        Error ->
-            lager:error("creating user ~p: ~p", [Body, Error]),
-            {false, Req, State}
-    catch
-        T:E ->
-            lager:error("creating user ~p: ~p", [T, E]),
-            {false, Req, State}
-    end.
+do_create_user(Req, State, Body, Username, Password, Groups) ->
+    do_create(Req, State, Body, "creating user", "users", Username,
+              fun () -> create_user(Username, Password, Groups) end).
 
 do_update_user(Req, State, Body, Username, Password, Groups) ->
-    try update_user(Username, Password, Groups) of
-        ok ->
-            {true, json_ok_response(Req), State};
-        Error ->
-            lager:error("updating user ~p: ~p", [Body, Error]),
-            {false, Req, State}
-    catch
-        T:E ->
-            lager:error("updating user ~p: ~p", [T, E]),
-            {false, Req, State}
-    end.
+    do_update(Req, State, Body, "updating user",
+              fun () -> update_user(Username, Password, Groups) end).
+
+to_rc_bucket(Bucket, <<"*">>) -> Bucket;
+to_rc_bucket(Bucket, Key) -> {Bucket, Key}.
+
+to_rc_role(<<"*">>) -> all;
+to_rc_role(Role) -> [Role].
+
+to_rc_permission(Permission) -> [binary_to_list(Permission)].
