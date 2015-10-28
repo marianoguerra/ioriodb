@@ -75,7 +75,7 @@ grants_for(Name, Type) ->
     RoleType = if Type =:= <<"groupgrants">> -> group;
                   Type =:= <<"usergrants">> -> user
                end,
-    R = fold(fun ({{Role, Target}, [Grants]}, Acc) when Role =:= Name; Role =:= all ->
+    R = fold(fun ({{Role, Target}, [Grants]}, Acc) when Role =:= Name ->
                      [{{RoleType, Role}, Target, Grants}|Acc];
                  (_, Acc) -> Acc
              end, [], Type),
