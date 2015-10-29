@@ -83,23 +83,61 @@ init_auth() ->
     setup_initial_permissions(AccessLogic, AdminUsername),
     AccessLogic.
 
+rcs_check_permission(Ctx) ->
+    Bucket = ?PERM_MAGIC_BUCKET,
+    Action = ?PERM_ADMIN_USERS,
+    riak_core_security:check_permission({Action, Bucket}, Ctx).
+
+rcs_is_authorized(Access, Secret, Req, _RcsInfo) ->
+    {ok, Session, Req1} = iorio_session:from_request(Access, Req, Secret),
+    {_Username, _SBody, {ctx, UserCtx}} = Session,
+    case rcs_check_permission(UserCtx) of
+        {true, _Ctx1} ->
+            {true, Req1};
+        {false, Reason, _Ctx1} ->
+            lager:warning("in rcs admin auth check ~p", [Reason]),
+            {false, Req1}
+    end.
+
+rcs_is_user_authorized(_Access, Algorithm, Secret, SessionDurationSecs,
+                       Req, #{user_ctx := UserCtx}) ->
+    case rcs_check_permission(UserCtx) of
+        {true, _Ctx1} ->
+            Username = riak_core_security:get_username(UserCtx),
+            Req1 = iorio_session:auth_ok_response(Req, Username, Algorithm,
+                                                  Secret, SessionDurationSecs),
+            {true, Req1};
+        {false, Reason, _Ctx1} ->
+            lager:warning("in rcs admin auth ~p", [Reason]),
+            {false, Req}
+    end.
+
 base_routes(AccessLogic, CorsInfo) ->
     N = envd(req_n, 3),
     W = envd(req_w, 3),
     Timeout = envd(req_timeout, 5000),
     {ok, ApiAlgorithm} = env(auth_algorithm),
+    {ok, ApiSecret} = env(auth_secret),
     SessionDurationSecs = envd(session_duration_secs, 3600),
     IorioMod = iorio,
     IorioState = nil,
 
     JsonEncoder = fun iorio_json:encode/1,
     JsonDecoder = fun iorio_json:decode/1,
-    IsAuthorizedFun = fun (Req, _Info) ->
-                              %{{false, <<"jwt">>}, Req}
-                              {true, Req}
+    IsUserAuthorizedFun = fun (Req, Info) ->
+                                  rcs_is_user_authorized(AccessLogic,
+                                                         ApiAlgorithm,
+                                                         ApiSecret,
+                                                         SessionDurationSecs,
+                                                         Req, Info)
+                          end,
+    IsAuthorizedFun = fun(Req, Info) ->
+                              rcs_is_authorized(AccessLogic, ApiSecret, Req,
+                                                Info)
                       end,
     RcsOpts = #{env_keys => [iorio],
                 json_encoder => JsonEncoder, json_decoder => JsonDecoder,
+                is_user_authorized => IsUserAuthorizedFun,
                 base_uri => "/admin", is_authorized => IsAuthorizedFun},
 
     [{"/listen", bullet_handler,

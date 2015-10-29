@@ -140,7 +140,7 @@ authenticate(State=#state{auth_mod=AuthMod, auth_state=AuthState},
     case authenticate(State, Username, Password) of
         {ok, Session} ->
             SessionUsername = AuthMod:username(AuthState, Session),
-            Body = [{u, SessionUsername}],
+            Body = iorio_session:new_session_body(SessionUsername),
             Fields = [{username, SessionUsername}, {session_body, Body},
                       {session, Session}],
             update_req(Req, Fields);

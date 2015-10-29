@@ -1,9 +1,23 @@
 -module(iorio_session).
 -export([fill_session/3,
-         fill_session_from_token/3]).
+         fill_session_from_token/3,
+         from_request/3,
+         new_session_body/1,
+         auth_ok_response/5]).
 
 -include_lib("jwt/include/jwt.hrl").
 -include("include/iorio.hrl").
+
+new_session_body(Username) -> [{u, Username}].
+
+auth_ok_response(Req, Username, Algorithm, Secret, SessionDurationSecs) ->
+    Expiration = jwt:now_secs() + SessionDurationSecs,
+    SessionBody = new_session_body(Username),
+    {ok, Token} = jwt:encode(Algorithm, SessionBody, Secret,
+                             [{exp, Expiration}]),
+    ResultJson = [{ok, true}, {token, Token}, {username, Username}],
+    ResultJsonBin = iorio_json:encode(ResultJson),
+    cowboy_req:set_resp_body(ResultJsonBin, Req).
 
 session_from_parsed_body(Access, Body) ->
     Username = proplists:get_value(<<"u">>, Body),
