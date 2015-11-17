@@ -9,13 +9,14 @@
 -include("include/iorio.hrl").
 
 -record(state, {channels=[], iorio_mod, iorio_state, token, info, access,
-                active}).
+                active, conn_type}).
 
 % TODO: handle CORS in COMET on bullet?
 init(_Transport, Req, Opts, Active) ->
     {access, Access} = proplists:lookup(access, Opts),
     {iorio_mod, Iorio} = proplists:lookup(iorio_mod, Opts),
     {iorio_state, IorioState} = proplists:lookup(iorio_state, Opts),
+
     {Method, Req1} = cowboy_req:method(Req),
     case Method of
         <<"GET">> -> do_init(Req1, Access, Iorio, IorioState, Active);
@@ -225,8 +226,10 @@ set_json_response(Req) ->
                                Req).
 
 do_init(Req, Access, Iorio, IorioState, Active) ->
-    {Token, Req1} = cowboy_req:qs_val(<<"jwt">>, Req, nil),
-    {Params, Req2} = cowboy_req:qs_vals(Req1),
+    {Token, Req0} = cowboy_req:qs_val(<<"jwt">>, Req, nil),
+    {Params, Req1} = cowboy_req:qs_vals(Req0),
+    {ConnType, Req2} = connection_type(Req1, Active),
+
     Req3 = cowboy_req:compact(Req2),
     RawSubs = proplists:get_all_values(<<"s">>, Params),
     Subs = iorio_parse:subscriptions(RawSubs),
@@ -236,7 +239,7 @@ do_init(Req, Access, Iorio, IorioState, Active) ->
             iorio_stats:listen_connect(Active),
             State = #state{channels=[], iorio_mod=Iorio,
                            iorio_state=IorioState, access=Access, token=Token,
-                           info=Info1, active=Active},
+                           info=Info1, active=Active, conn_type=ConnType},
 
             State1 = subscribe_all(Subs, State),
             Req4 = if Active == once -> set_json_response(Req3);
@@ -247,3 +250,18 @@ do_init(Req, Access, Iorio, IorioState, Active) ->
             lager:warning("shutdown listen ~p", [Reason]),
             {shutdown, Req3, #state{}}
     end.
+
+connection_type(Req, once) -> {xhr, Req};
+connection_type(Req, false) -> {post, Req};
+connection_type(Req, true) ->
+	case cowboy_req:header(<<"upgrade">>, Req) of
+		{undefined, Req1} ->
+            {sse, Req1};
+		{Bin, Req1} when is_binary(Bin) ->
+			case cowboy_bstr:to_lower(Bin) of
+				<<"websocket">> ->
+                    {ws, Req1};
+				_Any ->
+                    {unknown, Req}
+			end
+	end.
