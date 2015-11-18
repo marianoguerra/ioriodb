@@ -31,6 +31,10 @@ init(_Args) ->
     CoverageFSMs = {iorio_coverage_fsm_sup,
                  {iorio_coverage_fsm_sup, start_link, []},
                  permanent, infinity, supervisor, [iorio_coverage_fsm_sup]},
+
+    IorioRlimit = {iorio_rlimit,
+                   {iorio_rlimit, start_link, [[]]},
+                   permanent, 5000, worker, [iorio_rlimit]},
     {ok,
         { {one_for_one, 10, 10},
-          [VMaster, WriteFSMs, CoverageFSMs]}}.
+          [VMaster, WriteFSMs, CoverageFSMs, IorioRlimit]}}.

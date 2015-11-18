@@ -7,6 +7,7 @@
 -export([rest_init/2,
          rest_terminate/2,
          allowed_methods/2,
+         malformed_request/2,
          content_types_accepted/2,
          content_types_provided/2,
          is_authorized/2,
@@ -15,12 +16,12 @@
          options/2,
          from_json/2,
          from_json_patch/2,
-         to_json/2
-        ]).
+         to_json/2]).
 
 -ignore_xref([rest_init/2,
          rest_terminate/2,
          allowed_methods/2,
+         malformed_request/2,
          content_types_accepted/2,
          content_types_provided/2,
          is_authorized/2,
@@ -29,11 +30,10 @@
          options/2,
          from_json/2,
          from_json_patch/2,
-         to_json/2
-        ]).
+         to_json/2]).
 
--record(state, {bucket, stream, from_sn, limit, access, info, filename,
-                n=3, w=3, timeout=5000, cors, iorio_mod, iorio_state, method}).
+-record(state, {bucket, stream, from_sn, limit, access, info, filename, creds,
+                action, n=3, w=3, timeout=5000, cors, iorio_state, method}).
 
 -include_lib("sblob/include/sblob.hrl").
 -include("include/iorio.hrl").
@@ -49,8 +49,7 @@ init({tcp, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest};
 init({ssl, http}, _Req, _Opts) -> {upgrade, protocol, cowboy_rest}.
 
 rest_init(Req, [{access, Access}, {n, N}, {w, W}, {timeout, Timeout},
-                {cors, Cors}, {iorio_mod, IorioMod},
-                {iorio_state, IorioState}]) ->
+                {cors, Cors}, {iorio_state, IorioState}]) ->
     {Bucket, Req1} = cowboy_req:binding(bucket, Req),
     {Stream, Req2} = cowboy_req:binding(stream, Req1),
     {FromSNStr, Req3} = cowboy_req:qs_val(<<"from">>, Req2, <<"">>),
@@ -61,12 +60,14 @@ rest_init(Req, [{access, Access}, {n, N}, {w, W}, {timeout, Timeout},
     FromSN = to_int_or(FromSNStr, nil),
     Limit = to_int_or(LimitStr, 1),
 
+    Action = get_action(Method, Bucket, Stream),
+
     {ok, Info} = ioriol_access:new_req([{bucket, Bucket}, {stream, Stream}]),
 
     {ok, Req6, #state{bucket=Bucket, stream=Stream, from_sn=FromSN,
                       limit=Limit, filename=Filename, n=N, w=W, access=Access,
-                      iorio_mod=IorioMod, iorio_state=IorioState,
-                      info=Info, timeout=Timeout, cors=Cors, method=Method}}.
+                      iorio_state=IorioState, info=Info, timeout=Timeout,
+                      cors=Cors, method=Method, action=Action}}.
 
 options(Req, State=#state{cors=Cors}) ->
     Req1 = iorio_cors:handle_options(Req, stream, Cors),
@@ -75,6 +76,10 @@ options(Req, State=#state{cors=Cors}) ->
 allowed_methods(Req, State) ->
     Methods = [<<"OPTIONS">>, <<"GET">>, <<"POST">>, <<"PATCH">>, <<"DELETE">>],
     {Methods, Req, State}.
+
+malformed_request(Req, State=#state{access=Access, action=Action}) ->
+    iorio_http:check_rate_limit(Action, Access, Req, State,
+                                fun (St, Creds) -> St#state{creds=Creds} end).
 
 resource_exists(Req, State=#state{method=Method}) ->
     Exists = case Method of
@@ -132,16 +137,16 @@ sblob_to_json_full(#sblob_entry{seqnum=SeqNum, timestamp=Timestamp,
      integer_to_list(Timestamp), "}, \"data\":", Data, "}"].
 
 delete_resource(Req, State=#state{bucket=Bucket, stream=Stream, n=N,
-                                  iorio_mod=Iorio, iorio_state=IorioState,
+                                  iorio_state=IorioState,
                                   method= <<"DELETE">>, timeout=Timeout}) ->
     lager:info("deleting resource stream ~p/~p", [Bucket, Stream]),
-    Iorio:delete(IorioState, Bucket, Stream, N, Timeout),
+    iorio:delete(IorioState, Bucket, Stream, N, Timeout),
     {true, Req, State}.
 
 to_json(Req, State=#state{bucket=Bucket, stream=Stream, from_sn=From,
                           limit=Limit, filename=Filename,
-                          iorio_mod=Iorio, iorio_state=IorioState}) ->
-    Blobs = Iorio:get(IorioState, Bucket, Stream, From, Limit),
+                          iorio_state=IorioState}) ->
+    Blobs = iorio:get(IorioState, Bucket, Stream, From, Limit),
     ItemList = lists:map(fun sblob_to_json_full/1, Blobs),
     ItemsJoined = string:join(ItemList, ","),
     Items = ["[", ItemsJoined, "]"],
@@ -157,14 +162,13 @@ to_json(Req, State=#state{bucket=Bucket, stream=Stream, from_sn=From,
     {Items, Req1, State}.
 
 put(Bucket, PatchStream, Data,
-    #state{n=N, w=W, timeout=Timeout,
-           iorio_mod=Iorio, iorio_state=IorioState}) ->
-    Iorio:put(IorioState, Bucket, PatchStream, Data, N, W, Timeout).
+    #state{n=N, w=W, timeout=Timeout, iorio_state=IorioState}) ->
+    iorio:put(IorioState, Bucket, PatchStream, Data, N, W, Timeout).
 
 put_conditionally(Bucket, PatchStream, Data,
-                  #state{n=N, w=W, timeout=Timeout, iorio_mod=Iorio,
-                         iorio_state=IorioState}, LastSeqNum) ->
-    Iorio:put_conditionally(IorioState, Bucket, PatchStream, Data, LastSeqNum,
+                  #state{n=N, w=W, timeout=Timeout, iorio_state=IorioState},
+                  LastSeqNum) ->
+    iorio:put_conditionally(IorioState, Bucket, PatchStream, Data, LastSeqNum,
                             N, W, Timeout).
 
 publish_patch(Bucket, Stream, Data, State) ->
@@ -238,13 +242,12 @@ from_json(Req, State=#state{bucket=Bucket, stream=Stream}) ->
     end.
 
 handle_patch(Req, Body,
-             State=#state{bucket=Bucket, stream=Stream, iorio_mod=Iorio,
-                          iorio_state=IorioState}) ->
+             State=#state{bucket=Bucket, stream=Stream, iorio_state=IorioState}) ->
     case iorio_json:is_json(Body) of
         true ->
             case jsonpatch:parse(Body) of
                 {ok, ParsedPatch} ->
-                    case Iorio:get_last(IorioState, Bucket, Stream) of
+                    case iorio:get_last(IorioState, Bucket, Stream) of
                         {ok, #sblob_entry{data=Data, seqnum=LastSeqNum}} ->
                             ParsedBlob = iorio_json:decode(Data),
                             case jsonpatch:patch(ParsedPatch, ParsedBlob) of
@@ -297,3 +300,9 @@ unauthorized_response(Req, State, Info, Reason, Action) ->
     lager:info("unauthorized stream request on ~p/~p (~p): ~p ~p",
                   [Bucket, Stream, Action, Reason, Info]),
     {{false, <<"jwt">>}, Req1, State}.
+
+get_action(<<"DELETE">>, _Bucket, _Stream) -> delete;
+get_action(<<"POST">>, _Bucket, _Stream) -> put;
+get_action(<<"PATCH">>, _Bucket, _Stream) -> put_conditionally;
+get_action(<<"GET">>, _Bucket, _Stream) -> get;
+get_action(<<"OPTIONS">>, _Bucket, _Stream) -> options.

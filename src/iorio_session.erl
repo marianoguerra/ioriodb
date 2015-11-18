@@ -1,7 +1,8 @@
 -module(iorio_session).
 -export([fill_session/3,
          fill_session_from_token/3,
-         from_request/3,
+         from_request/2,
+         creds_from_request/2,
          new_session_body/1,
          auth_ok_response/5]).
 
@@ -33,9 +34,10 @@ session_from_parsed_token(Access, BodyRaw) ->
 make_anon_session(Access) ->
     session_from_parsed_body(Access, [{<<"u">>, <<"anonymous">>}]).
 
-session_from_token(Access, nil, _Secret) ->
+session_from_token(Access, nil) ->
     make_anon_session(Access);
-session_from_token(Access, JWTToken, Secret) ->
+session_from_token(Access, JWTToken) ->
+    Secret = ioriol_access:secret(Access),
     case jwt:decode(JWTToken, Secret) of
         {ok, #jwt{body=BodyRaw}}    -> session_from_parsed_token(Access, BodyRaw);
         {error, {Reason, _Details}} -> {error, Reason};
@@ -49,21 +51,20 @@ jwt_from_request(Req) ->
         Other -> Other
     end.
 
-from_request(Access, Req, Secret) ->
+from_request(Access, Req) ->
     case jwt_from_request(Req) of
         {undefined, R1} ->
             {ok, AnonSession} = make_anon_session(Access),
             {ok, AnonSession, R1};
         {JWTToken, R2}  ->
-            case session_from_token(Access, JWTToken, Secret) of
+            case session_from_token(Access, JWTToken) of
                 {ok, Session}   -> {ok, Session, R2};
                 {error, Reason} -> {error, Reason, R2}
             end
     end.
 
 fill_session(Req, Access, Info) ->
-    Secret = ioriol_access:secret(Access),
-    case from_request(Access, Req, Secret) of
+    case from_request(Access, Req) of
         {ok, {Username, Body, SCtx}, Req1} ->
             {ok, Info1} = ioriol_access:update_req(Info,
                                                    [{username, Username},
@@ -74,11 +75,17 @@ fill_session(Req, Access, Info) ->
     end.
 
 fill_session_from_token(Access, Info, Token) ->
-    Secret = ioriol_access:secret(Access),
-    case session_from_token(Access, Token, Secret) of
+    case session_from_token(Access, Token) of
         {ok, {Username, Body, SCtx}} ->
             ioriol_access:update_req(Info, [{username, Username},
                                             {session_body, Body},
                                             {session, SCtx}]);
         Error -> Error
+    end.
+
+creds_from_request(Access, Req) ->
+    case from_request(Access, Req) of
+        {ok, {Username, Body, Ctx}, Req1} ->
+            {ok, #{username => Username, jwt_body => Body, ctx => Ctx}, Req1};
+        {error, _Reason, _Req1}=Error -> Error
     end.

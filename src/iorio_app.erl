@@ -89,7 +89,7 @@ rcs_check_permission(Ctx) ->
     riak_core_security:check_permission({Action, Bucket}, Ctx).
 
 rcs_is_authorized(Access, Secret, Req, _RcsInfo) ->
-    {ok, Session, Req1} = iorio_session:from_request(Access, Req, Secret),
+    {ok, Session, Req1} = iorio_session:from_request(Access, Req),
     {_Username, _SBody, {ctx, UserCtx}} = Session,
     case rcs_check_permission(UserCtx) of
         {true, _Ctx1} ->
@@ -142,13 +142,12 @@ base_routes(AccessLogic, CorsInfo) ->
 
     [{"/listen", bullet_handler,
       [{handler, iorio_listen_handler}, {access, AccessLogic},
-       {cors, CorsInfo}, {iorio_mod, IorioMod}, {iorio_state, IorioState}]},
+       {cors, CorsInfo}, {iorio_state, IorioState}]},
      {"/streams/:bucket", iorio_rest_list,
-      [{access, AccessLogic}, {cors, CorsInfo},
-       {iorio_mod, IorioMod}, {iorio_state, IorioState}]},
+      [{access, AccessLogic}, {cors, CorsInfo}, {iorio_state, IorioState}]},
      {"/streams/:bucket/:stream", iorio_rest_stream,
       [{access, AccessLogic}, {n, N}, {w, W}, {timeout, Timeout},
-       {cors, CorsInfo}, {iorio_mod, IorioMod}, {iorio_state, IorioState}]},
+       {cors, CorsInfo}, {iorio_state, IorioState}]},
      {"/buckets/", iorio_rest_list,
       [{access, AccessLogic}, {cors, CorsInfo},
        {iorio_mod, IorioMod}, {iorio_state, IorioState}]},
@@ -162,8 +161,8 @@ base_routes(AccessLogic, CorsInfo) ->
        {session_duration_secs, SessionDurationSecs},
        {cors, CorsInfo}]},
      {"/users/", iorio_rest_user, [{access, AccessLogic}, {cors, CorsInfo}]},
-     {"/ping", iorio_rest_ping, [{cors, CorsInfo}, {iorio_mod, IorioMod},
-                                 {iorio_state, IorioState}]},
+     {"/ping", iorio_rest_ping, [{cors, CorsInfo}, {iorio_state, IorioState},
+                                 {access, AccessLogic}]},
      {"/admin/:action", rcs_cowboy_handler, RcsOpts},
      {"/admin/:action/:param1", rcs_cowboy_handler, RcsOpts},
 
