@@ -82,7 +82,7 @@ class Connection(object):
         else:
             params = ""
 
-        path = self.path_prefix + "/" + "/".join(str(item) for item in paths)
+        path = self.path_prefix + "/".join(str(item) for item in paths)
 
         if self.secure:
             protocol = 'https'

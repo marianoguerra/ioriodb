@@ -98,7 +98,8 @@ def parse_data_from_raw(data_raw):
 def do_when_authenticated(args, fun, conn=None):
     '''if auth works run fun'''
     if conn is None:
-        conn = iorio.Connection(args.host, args.port, secure=args.secure, path_prefix=args.pathprefix)
+        conn = iorio.Connection(args.host, args.port, secure=args.secure,
+                path_prefix=args.pathprefix)
 
     auth_t1 = time.time()
     auth_ok, auth_resp = conn.authenticate(args.username, args.password)
