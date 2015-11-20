@@ -48,7 +48,11 @@ info({entry, _BucketName, _Stream, _Entry}=FullEntry, Req, State) ->
     reply_entries_json([FullEntry], Req, State);
 
 info({replay, Entries}, Req, State) when is_list(Entries) ->
-    reply_entries_json(Entries, Req, State).
+    reply_entries_json(Entries, Req, State);
+
+info(Other, Req, State) ->
+    lager:warning("listen: got unknown message ~p", [Other]),
+    {ok, Req, State}.
 
 % in case someone sends some weird request and we do a shutdown
 terminate(_Req, #state{active=undefined}) -> ok;

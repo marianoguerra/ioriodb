@@ -174,15 +174,18 @@ map_gblobs(State=#state{path=Path}, BucketName, Fun) ->
 
 
 do_put(State=#state{}, ReqId, BucketName, Stream, Data, LastSeqNum) ->
-    lager:debug("put ~p", [{ReqId, BucketName, Stream}]),
     Timestamp = sblob_util:now(),
     {NewState, GBlob} = get_gblob(State, BucketName, Stream),
 
-    Result = if
-                 LastSeqNum == nil ->
-                     gblob_server:put(GBlob, Timestamp, Data);
-                 true ->
-                     gblob_server:put(GBlob, Timestamp, Data, LastSeqNum)
+    Result = try
+                 if
+                     LastSeqNum == nil ->
+                         gblob_server:put(GBlob, Timestamp, Data);
+                     true ->
+                         gblob_server:put(GBlob, Timestamp, Data, LastSeqNum)
+                 end
+             catch
+                 Type:Error -> {error, {Type, Error}}
              end,
 
     Reply = {ReqId, Result},
@@ -191,17 +194,20 @@ do_put(State=#state{}, ReqId, BucketName, Stream, Data, LastSeqNum) ->
 
 do_raw_put(State, BucketName, Stream, Timestamp, Data) ->
     {NewState, GBlob} = get_gblob(State, BucketName, Stream),
-    Entry = gblob_server:put(GBlob, Timestamp, Data),
-    {Entry, NewState}.
+    Reply = try gblob_server:put(GBlob, Timestamp, Data)
+            catch Type:Error -> {error, {Type, Error}} end,
+    {Reply, NewState}.
 
-do_get(State=#state{partition=Partition}, BucketName, Stream, From, Count, Callback) ->
-    lager:debug("get ~s ~s ~p ~p at ~p",
-                [BucketName, Stream, From, Count, Partition]),
+do_get(State=#state{}, BucketName, Stream, From, Count, Callback) ->
     {NewState, GBlob} = get_gblob(State, BucketName, Stream),
 
     spawn(fun () ->
-                  Entries = gblob_server:get(GBlob, From, Count),
-                  Callback(Entries)
+                  try
+                      Entries = gblob_server:get(GBlob, From, Count),
+                      Callback(Entries)
+                  catch
+                      Type:Error -> Callback({error, {Type, Error}})
+                  end
           end),
 
     NewState.

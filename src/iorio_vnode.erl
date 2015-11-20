@@ -52,7 +52,7 @@ handle_command({put_conditionally, ReqId, BucketName, Stream, Data, LastSeqNum},
                                  LastSeqNum);
 
 handle_command({get, BucketName, Stream, From, Count}, Sender, State) ->
-    Callback = fun (Entries) -> riak_core_vnode:reply(Sender, Entries) end,
+    Callback = fun (Result) -> riak_core_vnode:reply(Sender, Result) end,
     iorio_node:get(State, BucketName, Stream, From, Count, Callback);
 
 handle_command({delete, ReqId, BucketName, Stream}, _Sender, State) ->
