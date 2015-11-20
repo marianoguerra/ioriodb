@@ -88,7 +88,7 @@ rcs_check_permission(Ctx) ->
     Action = ?PERM_ADMIN_USERS,
     riak_core_security:check_permission({Action, Bucket}, Ctx).
 
-rcs_is_authorized(Access, Secret, Req, _RcsInfo) ->
+rcs_is_authorized(Access, _Secret, Req, _RcsInfo) ->
     {ok, Session, Req1} = iorio_session:from_request(Access, Req),
     {_Username, _SBody, {ctx, UserCtx}} = Session,
     case rcs_check_permission(UserCtx) of
