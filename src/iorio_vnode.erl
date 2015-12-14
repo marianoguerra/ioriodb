@@ -164,6 +164,9 @@ handle_exit(_Pid, _Reason, State=#state{partition=Partition}) ->
 handle_info(evict_bucket, State) ->
     iorio_node:evict_bucket(State);
 
+handle_info(send_metrics, State) ->
+    iorio_node:send_metrics(State);
+
 handle_info(Msg, State=#state{partition=Partition}) ->
     lager:warning("vnode: Unexpected handle info msg: ~p ~p", [Partition, Msg]),
     {ok, State}.

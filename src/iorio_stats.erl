@@ -10,6 +10,8 @@
          core_truncate/0,
          core_msg_size/1,
          channel_create/0, channel_destroy/0,
+         channel_size/1, channel_size_bytes/1,
+         channel_count/1, channel_sub_count/1,
          log_level/1]).
 
 -behaviour(cowboy_middleware).
@@ -38,6 +40,11 @@
 -define(METRIC_CHANNEL_CREATE, [iorio, channels, create]).
 -define(METRIC_CHANNEL_DESTROY, [iorio, channels, destroy]).
 -define(METRIC_CHANNEL_RUNNING, [iorio, channels, running]).
+
+-define(METRIC_CHANNEL_SIZE, [iorio, channels, size]).
+-define(METRIC_CHANNEL_SIZE_BYTES, [iorio, channels, size_bytes]).
+-define(METRIC_CHANNEL_SUB_COUNT, [iorio, channels, sub_count]).
+-define(METRIC_CHANNEL_COUNT, [iorio, channels, count]).
 
 -define(METRIC_CORE_MSG_SIZE, [iorio, core, msg, size]).
 
@@ -97,6 +104,11 @@ channel_create()  ->
 channel_destroy() ->
     exometer:update(?METRIC_CHANNEL_DESTROY, 1),
     exometer:update(?METRIC_CHANNEL_RUNNING, -1).
+
+channel_size(Size) -> exometer:update(?METRIC_CHANNEL_SIZE, Size).
+channel_size_bytes(Size) -> exometer:update(?METRIC_CHANNEL_SIZE_BYTES, Size).
+channel_sub_count(Count) -> exometer:update(?METRIC_CHANNEL_SUB_COUNT, Count).
+channel_count(Count) -> exometer:update(?METRIC_CHANNEL_COUNT, Count).
 
 core_msg_size(Size) -> exometer:update(?METRIC_CORE_MSG_SIZE, Size).
 
@@ -172,7 +184,11 @@ core_stats() ->
 channel_stats() ->
      [{create, unwrap_metric_value(?METRIC_CHANNEL_CREATE)},
       {destroy, unwrap_metric_value(?METRIC_CHANNEL_DESTROY)},
-      {running, unwrap_metric_value(?METRIC_CHANNEL_RUNNING)}].
+      {running, unwrap_metric_value(?METRIC_CHANNEL_RUNNING)},
+      {size, unwrap_metric_value(?METRIC_CHANNEL_SIZE)},
+      {size_bytes, unwrap_metric_value(?METRIC_CHANNEL_SIZE_BYTES)},
+      {sub_count, unwrap_metric_value(?METRIC_CHANNEL_SUB_COUNT)},
+      {count, unwrap_metric_value(?METRIC_CHANNEL_COUNT)}].
 
 init_metrics() ->
     lists:map(fun create_endpoint_time_metric/1, ?ENDPOINTS),
@@ -190,6 +206,11 @@ init_metrics() ->
     exometer:new(?METRIC_CHANNEL_RUNNING, counter, []),
     exometer:new(?METRIC_CHANNEL_CREATE, spiral, [{time_span, 60000}]),
     exometer:new(?METRIC_CHANNEL_DESTROY, spiral, [{time_span, 60000}]),
+
+    exometer:new(?METRIC_CHANNEL_SIZE, histogram, []),
+    exometer:new(?METRIC_CHANNEL_SIZE_BYTES, histogram, []),
+    exometer:new(?METRIC_CHANNEL_SUB_COUNT, histogram, []),
+    exometer:new(?METRIC_CHANNEL_COUNT, spiral, [{time_span, 60000}]),
 
     exometer:new(?METRIC_CORE_PING, spiral, [{time_span, 60000}]),
     exometer:new(?METRIC_CORE_PUT, spiral, [{time_span, 60000}]),

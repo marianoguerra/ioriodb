@@ -1,12 +1,14 @@
 -module(iorio_vnode_channels).
 -behaviour(gen_server).
 
--export([start_link/0, send/4, subscribe/5, unsubscribe/4, clean/1]).
+-export([start_link/0, send/4, subscribe/5, unsubscribe/4, clean/1,
+         send_metrics/1]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
 
 -record(state, {channels}).
+-record(metrics_state, {count=0}).
 
 %% Public API
 
@@ -15,6 +17,9 @@ start_link() ->
 
 clean(Pid) ->
     gen_server:call(Pid, clean).
+
+send_metrics(Pid) ->
+    gen_server:call(Pid, send_metrics).
 
 send(Pid, Bucket, Stream, Entry) ->
     gen_server:cast(Pid, {send, Bucket, Stream, Entry}).
@@ -35,6 +40,13 @@ init([]) ->
 
 handle_call(clean, _From, State=#state{channels=Chans}) ->
     {ok, NewChans} = rscbag:clean(Chans),
+    {reply, ok, State#state{channels=NewChans}};
+
+handle_call(send_metrics, _From, State=#state{channels=Chans}) ->
+    {ok, NewChans, Result} = rscbag:foldl(Chans, fun calculate_metrics/3,
+                                          metrics_foldl_initial_state()),
+    #metrics_state{count=ChanCount} = Result,
+    iorio_stats:channel_count(ChanCount),
     {reply, ok, State#state{channels=NewChans}};
 
 handle_call(Msg, _From, State) ->
@@ -167,3 +179,16 @@ remove_channel(Channels, Pid) ->
 new_channel_opts(Bucket, Stream) ->
     iorio_config:channel_config(Bucket, Stream).
 
+metrics_foldl_initial_state() -> #metrics_state{}.
+
+calculate_metrics({_Bucket, _Key}, Channel, State0=#metrics_state{count=Count}) ->
+    {ok, Status} = smc_hist_channel:status(Channel),
+
+    SizeBytes = proplists:get_value(buf_size_bytes, Status),
+    Size = proplists:get_value(buf_size, Status),
+    SubCount = proplists:get_value(sub_count, Status),
+    iorio_stats:channel_size_bytes(SizeBytes),
+    iorio_stats:channel_size(Size),
+    iorio_stats:channel_sub_count(SubCount),
+
+    State0#metrics_state{count=Count + 1}.

@@ -3,7 +3,7 @@
 -export([init/1, ping/1, put/5, coord_put_conditionally/8, coord_put/7,
          delete/4,
          put_conditionally/6, get/6, subscribe/5, unsubscribe/4,
-         evict_bucket/1, free_resources/1, truncate_percentage/4,
+         evict_bucket/1, send_metrics/1, free_resources/1, truncate_percentage/4,
          bucket_size/3, list_buckets/2, list_streams/3, delete/1]).
 
 -include_lib("sblob/include/sblob.hrl").
@@ -40,6 +40,8 @@ init(Opts) ->
                                                         Pid, evict_bucket)
           end),
 
+    MetricsInterval = 60000,
+    {ok, _TimerRef} = timer:send_interval(MetricsInterval, Pid, send_metrics),
 
     State = #state{partition=Partition, path=Path, writer=WriterPid,
                    buckets=Buckets, channels=Channels, vnode_info=VnodeInfo},
@@ -95,6 +97,10 @@ unsubscribe(State=#state{channels=Channels}, BucketName, Stream, Pid) ->
 evict_bucket(State=#state{buckets=Buckets}) ->
     EvictFun = fun evict_bucket/4,
     iorio_vnode_buckets:check_evict(Buckets, EvictFun),
+    {ok, State}.
+
+send_metrics(State=#state{channels=Channels}) ->
+    iorio_vnode_channels:send_metrics(Channels),
     {ok, State}.
 
 truncate_percentage(State=#state{buckets=Buckets}, BucketName, Percentage, RefId) ->
