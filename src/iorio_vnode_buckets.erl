@@ -302,12 +302,18 @@ calculate_metrics({_Bucket, _Key}, Bucket,
                           true -> NoActionCount + 1
                        end,
     NewNoEvictionCount = if LastEviction /= 0 ->
-                                iorio_stats:bucket_last_eviction(Now - LastEviction),
+                                if Active ->
+                                       iorio_stats:bucket_last_eviction(Now - LastEviction);
+                                   true -> ok
+                                end,
                                 NoEvictionCount;
                             true -> NoEvictionCount + 1
                          end,
     NewNoCheckCount = if LastCheck /= 0 ->
-                             iorio_stats:bucket_last_check(Now - LastCheck),
+                             if Active ->
+                                    iorio_stats:bucket_last_check(Now - LastCheck);
+                                    true -> ok
+                             end,
                              NoCheckCount;
                          true -> NoCheckCount + 1
                       end,
