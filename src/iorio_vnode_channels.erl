@@ -61,6 +61,7 @@ handle_cast(Msg, State) ->
 
 handle_info({'DOWN', _MonitorRef, process, Pid, _Info}, State=#state{channels=Chans}) ->
     NewChans = remove_channel(Chans, Pid),
+    iorio_stats:channel_destroy(),
     {noreply, State#state{channels=NewChans}};
 
 handle_info(Msg, State) ->
@@ -141,6 +142,7 @@ get_channel(Channels, Bucket, Stream) ->
     case rscbag:get(Channels, ChannelKey, ChannelOptsFun) of
         {{ok, created, Ch}, Channels1} ->
             erlang:monitor(process, Ch),
+            iorio_stats:channel_create(),
             {Channels1, Ch};
         {{ok, found, Ch}, Channels1} ->
             {Channels1, Ch}
