@@ -1,6 +1,9 @@
 -module(iorio_stats).
 -export([all_stats/2, cowboy_response_hook/4, init_metrics/0]).
--export([start_metric_sender/5, send_metrics/4]).
+-export([start_metric_sender/5, send_metrics/4,
+         bucket_active/1, bucket_inactive/1, bucket_last_check/1,
+         bucket_per_vnode/1, bucket_last_action/1, bucket_last_eviction/1,
+         bucket_no_action/1, bucket_no_check/1, bucket_no_eviction/1]).
 
 -export([auth_error/0, auth_success/0, listen_connect/1, listen_disconnect/1]).
 
@@ -46,6 +49,16 @@
 -define(METRIC_CHANNEL_SUB_COUNT, [iorio, channels, sub_count]).
 -define(METRIC_CHANNEL_COUNT, [iorio, channels, count]).
 
+-define(METRIC_BUCKET_ACTIVE, [iorio, buckets, active]).
+-define(METRIC_BUCKET_INACTIVE, [iorio, buckets, inactive]).
+-define(METRIC_BUCKET_PER_VNODE, [iorio, buckets, per_vnode]).
+-define(METRIC_BUCKET_LAST_CHECK, [iorio, buckets, last_check]).
+-define(METRIC_BUCKET_LAST_ACTION, [iorio, buckets, last_action]).
+-define(METRIC_BUCKET_LAST_EVICTION, [iorio, buckets, last_eviction]).
+-define(METRIC_BUCKET_NO_ACTION, [iorio, buckets, no_action]).
+-define(METRIC_BUCKET_NO_CHECK, [iorio, buckets, no_check]).
+-define(METRIC_BUCKET_NO_EVICTION, [iorio, buckets, no_eviction]).
+
 -define(METRIC_CORE_MSG_SIZE, [iorio, core, msg, size]).
 
 -define(ENDPOINTS, [<<"listen">>, <<"streams">>, <<"buckets">>, <<"access">>,
@@ -68,6 +81,7 @@ all_stats(Iorio, IorioState) ->
   {log, log_stats()},
   {http, http_stats()},
   {channel, channel_stats()},
+  {bucket, bucket_stats()},
   {core, core_stats()}].
 
 node_stats() ->
@@ -109,6 +123,25 @@ channel_size(Size) -> exometer:update(?METRIC_CHANNEL_SIZE, Size).
 channel_size_bytes(Size) -> exometer:update(?METRIC_CHANNEL_SIZE_BYTES, Size).
 channel_sub_count(Count) -> exometer:update(?METRIC_CHANNEL_SUB_COUNT, Count).
 channel_count(Count) -> exometer:update(?METRIC_CHANNEL_COUNT, Count).
+
+bucket_active(Value) ->
+    exometer:update(?METRIC_BUCKET_ACTIVE, Value).
+bucket_inactive(Value) ->
+    exometer:update(?METRIC_BUCKET_INACTIVE, Value).
+bucket_per_vnode(Value) ->
+    exometer:update(?METRIC_BUCKET_PER_VNODE, Value).
+bucket_last_check(Value) ->
+    exometer:update(?METRIC_BUCKET_LAST_CHECK, Value).
+bucket_last_action(Value) ->
+    exometer:update(?METRIC_BUCKET_LAST_ACTION, Value).
+bucket_last_eviction(Value) ->
+    exometer:update(?METRIC_BUCKET_LAST_EVICTION, Value).
+bucket_no_action(Value) ->
+    exometer:update(?METRIC_BUCKET_NO_ACTION, Value).
+bucket_no_check(Value) ->
+    exometer:update(?METRIC_BUCKET_NO_CHECK, Value).
+bucket_no_eviction(Value) ->
+    exometer:update(?METRIC_BUCKET_NO_EVICTION, Value).
 
 core_msg_size(Size) -> exometer:update(?METRIC_CORE_MSG_SIZE, Size).
 
@@ -190,6 +223,17 @@ channel_stats() ->
       {sub_count, unwrap_metric_value(?METRIC_CHANNEL_SUB_COUNT)},
       {count, unwrap_metric_value(?METRIC_CHANNEL_COUNT)}].
 
+bucket_stats() ->
+    [{active, unwrap_metric_value(?METRIC_BUCKET_ACTIVE)},
+     {inactive, unwrap_metric_value(?METRIC_BUCKET_INACTIVE)},
+     {per_vnode, unwrap_metric_value(?METRIC_BUCKET_PER_VNODE)},
+     {no_action, unwrap_metric_value(?METRIC_BUCKET_NO_ACTION)},
+     {no_check, unwrap_metric_value(?METRIC_BUCKET_NO_CHECK)},
+     {no_eviction, unwrap_metric_value(?METRIC_BUCKET_NO_EVICTION)},
+     {last_check, unwrap_metric_value(?METRIC_BUCKET_LAST_CHECK)},
+     {last_action, unwrap_metric_value(?METRIC_BUCKET_LAST_ACTION)},
+     {last_eviction, unwrap_metric_value(?METRIC_BUCKET_LAST_EVICTION)}].
+
 init_metrics() ->
     lists:map(fun create_endpoint_time_metric/1, ?ENDPOINTS),
     lists:map(fun create_endpoint_min_metric/1, ?ENDPOINTS),
@@ -211,6 +255,16 @@ init_metrics() ->
     exometer:new(?METRIC_CHANNEL_SIZE_BYTES, histogram, []),
     exometer:new(?METRIC_CHANNEL_SUB_COUNT, histogram, []),
     exometer:new(?METRIC_CHANNEL_COUNT, spiral, [{time_span, 60000}]),
+
+    exometer:new(?METRIC_BUCKET_ACTIVE, spiral, [{time_span, 60000}]),
+    exometer:new(?METRIC_BUCKET_INACTIVE, spiral, [{time_span, 60000}]),
+    exometer:new(?METRIC_BUCKET_NO_ACTION, spiral, [{time_span, 60000}]),
+    exometer:new(?METRIC_BUCKET_NO_CHECK, spiral, [{time_span, 60000}]),
+    exometer:new(?METRIC_BUCKET_NO_EVICTION, spiral, [{time_span, 60000}]),
+    exometer:new(?METRIC_BUCKET_PER_VNODE, histogram, []),
+    exometer:new(?METRIC_BUCKET_LAST_CHECK, histogram, []),
+    exometer:new(?METRIC_BUCKET_LAST_ACTION, histogram, []),
+    exometer:new(?METRIC_BUCKET_LAST_EVICTION, histogram, []),
 
     exometer:new(?METRIC_CORE_PING, spiral, [{time_span, 60000}]),
     exometer:new(?METRIC_CORE_PUT, spiral, [{time_span, 60000}]),

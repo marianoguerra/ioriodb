@@ -99,8 +99,9 @@ evict_bucket(State=#state{buckets=Buckets}) ->
     iorio_vnode_buckets:check_evict(Buckets, EvictFun),
     {ok, State}.
 
-send_metrics(State=#state{channels=Channels}) ->
+send_metrics(State=#state{channels=Channels, buckets=Buckets}) ->
     iorio_vnode_channels:send_metrics(Channels),
+    iorio_vnode_buckets:send_metrics(Buckets),
     {ok, State}.
 
 truncate_percentage(State=#state{buckets=Buckets}, BucketName, Percentage, RefId) ->

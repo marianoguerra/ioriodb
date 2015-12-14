@@ -2,7 +2,8 @@
 -behaviour(gen_server).
 
 -export([start_link/1, put/5, put/6, raw_put/5, get/6, bucket_size/2,
-         delete/3, check_evict/2, truncate_percentage/3, clean/1]).
+         delete/3, check_evict/2, truncate_percentage/3, clean/1,
+         send_metrics/1]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
@@ -12,6 +13,8 @@
                 next_bucket_index=1,
                 max_bucket_time_no_evict_ms=60000,
                 max_bucket_size_bytes=52428800}).
+-record(metrics_state, {count=0, active=0, inactive=0, now,
+                        no_action=0, no_eviction=0, no_check=0}).
 
 %% Public API
 
@@ -38,6 +41,9 @@ bucket_size(Ref, BucketName) ->
 
 delete(Ref, BucketName, Stream) ->
     gen_server:call(Ref, {delete, BucketName, Stream}).
+
+send_metrics(Ref) ->
+    gen_server:call(Ref, send_metrics).
 
 truncate_percentage(Ref, BucketName, Percentage) ->
     gen_server:call(Ref, {truncate_percentage, BucketName, Percentage}).
@@ -91,6 +97,19 @@ handle_call({truncate_percentage, BucketName, Percentage}, _From, State) ->
 
 handle_call(clean, _From, State=#state{gblobs=Gblobs}) ->
     {ok, NewGblobs} = rscbag:clean(Gblobs),
+    {reply, ok, State#state{gblobs=NewGblobs}};
+
+handle_call(send_metrics, _From, State=#state{gblobs=Gblobs}) ->
+    {ok, NewGblobs, Result} = rscbag:foldl(Gblobs, fun calculate_metrics/3,
+                                          metrics_foldl_initial_state()),
+    #metrics_state{count=Count, active=ActiveCount, inactive=InactiveCount,
+                   no_action=NoAction, no_check=NoCheck, no_eviction=NoEviction} = Result,
+    iorio_stats:bucket_per_vnode(Count),
+    iorio_stats:bucket_active(ActiveCount),
+    iorio_stats:bucket_inactive(InactiveCount),
+    iorio_stats:bucket_no_action(NoAction),
+    iorio_stats:bucket_no_check(NoCheck),
+    iorio_stats:bucket_no_eviction(NoEviction),
     {reply, ok, State#state{gblobs=NewGblobs}};
 
 handle_call(Msg, _From, State) ->
@@ -261,3 +280,40 @@ get_gblob(State=#state{gblobs=GBlobs, path=Path,
             {State#state{gblobs=Gs}, Gb};
         Error -> {error, Error, State}
     end.
+
+metrics_foldl_initial_state() -> #metrics_state{now=sblob_util:now_fast()}.
+
+calculate_metrics({_Bucket, _Key}, Bucket,
+                  State0=#metrics_state{count=Count, active=ActiveCount,
+                                        inactive=InactiveCount, now=Now,
+                                        no_action=NoActionCount,
+                                        no_eviction=NoEvictionCount,
+                                        no_check=NoCheckCount}) ->
+    {Active, LastAction, LastEviction, LastCheck} = gblob_server:status(Bucket),
+
+    {NewActiveCount, NewInactiveCount} = if Active -> {ActiveCount + 1, InactiveCount};
+                                            true -> {ActiveCount, InactiveCount + 1}
+                                         end,
+    NewCount = Count + 1,
+
+    NewNoActionCount = if LastAction /= 0 ->
+                              iorio_stats:bucket_last_action(Now - LastAction),
+                              NoActionCount;
+                          true -> NoActionCount + 1
+                       end,
+    NewNoEvictionCount = if LastEviction /= 0 ->
+                                iorio_stats:bucket_last_eviction(Now - LastEviction),
+                                NoEvictionCount;
+                            true -> NoEvictionCount + 1
+                         end,
+    NewNoCheckCount = if LastCheck /= 0 ->
+                             iorio_stats:bucket_last_check(Now - LastCheck),
+                             NoCheckCount;
+                         true -> NoCheckCount + 1
+                      end,
+
+    State0#metrics_state{count=NewCount, active=NewActiveCount,
+                         inactive=NewInactiveCount,
+                         no_action=NewNoActionCount,
+                         no_eviction=NewNoEvictionCount,
+                         no_check=NewNoCheckCount}.
