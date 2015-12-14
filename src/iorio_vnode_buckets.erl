@@ -283,7 +283,7 @@ get_gblob(State=#state{gblobs=GBlobs, path=Path,
 
 metrics_foldl_initial_state() -> #metrics_state{now=sblob_util:now_fast()}.
 
-calculate_metrics({_Bucket, _Key}, Bucket,
+calculate_metrics({_BucketName, _Key}, Bucket,
                   State0=#metrics_state{count=Count, active=ActiveCount,
                                         inactive=InactiveCount, now=Now,
                                         no_action=NoActionCount,
