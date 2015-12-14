@@ -182,13 +182,18 @@ new_channel_opts(Bucket, Stream) ->
 metrics_foldl_initial_state() -> #metrics_state{}.
 
 calculate_metrics({_Bucket, _Key}, Channel, State0=#metrics_state{count=Count}) ->
-    {ok, Status} = smc_hist_channel:status(Channel),
+    try
+        {ok, Status} = smc_hist_channel:status(Channel),
 
-    SizeBytes = proplists:get_value(buf_size_bytes, Status),
-    Size = proplists:get_value(buf_size, Status),
-    SubCount = proplists:get_value(sub_count, Status),
-    iorio_stats:channel_size_bytes(SizeBytes),
-    iorio_stats:channel_size(Size),
-    iorio_stats:channel_sub_count(SubCount),
+        SizeBytes = proplists:get_value(buf_size_bytes, Status),
+        Size = proplists:get_value(buf_size, Status),
+        SubCount = proplists:get_value(sub_count, Status),
+        iorio_stats:channel_size_bytes(SizeBytes),
+        iorio_stats:channel_size(Size),
+        iorio_stats:channel_sub_count(SubCount),
 
-    State0#metrics_state{count=Count + 1}.
+        State0#metrics_state{count=Count + 1}
+    catch T:E ->
+        lager:warning("calculating channel metrics ~p: ~p", [T, E]),
+        State0
+    end.
