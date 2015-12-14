@@ -297,7 +297,10 @@ calculate_metrics({_BucketName, _Key}, Bucket,
     NewCount = Count + 1,
 
     NewNoActionCount = if LastAction /= 0 ->
-                              iorio_stats:bucket_last_action(Now - LastAction),
+                              if Active ->
+                                     iorio_stats:bucket_last_action(Now - LastAction);
+                                     true -> ok
+                              end,
                               NoActionCount;
                           true -> NoActionCount + 1
                        end,
