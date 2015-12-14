@@ -296,14 +296,14 @@ start_metric_sender(IorioMod, IorioState, Bucket, Stream, IntervalMs) ->
 cowboy_response_hook(Code, _Headers, _Body, Req) ->
     EndTs = now_fast(),
 
-    {Path, _Req1} = cowboy_req:path(Req),
+    {Path, Req1} = cowboy_req:path(Req),
     EndPoint = case binary:split(Path, <<"/">>, [global]) of
                    [<<>>, EndPoint0|_] -> EndPoint0;
                    [<<>>] -> <<"">>;
                    [EndPoint0] -> EndPoint0
                end,
-    {_Method, _Req2} = cowboy_req:method(Req),
-    {StartTs, _Req3} = cowboy_req:meta(iorio_req_start, Req),
+    {Method, Req2} = cowboy_req:method(Req1),
+    {StartTs, Req3} = cowboy_req:meta(iorio_req_start, Req2),
 
     if is_integer(StartTs) ->
         ReqTime = EndTs - StartTs,
@@ -315,7 +315,12 @@ cowboy_response_hook(Code, _Headers, _Body, Req) ->
     exometer:update(resp_code_key(Code), 1),
     exometer:update(?METRIC_HTTP_ACTIVE_REQS, -1),
 
-    Req.
+    if Code >= 400 ->
+           lager:error("HTTP ~s ~s -> ~p", [Method, Path, Code]);
+       true -> ok
+    end,
+
+    Req3.
 
 now_fast() ->
     {Mega, Sec, Micro} = os:timestamp(),
