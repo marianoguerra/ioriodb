@@ -35,6 +35,10 @@ init(_Args) ->
     IorioRlimit = {iorio_rlimit,
                    {iorio_rlimit, start_link, [[]]},
                    permanent, 5000, worker, [iorio_rlimit]},
+
+    IorioActivity = {iorio_activity,
+                     {iorio_activity, start_link, [[]]},
+                     permanent, 5000, worker, [iorio_activity]},
     {ok,
         { {one_for_one, 10, 10},
-          [VMaster, WriteFSMs, CoverageFSMs, IorioRlimit]}}.
+          [VMaster, WriteFSMs, CoverageFSMs, IorioRlimit, IorioActivity]}}.

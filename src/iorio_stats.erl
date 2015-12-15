@@ -1,6 +1,6 @@
 -module(iorio_stats).
 -export([all_stats/2, cowboy_response_hook/4, init_metrics/0]).
--export([start_metric_sender/5, send_metrics/4,
+-export([start_metric_sender/5, send_metrics/5, user_activity/2,
          bucket_active/1, bucket_inactive/1, bucket_last_check/1,
          bucket_per_vnode/1, bucket_last_action/1, bucket_last_eviction/1,
          bucket_no_action/1, bucket_no_check/1, bucket_no_eviction/1]).
@@ -234,6 +234,9 @@ bucket_stats() ->
      {last_action, unwrap_metric_value(?METRIC_BUCKET_LAST_ACTION)},
      {last_eviction, unwrap_metric_value(?METRIC_BUCKET_LAST_EVICTION)}].
 
+user_activity(Type, Key) ->
+    iorio_activity:notify(Type, Key).
+
 init_metrics() ->
     lists:map(fun create_endpoint_time_metric/1, ?ENDPOINTS),
     lists:map(fun create_endpoint_min_metric/1, ?ENDPOINTS),
@@ -278,20 +281,27 @@ init_metrics() ->
 
     exometer:new(?METRIC_CORE_MSG_SIZE, histogram, []).
 
-send_metrics(Iorio, IorioState, Bucket, Stream) ->
+send_metrics(Iorio, IorioState, Bucket, Stream, StreamActivity) ->
+    {ok, Activity} = iorio_activity:get_stats_and_clean(20),
     Metrics = all_stats(Iorio, IorioState),
     Node = erlang:node(),
     FullMetrics = [{node, Node}, {metrics, Metrics}],
     FullMetricsJson = iorio_json:encode(FullMetrics),
+    ActivityJson = iorio_json:encode(Activity),
     case Iorio:put(IorioState, Bucket, Stream, FullMetricsJson) of
         {ok, _Entry} -> ok;
         Other ->
             lager:error("Sending Metrics: ~p", [Other])
+    end,
+    case Iorio:put(IorioState, Bucket, StreamActivity, ActivityJson) of
+        {ok, _Entry1} -> ok;
+        Other1 ->
+            lager:error("Sending Metrics: ~p", [Other1])
     end.
 
 start_metric_sender(IorioMod, IorioState, Bucket, Stream, IntervalMs) ->
     timer:apply_interval(IntervalMs, ?MODULE, send_metrics,
-                         [IorioMod, IorioState, Bucket, Stream]).
+                         [IorioMod, IorioState, Bucket, Stream, <<"activity">>]).
 
 cowboy_response_hook(Code, _Headers, _Body, Req) ->
     EndTs = now_fast(),
@@ -302,7 +312,7 @@ cowboy_response_hook(Code, _Headers, _Body, Req) ->
                    [<<>>] -> <<"">>;
                    [EndPoint0] -> EndPoint0
                end,
-    {Method, Req2} = cowboy_req:method(Req1),
+    {_Method, Req2} = cowboy_req:method(Req1),
     {StartTs, Req3} = cowboy_req:meta(iorio_req_start, Req2),
 
     if is_integer(StartTs) ->
@@ -314,11 +324,6 @@ cowboy_response_hook(Code, _Headers, _Body, Req) ->
     exometer:update(endpoint_key(req_min, EndPoint), 1),
     exometer:update(resp_code_key(Code), 1),
     exometer:update(?METRIC_HTTP_ACTIVE_REQS, -1),
-
-    if Code >= 400 ->
-           lager:error("HTTP ~s ~s -> ~p", [Method, Path, Code]);
-       true -> ok
-    end,
 
     Req3.
 

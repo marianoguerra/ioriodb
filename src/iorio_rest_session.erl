@@ -74,8 +74,11 @@ is_authorized(Req, State=#state{}) ->
 
 to_json(Req, State=#state{info=Info}) ->
     Username = ioriol_access:username(Info),
+    {{Ip, _Port}, Req1} = cowboy_req:peer(Req),
+    {Host, Req2} = cowboy_req:header(<<"host">>, Req1),
+    iorio_stats:user_activity(session_check, {Username, Host, ip_to_string(Ip)}),
     RespBody = [{username, Username}],
-    {iorio_json:encode(RespBody), Req, State}.
+    {iorio_json:encode(RespBody), Req2, State}.
 
 from_json(Req, State=#state{access=Access, info=Info, algorithm=Algorithm,
                             session_duration_secs=SessionDurationSecs}) ->
@@ -117,3 +120,10 @@ check_is_authenticated(Req, State=#state{info=Info, access=Access}) ->
             lager:debug("auth check failed ~p", [Reason]),
             {{false, <<"jwt">>}, iorio_http:no_permission(Req1), State}
     end.
+
+ip_to_string({P1, P2, P3, P4}) ->
+    list_to_binary([integer_to_list(P1), <<".">>, integer_to_list(P2), <<".">>,
+                    integer_to_list(P3), <<".">>, integer_to_list(P4)]);
+ip_to_string(Other) ->
+    list_to_binary(io_lib:format("~p", [Other])).
+
