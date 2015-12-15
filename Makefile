@@ -10,6 +10,7 @@ deps:
 	$(REBAR) get-deps
 
 refetchdeps: distclean deps
+	sed -i 's/ warnings_as_errors/%warnings_as_errors/g' deps/riak_ensemble/rebar.config
 
 clean:
 	$(REBAR) clean
