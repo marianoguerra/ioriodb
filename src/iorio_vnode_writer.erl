@@ -52,7 +52,8 @@ handle_info(Msg, State) ->
     {noreply, State}.
 
 
-terminate(_Reason, _State) ->
+terminate(Reason, _State) ->
+    lager:info("terminating vnode_writer ~p", [Reason]),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
