@@ -10,5 +10,9 @@ init(Opts) ->
     gblob_server:start_link(Path, GblobOpts, GblobServerOpts).
 
 stop(Pid) ->
-    gblob_server:stop(Pid).
+    try
+        gblob_server:stop(Pid)
+    catch exit:{noproc, Info} ->
+        lager:warning("Stoping gblob server: No Process ~p", [Info])
+    end.
 
