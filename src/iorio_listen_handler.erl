@@ -41,9 +41,13 @@ info({smc, {heartbeat, Props}}, Req, State=#state{channels=Channels}) ->
        true -> ok
     end,
     {ok, Req, State};
-info({smc, {terminate, Info}}, Req, State=#state{active=true}) ->
-    lager:info("channel terminated ~p, shuting down listen", [Info]),
-    {shutdown, Req, State};
+info({smc, {terminate, Info}}, Req, State=#state{active=Active}) ->
+    if Active ->
+           lager:info("channel terminated ~p, shuting down listen", [Info]),
+           {shutdown, Req, State};
+       true ->
+           {ok, Req, State}
+    end;
 info({smc, Info}, Req, State=#state{channels=Channels}) ->
     lager:info("channel update for ~p: ~p (~p)", [self(), Info, Channels]),
     {ok, Req, State};
