@@ -122,10 +122,15 @@ fold_buckets(BucketName, {Path, CurSize, BucketsIn}) ->
     {Path, SizeOut, BucketsOut}.
 
 check_path(Path) ->
-    {ok, BucketNames} = list_dir(Path),
-    Fun = fun fold_buckets/2,
-    {_Path, Size, Buckets} = lists:foldl(Fun, {Path, 0, #{}}, BucketNames),
-    {Size, Buckets}.
+    case list_dir(Path) of
+      {ok, BucketNames} -> 
+        Fun = fun fold_buckets/2,
+        {_Path, Size, Buckets} = lists:foldl(Fun, {Path, 0, #{}}, BucketNames),
+        {Size, Buckets};
+      {error, Reason} ->
+	lager:error("check path ~p: ~p", [Path, Reason]),
+	{0, #{}}
+    end.
 
 do_check(State=#state{path=Path}) ->
     Now = os:timestamp(),
